@@ -15,7 +15,7 @@ across runs with different random choices)?
 
 Version 0:
 An Address0 is a (listof CallSite).
--- the list of call sites in the context (ie, continuation).
+-- the list of call sites in the context (ie, continuation), most recent first
 
 Note: call sites, not functions. Consider (define (f) (g (h) (h)))---need to
 distinguish separate calls to h. But what if function changes? Well, what if
@@ -32,7 +32,7 @@ f tail-calls g then g tail-calls f, collisions in two f activations. And so on.
 Current:
 
 An Address is a (listof CallSequence)
- -- a list of tail-call sequences (most recent first)
+ -- a list of tail-call sequences, most recent first
 A CallSequence is an improper list of CallSite.
  -- the list of tail calls (most recent first) together with 
     the non-tail call they start from at the end
@@ -79,19 +79,21 @@ Will need to fix for real (multi-module) programs.
 
 ;; ----
 
+;; Unlike bher, use two logs (databases)---better for detecting collisions.
+
+;; current-log, last-log : hash[Address => (U 0 1)]
 (define current-log (make-hash))
 (define last-log (make-hash))
 
-(define (print-log)
-  (for ([(k v) (in-hash current-log)])
-    (printf "~s => ~s\n" k v)))
-
 ;; Delimit call-site tracking.
-;; Can't test log using normal (f arg ...) syntax, because testing call-sites 
+;; Can't test using normal (f arg ...) syntax, because testing call-sites 
 ;; would be part of context! Use (apply/delimit f arg ...) instead.
 (define (apply/delimit f . args)
   (call-with-continuation-prompt (lambda () (apply f args))))
 
+;; "reset" (maybe wrong word) means end one logged run and start another;
+;; the current log becomes available as history for the next run.
+;; That is, bher would do { run, reset, perturb } repeatedly.
 (define (reset-log)
   (eprintf "Resetting log\n")
   (set! last-log current-log)
@@ -103,13 +105,13 @@ Will need to fix for real (multi-module) programs.
 
 (provide current-log
          last-log
-         print-log
          apply/delimit
          reset-log
          apply/reset)
 
 ;; ----
 
+;; flip : -> (U 0 1)
 (define (flip)
   (define context (get-context))
   (define result
@@ -126,7 +128,7 @@ Will need to fix for real (multi-module) programs.
                 (eprintf "- reusing flip -- history: ~s\n" context)
                 v)]
           [else 
-           (eprintf "- flipping -- context = ~s\n" context)
+           (eprintf "- flipping: ~s\n" context)
            (random 2)]))
   (hash-set! current-log context result)
   result)

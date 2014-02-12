@@ -5,6 +5,15 @@
       0
       (+ (flip) (sum-n-flips (sub1 n)))))
 
+#|
+;; To inspect, do:
+(apply/reset sum-n-flips 10)
+(apply/reset sum-n-flips 10) ;; should produce same answer, because all flips reused
+(apply/reset sum-n-flips 12) ;; should be >= last answer, because first 10 flips reused
+last-log
+current-log
+|#
+
 ;; tail-recursive version
 (define (sum-n-flips* n)
   (let loop ([n n] [acc 0])
