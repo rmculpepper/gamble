@@ -1,7 +1,7 @@
 #lang racket/base
-(require (for-syntax racket/base))
-(provide (rename-out [app #%app])
-         flip)
+(require (for-syntax racket/base)
+         racket/list)
+(provide (rename-out [app #%app]))
 
 (begin-for-syntax
   (define counter 0)
@@ -13,7 +13,7 @@
   (syntax-case stx ()
     [(app f arg ...)
      (let ([c (next-counter)])
-       (printf "app ~s = ~.s\n" c (syntax->datum stx))
+       (printf "app ~s = ~.s\n" c (cdr (syntax->datum stx)))
        (with-syntax ([(tmp-arg ...)
                       (generate-temporaries #'(arg ...))])
          #`(let ([tmp-f f] [tmp-arg arg] ...)
@@ -23,26 +23,13 @@
                 (with-continuation-mark 'call-stack (if v (cons '#,c v) '#,c)
                   (#%app tmp-f tmp-arg ...)))))))]))
 
+(define (get-context)
+  (continuation-mark-set->list (current-continuation-marks) 'call-stack))
+
 ;; ----
 
 (define current-log (make-hash))
 (define last-log (make-hash))
-
-(define (flip)
-  (define context
-    (continuation-mark-set->list (current-continuation-marks) 'call-stack))
-  (when (hash-has-key? current-log context)
-    (eprintf "context collision: ~s\n" context))
-  (define result 
-    (cond [(hash-ref last-log context #f)
-           => (lambda (v)
-                (eprintf " - reusing flip\n")
-                v)]
-          [else 
-           (eprintf " - flipping\n")
-           (random 2)]))
-  (hash-set! current-log context result)
-  result)
 
 (define (print-log)
   (for ([(k v) (in-hash current-log)])
@@ -51,6 +38,7 @@
 (define (apply/log f . args)
   (set! last-log current-log)
   (set! current-log (make-hash))
+  (eprintf "Starting a log\n")
   (call-with-continuation-prompt (lambda () (apply f args))))
 
 (provide current-log
@@ -58,6 +46,39 @@
          print-log
          apply/log)
 
+;; ----
+
+(define (flip)
+  (define context (get-context))
+  (define result
+    (cond [(hash-ref current-log context #f)
+           => (lambda (v)
+                (if (and (pair? context)
+                         (let ([frame (last context)])
+                           (and (list? frame) (memq 'mem frame))))
+                    (eprintf "- reusing flip -- mem: ~s\n" context)
+                    (eprintf "- reusing flip -- context collision: ~s\n" context))
+                v)]
+          [(hash-ref last-log context #f)
+           => (lambda (v)
+                (eprintf "- reusing flip\n")
+                v)]
+          [else 
+           (eprintf "- flipping -- context = ~s\n" context)
+           (random 2)]))
+  (hash-set! current-log context result)
+  result)
+
+(define (mem f)
+  (define context (get-context))
+  (lambda args
+    (call-with-continuation-prompt
+     (lambda ()
+       (with-continuation-mark 'call-stack (list 'mem args)
+         (apply f args))))))
+
+(provide flip
+         mem)
 
 #|
 
@@ -71,5 +92,11 @@ Issue: tail recursion
 Issue: useless WCMs
 - Is this even a problem? Probably WCM is cheap, CCM is expensive.
 - Maybe avoid via static analysis.
+
+Issue: map, for/*, etc not annotated
+- annotation instead of replace #%app would solve for for/*
+  - naive annotator might introduce *many* more WCMs, though
+- replacements for common HO functions, like map
+- what about interop story?
 
 |#

@@ -12,6 +12,29 @@
         acc
         (loop (sub1 n) (+ acc (flip))))))
 
-;(sum-n-flips 10)
+;(apply/log sum-n-flips 10)
+;(apply/log sum-n-flips* 10)
 
-(apply/log sum-n-flips* 10)
+;; ----
+
+(define get-the-flip (mem (lambda (n) (flip))))
+
+;; for/*, map, etc ok here only because calling memoized function!
+(define (get-the-flips n)
+  (for/sum ([i n]) (get-the-flip (modulo i 5))))
+(define (get-the-flips* n)
+  (apply + (map get-the-flip (for/list ([i n]) (modulo i 5)))))
+
+;;(apply/log get-the-flips 15)
+;;(apply/log get-the-flips* 15)
+
+;; map is bad; causes context collisions
+(define (bad-map n)
+  (apply + (map (lambda (n) (flip)) (for/list ([i n]) i))))
+
+;; for is bad; causes context collisions
+(define (bad-for n)
+  (apply + (for/list ([i n]) (flip))))
+
+;;(apply/log bad-map 10)
+;;(apply/log bad-for 10)
