@@ -62,9 +62,9 @@ Will need to fix for real (multi-module) programs.
   (syntax-case stx ()
     [(app f arg ...)
      (let ([c (next-counter)])
-       (printf "app ~s = ~a:~a ~.s\n" c 
-               (syntax-line stx) (syntax-column stx)
-               (cdr (syntax->datum stx)))
+       (eprintf "app ~s = ~a:~a ~.s\n" c 
+                (syntax-line stx) (syntax-column stx)
+                (cdr (syntax->datum stx)))
        (with-syntax ([(tmp-arg ...)
                       (generate-temporaries #'(arg ...))])
          #`(let ([tmp-f f] [tmp-arg arg] ...)

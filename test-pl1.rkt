@@ -5,16 +5,34 @@
       0
       (+ (flip) (sum-n-flips (sub1 n)))))
 
+;; tail-recursive version
 (define (sum-n-flips* n)
   (let loop ([n n] [acc 0])
     (if (zero? n)
         acc
         (loop (sub1 n) (+ acc (flip))))))
 
-;(apply/reset sum-n-flips 10)
-;(apply/reset sum-n-flips* 10)
+;;(apply/reset sum-n-flips 10)
+;;(apply/reset sum-n-flips* 10)
 
 ;; ----
+
+;; ** interaction with untranslated code causes problems
+
+;; map is bad; causes context collisions
+(define (bad-map n)
+  (apply + (map (lambda (n) (flip)) (for/list ([i n]) i))))
+
+;; for/* is bad; causes context collisions
+(define (bad-for n)
+  (apply + (for/list ([i n]) (flip))))
+
+;;(apply/reset bad-map 10)
+;;(apply/reset bad-for 10)
+
+;; ----
+
+;; ** mem
 
 (define get-the-flip (mem (lambda (n) (flip))))
 
@@ -27,13 +45,3 @@
 ;;(apply/reset get-the-flips 15)
 ;;(apply/reset get-the-flips* 15)
 
-;; map is bad; causes context collisions
-(define (bad-map n)
-  (apply + (map (lambda (n) (flip)) (for/list ([i n]) i))))
-
-;; for is bad; causes context collisions
-(define (bad-for n)
-  (apply + (for/list ([i n]) (flip))))
-
-;;(apply/reset bad-map 10)
-;;(apply/reset bad-for 10)
