@@ -1,5 +1,4 @@
-#lang racket
-(require "pl1.rkt")
+#lang s-exp "pl1.rkt"
 
 (define (sum-n-flips n)
   (if (zero? n)

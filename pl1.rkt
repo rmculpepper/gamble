@@ -1,7 +1,8 @@
 #lang racket/base
 (require (for-syntax racket/base)
          racket/list)
-(provide (rename-out [app #%app]))
+(provide (except-out (all-from-out racket/base) #%app)
+         (rename-out [app #%app]))
 
 (begin-for-syntax
   (define counter 0)
