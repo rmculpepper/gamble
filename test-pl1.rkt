@@ -13,4 +13,5 @@
         (loop (sub1 n) (+ acc (flip))))))
 
 ;(sum-n-flips 10)
-(sum-n-flips* 10)
+
+(apply/log sum-n-flips* 10)

@@ -12,35 +12,61 @@
 (define-syntax (app stx)
   (syntax-case stx ()
     [(app f arg ...)
-     (with-syntax ([c (next-counter)])
-       #'(call-with-immediate-continuation-mark
+     (let ([c (next-counter)])
+       (printf "app ~s = ~.s\n" c (syntax->datum stx))
+       #`(call-with-immediate-continuation-mark
           'call-stack
           (lambda (v)
             ;; FIXME: eval f, args outside of wcm region!
-            (with-continuation-mark 'call-stack (cons 'c v)
+            (with-continuation-mark 'call-stack (cons '#,c v)
               (#%app f arg ...)))
           null))]))
 
 ;; ----
 
 (define current-log (make-hash))
+(define last-log (make-hash))
 
 (define (flip)
   (define context
     (continuation-mark-set->list (current-continuation-marks) 'call-stack))
-  (define result (random 2))
-  
-  (begin
-    (when (hash-has-key? current-log context)
-      (eprintf "context collision: ~s\n" context))
-    (hash-set! current-log context result))
-  
+  (when (hash-has-key? current-log context)
+    (eprintf "context collision: ~s\n" context))
+  (define result 
+    (cond [(hash-ref last-log context #f)
+           => values]
+          [else 
+           (eprintf " - flipping\n")
+           (random 2)]))
+  (hash-set! current-log context result)
   result)
 
 (define (print-log)
   (for ([(k v) (in-hash current-log)])
     (printf "~s => ~s\n" k v)))
 
-(provide current-log
-         print-log)
+(define (apply/log f . args)
+  (set! last-log current-log)
+  (set! current-log (make-hash))
+  (call-with-continuation-prompt (lambda () (apply f args))))
 
+(provide current-log
+         last-log
+         print-log
+         apply/log)
+
+
+#|
+
+Issue: tail recursion
+- Need to distinguish different calls in tail-call sequence.
+- What exactly are we using as a proxy for "eval node", anyway?
+  - Don't want too much info (eg args, env contents), because it changes
+    from run to run.
+  - Need some context info to distinguish calls -- eg, (begin (flip) (flip))
+
+Issue: useless WCMs
+- Is this even a problem? Probably WCM is cheap, CCM is expensive.
+- Maybe avoid via static analysis.
+
+|#
