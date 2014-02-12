@@ -14,13 +14,14 @@
     [(app f arg ...)
      (let ([c (next-counter)])
        (printf "app ~s = ~.s\n" c (syntax->datum stx))
-       #`(call-with-immediate-continuation-mark
-          'call-stack
-          (lambda (v)
-            ;; FIXME: eval f, args outside of wcm region!
-            (with-continuation-mark 'call-stack (cons '#,c v)
-              (#%app f arg ...)))
-          null))]))
+       (with-syntax ([(tmp-arg ...)
+                      (generate-temporaries #'(arg ...))])
+         #`(let ([tmp-f f] [tmp-arg arg] ...)
+             (call-with-immediate-continuation-mark
+              'call-stack
+              (lambda (v)
+                (with-continuation-mark 'call-stack (if v (cons '#,c v) '#,c)
+                  (#%app tmp-f tmp-arg ...)))))))]))
 
 ;; ----
 
@@ -34,7 +35,9 @@
     (eprintf "context collision: ~s\n" context))
   (define result 
     (cond [(hash-ref last-log context #f)
-           => values]
+           => (lambda (v)
+                (eprintf " - reusing flip\n")
+                v)]
           [else 
            (eprintf " - flipping\n")
            (random 2)]))
