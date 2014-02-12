@@ -11,8 +11,8 @@
         acc
         (loop (sub1 n) (+ acc (flip))))))
 
-;(apply/log sum-n-flips 10)
-;(apply/log sum-n-flips* 10)
+;(apply/reset sum-n-flips 10)
+;(apply/reset sum-n-flips* 10)
 
 ;; ----
 
@@ -24,8 +24,8 @@
 (define (get-the-flips* n)
   (apply + (map get-the-flip (for/list ([i n]) (modulo i 5)))))
 
-;;(apply/log get-the-flips 15)
-;;(apply/log get-the-flips* 15)
+;;(apply/reset get-the-flips 15)
+;;(apply/reset get-the-flips* 15)
 
 ;; map is bad; causes context collisions
 (define (bad-map n)
@@ -35,5 +35,5 @@
 (define (bad-for n)
   (apply + (for/list ([i n]) (flip))))
 
-;;(apply/log bad-map 10)
-;;(apply/log bad-for 10)
+;;(apply/reset bad-map 10)
+;;(apply/reset bad-for 10)

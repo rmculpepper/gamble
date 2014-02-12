@@ -17,7 +17,9 @@
   (syntax-case stx ()
     [(app f arg ...)
      (let ([c (next-counter)])
-       (printf "app ~s = ~.s\n" c (cdr (syntax->datum stx)))
+       (printf "app ~s = ~a:~a ~.s\n" c 
+               (syntax-line stx) (syntax-column stx)
+               (cdr (syntax->datum stx)))
        (with-syntax ([(tmp-arg ...)
                       (generate-temporaries #'(arg ...))])
          #`(let ([tmp-f f] [tmp-arg arg] ...)
@@ -39,17 +41,27 @@
   (for ([(k v) (in-hash current-log)])
     (printf "~s => ~s\n" k v)))
 
-(define (apply/log f . args)
-  (set! last-log current-log)
-  (set! current-log (make-hash))
-  (eprintf "Starting a log\n")
-  ;; prompt to delimit CMs
+;; Delimit call-site tracking.
+;; Can't test log using normal (f arg ...) syntax, because testing call-sites 
+;; would be part of context! Use (apply/delimit f arg ...) instead.
+(define (apply/delimit f . args)
   (call-with-continuation-prompt (lambda () (apply f args))))
+
+(define (reset-log)
+  (eprintf "Resetting log\n")
+  (set! last-log current-log)
+  (set! current-log (make-hash)))
+
+(define (apply/reset f . args)
+  (reset-log)
+  (apply apply/delimit f args))
 
 (provide current-log
          last-log
          print-log
-         apply/log)
+         apply/delimit
+         reset-log
+         apply/reset)
 
 ;; ----
 
@@ -66,7 +78,7 @@
                 v)]
           [(hash-ref last-log context #f)
            => (lambda (v)
-                (eprintf "- reusing flip\n")
+                (eprintf "- reusing flip -- history: ~s\n" context)
                 v)]
           [else 
            (eprintf "- flipping -- context = ~s\n" context)
