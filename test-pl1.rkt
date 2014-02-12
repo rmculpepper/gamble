@@ -10,8 +10,8 @@
 (apply/reset sum-n-flips 10)
 (apply/reset sum-n-flips 10) ;; should produce same answer, because all flips reused
 (apply/reset sum-n-flips 12) ;; should be >= last answer, because first 10 flips reused
-last-log
-current-log
+(print-log last-log)
+(print-log current-log)
 |#
 
 ;; tail-recursive version
