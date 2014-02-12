@@ -4,6 +4,8 @@
 (provide (except-out (all-from-out racket/base) #%app)
          (rename-out [app #%app]))
 
+(define CM-KEY 'call-stack)
+
 (begin-for-syntax
   ;; FIXME: counter resets for each new module, repl
   (define counter 0)
@@ -20,13 +22,13 @@
                       (generate-temporaries #'(arg ...))])
          #`(let ([tmp-f f] [tmp-arg arg] ...)
              (call-with-immediate-continuation-mark
-              'call-stack
+              CM-KEY
               (lambda (v)
-                (with-continuation-mark 'call-stack (if v (cons '#,c v) '#,c)
+                (with-continuation-mark CM-KEY (if v (cons '#,c v) '#,c)
                   (#%app tmp-f tmp-arg ...)))))))]))
 
 (define (get-context)
-  (continuation-mark-set->list (current-continuation-marks) 'call-stack))
+  (continuation-mark-set->list (current-continuation-marks) CM-KEY))
 
 ;; ----
 
@@ -41,6 +43,7 @@
   (set! last-log current-log)
   (set! current-log (make-hash))
   (eprintf "Starting a log\n")
+  ;; prompt to delimit CMs
   (call-with-continuation-prompt (lambda () (apply f args))))
 
 (provide current-log
@@ -76,7 +79,7 @@
   (lambda args
     (call-with-continuation-prompt
      (lambda ()
-       (with-continuation-mark 'call-stack (list 'mem args)
+       (with-continuation-mark CM-KEY (list 'mem args)
          (apply f args))))))
 
 (provide flip
