@@ -2,17 +2,17 @@
 (require racket/list
          data/order
          "pl1-context.rkt")
-(provide current-log
-         last-log
-         reset-log
+(provide current-db
+         last-db
+         reset-db
          apply/reset
-         print-log
+         print-db
 
          flip
          randn
          mem)
 
-;; Unlike bher, use two logs (databases)---better for detecting collisions.
+;; Unlike bher, use two databases---better for detecting collisions.
 
 ;; ERPTag = 'flip | ...
 
@@ -20,24 +20,24 @@
 ;; where the value is appropriate for the ERP denoted by the tag.
 (struct entry (tag value) #:prefab)
 
-;; current-log, last-log : hash[Address => Entry]
-(define current-log (make-hash))
-(define last-log (make-hash))
+;; current-db, last-db : hash[Address => Entry]
+(define current-db (make-hash))
+(define last-db (make-hash))
 
 ;; "reset" (maybe wrong word) means end one logged run and start another;
-;; the current log becomes available as history for the next run.
+;; the current db becomes available as history for the next run.
 ;; That is, bher would do { run, reset, perturb } repeatedly.
-(define (reset-log)
-  (eprintf "Resetting log\n")
-  (set! last-log current-log)
-  (set! current-log (make-hash)))
+(define (reset-db)
+  (eprintf "Resetting db\n")
+  (set! last-db current-db)
+  (set! current-db (make-hash)))
 
 (define (apply/reset f . args)
-  (reset-log)
+  (reset-db)
   (apply apply/delimit f args))
 
-(define (print-log log)
-  (define entries (hash-map log list))
+(define (print-db db)
+  (define entries (hash-map db list))
   (define sorted-entries
     (sort entries (order-<? datum-order) #:key car))
   (for ([entry (in-list sorted-entries)])
@@ -54,9 +54,9 @@
            (and (list? frame) (memq 'mem frame)))))
   (define (new!)
     (define result (thunk))
-    (hash-set! current-log context (entry tag result))
+    (hash-set! current-db context (entry tag result))
     result)
-  (cond [(hash-ref current-log context #f)
+  (cond [(hash-ref current-db context #f)
          => (lambda (e)
               (cond [(not (equal? (entry-tag e) tag))
                      (eprintf "- MISMATCH ~a ~s / ~s: ~s\n"
@@ -69,7 +69,7 @@
                     [else
                      (eprintf "- COLLISION ~s: ~s\n" tag context)
                      (entry-value e)]))]
-        [(hash-ref last-log context #f)
+        [(hash-ref last-db context #f)
          => (lambda (e)
               (cond [(not (equal? (entry-tag e) tag))
                      (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context)
@@ -77,7 +77,7 @@
                     [else
                      (eprintf "- REUSED ~s: ~s\n" tag context)
                      (define result (entry-value e))
-                     (hash-set! current-log context (entry tag result))
+                     (hash-set! current-db context (entry tag result))
                      result]))]
         [else
          (eprintf "- NEW ~s: ~s\n" tag context)
