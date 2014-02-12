@@ -5,6 +5,7 @@
          (rename-out [app #%app]))
 
 (begin-for-syntax
+  ;; FIXME: counter resets for each new module, repl
   (define counter 0)
   (define (next-counter)
     (begin0 counter
