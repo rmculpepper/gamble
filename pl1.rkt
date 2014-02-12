@@ -1,3 +1,8 @@
+;; Experiment to adapt technique from "Lightweight Implementations of 
+;; Probabilistic Programming Languages Via Transformational Compilation"
+;; by al. et Goodman to use continuation marks to localize rewriting and
+;; avoid changing function signatures.
+
 #lang racket/base
 (require (for-syntax racket/base)
          racket/list)
