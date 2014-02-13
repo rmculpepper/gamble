@@ -1,19 +1,27 @@
 #lang s-exp "pl2.rkt"
 
+;; Unlike pl1, doesn't print instrumented applications.
+
 (define (sum-n-flips n)
   (if (zero? n)
       0
       (+ (flip) (sum-n-flips (sub1 n)))))
 
 #|
-;; To inspect, do:
+;; To inspect, enter the following commands at the repl:
 (apply/reset sum-n-flips 10)
 (apply/reset sum-n-flips 10) ;; should produce same answer, because all flips reused
 (apply/reset sum-n-flips 12) ;; should be >= last answer, because first 10 flips reused
 (print-db last-db)
 (print-db current-db)
-|#
 
+
+;; During evaluation, prints lines like
+;; - NEW flip: <address>
+;; or 
+;; - REUSED flip: <address>
+;; to indicate new or reused ERP choices.
+|#
 
 ;; tail-recursive version
 (define (sum-n-flips* n)
