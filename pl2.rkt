@@ -101,7 +101,7 @@ Note: instrumenting-module? hack separates module from repl numbers.
      ;; -- module-level form
      [(#%provide . _) stx]
      [(begin-for-syntax . _) stx]
-     ;; [(module . _) stx]
+     [(module . _) stx]
      ;; [(module* . _) stx]
      ;; [(#%declare . _) stx]
      ;; -- general top-level form
