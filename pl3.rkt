@@ -23,6 +23,10 @@
          (all-from-out "private/pl1-prob.rkt"))
 
 #|
+See private/pl1-context.rkt for discussion of Address representation.
+|#
+
+#|
 A CallSite is a Nat.
 --- counter of occurrences of #%plain-app syntax in expanded program
 

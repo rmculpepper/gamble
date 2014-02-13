@@ -25,12 +25,12 @@ calls within the two activations of f will have colliding addresses. Also if
 f tail-calls g then g tail-calls f, collisions in two f activations. And so on. 
 (See sum-n-flips* in test-pl1.rkt.)
 
-Current:
+Version 1 (current):
 
 An Address is a (listof CallSequence)
- -- a list of tail-call sequences, most recent first
+--- a list of tail-call sequences, most recent first
 A CallSequence is an improper list of CallSite.
- -- the list of tail calls (most recent first) together with 
+--- the list of tail calls (most recent first) together with 
     the non-tail call they start from at the end
 
 Issue: May change space complexity of program---but it needs to make finer

@@ -1,4 +1,4 @@
-#lang s-exp "pl2.rkt"
+#lang s-exp "pl2.rkt" ;; or "pl3.rkt"
 
 ;; Unlike pl1, doesn't print instrumented applications.
 

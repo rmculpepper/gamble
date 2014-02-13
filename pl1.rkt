@@ -14,12 +14,16 @@
          (all-from-out "private/pl1-prob.rkt"))
 
 #|
+See private/pl1-context.rkt for discussion of Address representation.
+|#
+
+#|
 A CallSite is a Nat.
 --- counter of occurrences of #%app syntax in program
 
 Note: the counter resets for each new module, repl compilation.
-Can fix with gensym or pairing with module-path, etc, but no need for now.
-Will need to fix for real (multi-module) programs.
+Can fix with gensym or pairing with module-path, etc, but no need for
+now.  Will need to fix for real (multi-module) programs.
 |#
 (begin-for-syntax
   (define counter 0)
