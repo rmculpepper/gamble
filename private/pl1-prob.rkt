@@ -101,5 +101,5 @@
     (lambda args
       (apply/delimit
        (lambda ()
-         (with-continuation-mark CM-KEY (list 'mem args)
+         (with-continuation-mark CM-KEY (list 'mem args context)
            (apply f args)))))))
