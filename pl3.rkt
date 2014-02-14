@@ -15,12 +15,14 @@
                      syntax/stx)
          racket/list
          "private/prob.rkt"
+         "private/prob-enum.rkt"
          "private/pl1-context.rkt"
          "private/pl1-prob.rkt")
 (provide (except-out (all-from-out racket/base) #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
          (all-from-out "private/prob.rkt")
+         (all-from-out "private/prob-enum.rkt")
          (all-from-out "private/pl1-context.rkt")
          (all-from-out "private/pl1-prob.rkt"))
 
