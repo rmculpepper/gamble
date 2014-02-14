@@ -7,7 +7,32 @@
          enum-ERP
          enum-mem)
 
-;; Limitation: all paths must terminate (not just "terminate with probability 1").
+#|
+Enumeration based on delimited continuations (only for discrete ERPs)
+
+1. Naive approach has limitiation that all paths must terminate
+(not just "terminate with probability 1").
+
+2. Slightly smarter: keep track of prob of path so far; prune away
+paths with prob below some limit.
+
+Problem: What if very many distinct paths with individually very low
+probs? That is, what if prob of computed paths sums to significantly
+less than 1?
+
+Problem: What if conditioning focuses on pruned paths? Need to make
+pruning prob adaptive wrt conditioning.
+
+Without knowing structure of paths and conditioning predicate, can't
+make smart distinctions between paths: can only do things like
+iterative deepening (perhaps via laziness).
+
+Would be nice if we could tell whether a path was viable or not wrt
+condition. Seems like it would require drastic changes to model of
+computation (eg, like symbolic execution) to support non-trivial
+conditions. Would that be a profitable place to spend effort?
+
+|#
 
 ;; A (EnumDist A) is one of
 ;; - (only A)
