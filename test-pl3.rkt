@@ -68,6 +68,6 @@
 (define (geom p)
     (if (zero? (flip p)) 0 (add1 (geom p))))
 
-(enumeration-query
-   (lambda () (geom 1/2))
-   #:limit 1e-6) ;; prune away any path that has prob < 1e-6
+(enumerate-possibilities
+ (lambda () (geom 1/2))
+ #:limit 1e-6) ;; prune away any path that has prob < 1e-6

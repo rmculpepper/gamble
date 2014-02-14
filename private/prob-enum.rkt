@@ -3,8 +3,9 @@
          math/distributions
          racket/control
          "prob.rkt")
-(provide enumeration-query
-         enum-ERP)
+(provide enumerate-possibilities
+         enum-ERP
+         enum-mem)
 
 ;; Limitation: all paths must terminate (not just "terminate with probability 1").
 
@@ -14,8 +15,9 @@
 (struct only (answer))
 (struct split (subs))
 
-(define (enumeration-query thunk #:limit [limit 1e-6])
-  (parameterize ((current-ERP enum-ERP))
+(define (enumerate-possibilities thunk #:limit [limit 1e-6])
+  (parameterize ((current-ERP enum-ERP)
+                 (current-mem enum-mem))
     (flatten-enum-dist
      (call-with-continuation-prompt
       (lambda () (only (thunk)))
@@ -58,3 +60,14 @@
             (loop ed* (* p p*))]))]))
   (for/list ([a (in-list (reverse seen))])
     (list a (hash-ref prob-table a))))
+
+;; ----
+
+;; normal memoization
+(define (enum-mem f)
+  (let ([memo-table (make-hash)])
+    (lambda args
+      (hash-ref! memo-table args (lambda () (apply f args))))))
+
+;; FIXME: how does this interact with other modes, for example if memoized function
+;; returned as a value from enumeration?

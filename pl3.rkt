@@ -27,6 +27,7 @@
          (all-from-out "private/pl1-prob.rkt"))
 
 (current-ERP pl1-ERP)
+(current-mem pl1-mem)
 
 #|
 See private/pl1-context.rkt for discussion of Address representation.

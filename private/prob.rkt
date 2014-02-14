@@ -1,13 +1,27 @@
 #lang racket/base
 (require math/distributions)
-(provide current-ERP
+(provide current-mem
+         mem
+         current-ERP
          ERP
          flip
          randn)
 
-;; current-ERP is parameter of ERP-function
+;; mem : procedure -> procedure
 
-;; ERP-function = (Sexpr (-> A) (U #f (-> (Discrete-Dist A))) -> A)
+(define (no-mem f)
+  (error 'mem "no mem implementation"))
+
+(define current-mem (make-parameter no-mem))
+
+(define (mem f)
+  (unless (procedure? f)
+    (raise-argument-error 'mem "procedure?" f))
+  ((current-mem) f))
+
+;; ----
+
+;; ERP : (Sexpr (-> A) (U #f (-> (Discrete-Dist A))) -> A)
 ;; First arg is tag w/ ERP function name and params. Same tag should imply same dist.
 ;; Second is sampler. Third is thunk producing discrete dist or #f. Can't both be #f.
 

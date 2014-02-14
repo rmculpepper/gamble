@@ -9,7 +9,7 @@
          print-db
 
          pl1-ERP
-         mem)
+         pl1-mem)
 
 ;; Unlike bher, use two databases---better for detecting collisions.
 
@@ -81,10 +81,7 @@
          (eprintf "- NEW ~s: ~s\n" tag context)
          (new!)]))
 
-;; mem : procedure -> procedure
-(define (mem f)
-  (unless (procedure? f)
-    (raise-argument-error 'mem "procedure?" f))
+(define (pl1-mem f)
   (let ([context (get-context)])
     (lambda args
       (apply/delimit
