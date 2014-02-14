@@ -6,12 +6,16 @@
 #lang racket/base
 (require (for-syntax racket/base)
          racket/list
+         "private/prob.rkt"
          "private/pl1-context.rkt"
          "private/pl1-prob.rkt")
 (provide (except-out (all-from-out racket/base) #%app)
          (rename-out [instrumenting-app #%app])
+         (all-from-out "private/prob.rkt")
          (all-from-out "private/pl1-context.rkt")
          (all-from-out "private/pl1-prob.rkt"))
+
+(current-ERP pl1-ERP)
 
 #|
 See private/pl1-context.rkt for discussion of Address representation.

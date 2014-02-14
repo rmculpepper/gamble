@@ -8,8 +8,7 @@
          apply/reset
          print-db
 
-         flip
-         randn
+         pl1-ERP
          mem)
 
 ;; Unlike bher, use two databases---better for detecting collisions.
@@ -45,15 +44,14 @@
 
 ;; ----
 
-;; ERP : Tag (-> a) -> a
-(define (ERP tag thunk)
+(define (pl1-ERP tag sample _get-dist)
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
          (let ([frame (last context)])
            (and (list? frame) (memq 'mem frame)))))
   (define (new!)
-    (define result (thunk))
+    (define result (sample))
     (hash-set! current-db context (entry tag result))
     result)
   (cond [(hash-ref current-db context #f)
@@ -82,16 +80,6 @@
         [else
          (eprintf "- NEW ~s: ~s\n" tag context)
          (new!)]))
-
-;; flip : -> (U 0 1)
-(define (flip)
-  (ERP 'flip (lambda () (random 2))))
-
-;; randn : Nat -> Nat
-(define (randn n)
-  (unless (exact-positive-integer? n)
-    (raise-argument-error 'randn "exact-positive-integer?" n))
-  (ERP `(randn ,n) (lambda () (random n))))
 
 ;; mem : procedure -> procedure
 (define (mem f)
