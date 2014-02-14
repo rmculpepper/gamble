@@ -14,9 +14,32 @@
 (struct only (answer))
 (struct split (subs))
 
-(define (enumeration-query thunk)
+(define (enumeration-query thunk #:limit [limit 1e-6])
   (parameterize ((current-ERP enum-ERP))
-    (flatten-enum-dist (reset (only (thunk))))))
+    (flatten-enum-dist
+     (call-with-continuation-prompt
+      (lambda () (only (thunk)))
+      (default-continuation-prompt-tag)
+      (lambda (f)
+        (f 1 limit))))))
+
+(define (enum-ERP tag _sampler get-dist)
+  (let* ([dist (get-dist)]
+         [vals (discrete-dist-values dist)]
+         [probs (discrete-dist-probs dist)])
+    (call-with-composable-continuation
+     (lambda (k)
+       (abort-current-continuation
+        (default-continuation-prompt-tag)
+        (lambda (current-path-prob limit)
+          (split (for/list ([val (in-list vals)]
+                            [prob (in-list probs)]
+                            #:when (> (* prob current-path-prob) limit))
+                   (list prob
+                         (call-with-continuation-prompt
+                          (lambda () (k val))
+                          (default-continuation-prompt-tag)
+                          (lambda (f) (f (* prob current-path-prob) limit))))))))))))
 
 (define (flatten-enum-dist ed)
   (define prob-table (make-hash)) ;; a => prob
@@ -35,12 +58,3 @@
             (loop ed* (* p p*))]))]))
   (for/list ([a (in-list (reverse seen))])
     (list a (hash-ref prob-table a))))
-
-(define (enum-ERP tag _sampler get-dist)
-  (let* ([dist (get-dist)]
-         [vals (discrete-dist-values dist)]
-         [probs (discrete-dist-probs dist)])
-    (shift k
-      (split (for/list ([val (in-list vals)]
-                        [prob (in-list probs)])
-               (list prob (reset (k val))))))))
