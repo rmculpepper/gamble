@@ -39,14 +39,16 @@ For mem, have a global store that gets rewound after each ERP choice
 exploration.
 
 Use markparam to store current global store. (Racket parameters don't
-work well with delimited continuations.)
+work well with delimited continuations.) Since prompts also delimit
+CCM, need a separate prompt tag (sigh... it's complicated).
 
 What should it mean for a memoized function to escape the enumeration
 in which it was created? (The current implementation doesn't do
 anything reasonable, probably.)
 |#
 
-;; ctag must be distinct from tag used to delimit continuation mark
+;; Use default prompt tag for mark-parameter, ctag for delimited
+;; continuations.
 (define ctag (make-continuation-prompt-tag))
 
 ;; A (EnumDist A) is one of
@@ -73,12 +75,10 @@ anything reasonable, probably.)
 
 (define (enum-ERP tag _sampler get-dist)
   (define g (gensym '@))
-  (eprintf "ERP ~s, ~s\n" tag g)
   (let* ([dist (get-dist)]
          [vals (discrete-dist-values dist)]
          [probs (discrete-dist-probs dist)]
          [memo-table (unbox (current-global-memo-table))])
-    (eprintf "  memo-table: ~s\n" memo-table)
     (call-with-composable-continuation
      (lambda (k)
        (abort-current-continuation
@@ -87,7 +87,6 @@ anything reasonable, probably.)
           (split (for/list ([val (in-list vals)]
                             [prob (in-list probs)]
                             #:when (> (* prob current-path-prob) limit))
-                   (eprintf "** ~s trying ~s\n" g val)
                    (list prob
                          (mark-parameterize ((current-global-memo-table (box memo-table)))
                            (call-with-continuation-prompt
@@ -119,15 +118,11 @@ anything reasonable, probably.)
 ;; use global-memo-table to effects can be unwound
 (define (enum-mem f)
   (lambda args
-    (eprintf "calling memoized function: ~s\n" args)
     (let ([b (current-global-memo-table)]
           [key (cons f args)])
-      (eprintf "memo table is ~s\n" (unbox b))
       (cond [(hash-has-key? (unbox b) key)
-             (eprintf "key found\n")
              (hash-ref (unbox b) key)]
             [else
-             (eprintf "key not found\n")
              (let ([v (apply f args)])
                ;; NOTE: outer b might be stale, if f called ERP!
                (let ([b (current-global-memo-table)])

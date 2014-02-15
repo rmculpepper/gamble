@@ -77,3 +77,4 @@
    (lambda ()
      (let ([f (mem (lambda (n) (flip)))])
        (list (f 1) (f 2) (f 1) (f 2)))))
+;; Should produce 4 values, each with prob 0.25.
