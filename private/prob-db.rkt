@@ -7,33 +7,16 @@
          repeat
          print-db
          make-db-ERP
-         db-mem)
+         db-mem
+         verbose?)
 
-;; Unlike bher, use two databases---better for detecting collisions.
+(define verbose? (make-parameter #f))
 
-;; ERPTag = 'flip | ...
+;; Unlike bher, use two databases---better for detecting collisions (debugging).
 
 ;; An Entry is (entry ERPTag Any)
 ;; where the value is appropriate for the ERP denoted by the tag.
 (struct entry (tag value) #:prefab)
-
-#|
-;; current-db, last-db : hash[Address => Entry]
-(define current-db (make-hash))
-(define last-db (make-hash))
-
-;; "reset" (maybe wrong word) means end one logged run and start another;
-;; the current db becomes available as history for the next run.
-;; That is, bher would do { run, reset, perturb } repeatedly.
-(define (reset-db)
-  (eprintf "Resetting db\n")
-  (set! last-db current-db)
-  (set! current-db (make-hash)))
-
-(define (apply/reset f . args)
-  (reset-db)
-  (apply apply/delimit f args))
-|#
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -70,7 +53,7 @@
       (let* ([index (random n)] ;; more intelligent dist ???
              [iter (for/fold ([iter (hash-iterate-first db)]) ([i index])
                      (hash-iterate-next db iter))])
-        (when #t
+        (when (verbose?)
           (eprintf "removing entry for key: ~s\n" (hash-iterate-key db iter)))
         (hash-remove! db (hash-iterate-key db iter))))))
 
@@ -89,28 +72,34 @@
   (cond [(hash-ref current-db context #f)
          => (lambda (e)
               (cond [(not (equal? (entry-tag e) tag))
-                     (eprintf "- MISMATCH ~a ~s / ~s: ~s\n"
-                              (if (mem-context?) "MEMOIZED" "COLLISION")
-                              (entry-tag e) tag context)
+                     (when (or (verbose?) #t)
+                       (eprintf "- MISMATCH ~a ~s / ~s: ~s\n"
+                                (if (mem-context?) "MEMOIZED" "COLLISION")
+                                (entry-tag e) tag context))
                      (new!)]
                     [(mem-context?)
-                     (eprintf "- MEMOIZED ~s: ~s\n" tag context)
+                     (when (verbose?)
+                       (eprintf "- MEMOIZED ~s: ~s\n" tag context))
                      (entry-value e)]
                     [else
-                     (eprintf "- COLLISION ~s: ~s\n" tag context)
+                     (when (verbose?)
+                       (eprintf "- COLLISION ~s: ~s\n" tag context))
                      (entry-value e)]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
               (cond [(not (equal? (entry-tag e) tag))
-                     (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context)
+                     (when (verbose?)
+                       (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
                      (new!)]
                     [else
-                     (eprintf "- REUSED ~s: ~s\n" tag context)
+                     (when (verbose?)
+                       (eprintf "- REUSED ~s: ~s\n" tag context))
                      (define result (entry-value e))
                      (hash-set! current-db context (entry tag result))
                      result]))]
         [else
-         (eprintf "- NEW ~s: ~s\n" tag context)
+         (when (verbose?)
+           (eprintf "- NEW ~s: ~s\n" tag context))
          (new!)]))
 
 (define (db-mem f)
