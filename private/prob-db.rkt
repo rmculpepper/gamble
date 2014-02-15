@@ -1,14 +1,12 @@
 #lang racket/base
 (require racket/list
          data/order
-         "context.rkt")
-(provide current-db
-         last-db
-         reset-db
-         apply/reset
+         "context.rkt"
+         "prob.rkt")
+(provide mh
+         repeat
          print-db
-
-         db-ERP
+         make-db-ERP
          db-mem)
 
 ;; Unlike bher, use two databases---better for detecting collisions.
@@ -19,6 +17,7 @@
 ;; where the value is appropriate for the ERP denoted by the tag.
 (struct entry (tag value) #:prefab)
 
+#|
 ;; current-db, last-db : hash[Address => Entry]
 (define current-db (make-hash))
 (define last-db (make-hash))
@@ -34,6 +33,7 @@
 (define (apply/reset f . args)
   (reset-db)
   (apply apply/delimit f args))
+|#
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -44,7 +44,39 @@
 
 ;; ----
 
-(define (db-ERP tag sample _get-dist)
+(define (repeat thunk times)
+  (for/list ([i times]) (thunk)))
+
+(define (mh thunk)
+  (let ([last-db (make-hash)]
+        [current-db (make-hash)])
+    (lambda ()
+      ;; Rotate & perturb
+      (set! last-db current-db)
+      (set! current-db (make-hash))
+      (perturb! last-db)
+      ;; Run
+      (parameterize ((current-ERP (make-db-ERP last-db current-db))
+                     (current-mem db-mem))
+        (apply/delimit thunk))
+      ;; Post???
+      )))
+
+;; perturb! : DB -> void
+(define (perturb! db)
+  ;; Most naive possible perturbation: just delete an entry
+  (let ([n (hash-count db)])
+    (unless (zero? n)
+      (let* ([index (random n)] ;; more intelligent dist ???
+             [iter (for/fold ([iter (hash-iterate-first db)]) ([i index])
+                     (hash-iterate-next db iter))])
+        (when #t
+          (eprintf "removing entry for key: ~s\n" (hash-iterate-key db iter)))
+        (hash-remove! db (hash-iterate-key db iter))))))
+
+;; ----
+
+(define ((make-db-ERP last-db current-db) tag sample _get-dist)
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
