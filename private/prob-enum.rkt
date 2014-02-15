@@ -2,6 +2,7 @@
 (require racket/match
          math/distributions
          racket/control
+         unstable/markparam
          "prob.rkt")
 (provide enumerate-possibilities
          enum-ERP
@@ -31,8 +32,22 @@ Would be nice if we could tell whether a path was viable or not wrt
 condition. Seems like it would require drastic changes to model of
 computation (eg, like symbolic execution) to support non-trivial
 conditions. Would that be a profitable place to spend effort?
-
 |#
+
+#|
+For mem, have a global store that gets rewound after each ERP choice
+exploration.
+
+Use markparam to store current global store. (Racket parameters don't
+work well with delimited continuations.)
+
+What should it mean for a memoized function to escape the enumeration
+in which it was created? (The current implementation doesn't do
+anything reasonable, probably.)
+|#
+
+;; ctag must be distinct from tag used to delimit continuation mark
+(define ctag (make-continuation-prompt-tag))
 
 ;; A (EnumDist A) is one of
 ;; - (only A)
@@ -40,33 +55,46 @@ conditions. Would that be a profitable place to spend effort?
 (struct only (answer))
 (struct split (subs))
 
+;; current-global-memo-table : (parameterof (boxof (hash[list => result])))
+(define current-global-memo-table (mark-parameter))
+
 (define (enumerate-possibilities thunk #:limit [limit 1e-6])
-  (parameterize ((current-ERP enum-ERP)
-                 (current-mem enum-mem))
-    (flatten-enum-dist
-     (call-with-continuation-prompt
-      (lambda () (only (thunk)))
-      (default-continuation-prompt-tag)
-      (lambda (f)
-        (f 1 limit))))))
+  (let ([memo-table
+         (cond [(current-global-memo-table) => unbox]
+               [else (hash)])])
+    (parameterize ((current-ERP enum-ERP)
+                   (current-mem enum-mem))
+      (mark-parameterize ((current-global-memo-table (box memo-table)))
+        (flatten-enum-dist
+         (call-with-continuation-prompt
+          (lambda () (only (thunk)))
+          ctag
+          (lambda (f) (f 1 limit))))))))
 
 (define (enum-ERP tag _sampler get-dist)
+  (define g (gensym '@))
+  (eprintf "ERP ~s, ~s\n" tag g)
   (let* ([dist (get-dist)]
          [vals (discrete-dist-values dist)]
-         [probs (discrete-dist-probs dist)])
+         [probs (discrete-dist-probs dist)]
+         [memo-table (unbox (current-global-memo-table))])
+    (eprintf "  memo-table: ~s\n" memo-table)
     (call-with-composable-continuation
      (lambda (k)
        (abort-current-continuation
-        (default-continuation-prompt-tag)
+        ctag
         (lambda (current-path-prob limit)
           (split (for/list ([val (in-list vals)]
                             [prob (in-list probs)]
                             #:when (> (* prob current-path-prob) limit))
+                   (eprintf "** ~s trying ~s\n" g val)
                    (list prob
-                         (call-with-continuation-prompt
-                          (lambda () (k val))
-                          (default-continuation-prompt-tag)
-                          (lambda (f) (f (* prob current-path-prob) limit))))))))))))
+                         (mark-parameterize ((current-global-memo-table (box memo-table)))
+                           (call-with-continuation-prompt
+                            (lambda () (k val))
+                            ctag
+                            (lambda (f) (f (* prob current-path-prob) limit))))))))))
+     ctag)))
 
 (define (flatten-enum-dist ed)
   (define prob-table (make-hash)) ;; a => prob
@@ -88,11 +116,20 @@ conditions. Would that be a profitable place to spend effort?
 
 ;; ----
 
-;; normal memoization
+;; use global-memo-table to effects can be unwound
 (define (enum-mem f)
-  (let ([memo-table (make-hash)])
-    (lambda args
-      (hash-ref! memo-table args (lambda () (apply f args))))))
-
-;; FIXME: how does this interact with other modes, for example if memoized function
-;; returned as a value from enumeration?
+  (lambda args
+    (eprintf "calling memoized function: ~s\n" args)
+    (let ([b (current-global-memo-table)]
+          [key (cons f args)])
+      (eprintf "memo table is ~s\n" (unbox b))
+      (cond [(hash-has-key? (unbox b) key)
+             (eprintf "key found\n")
+             (hash-ref (unbox b) key)]
+            [else
+             (eprintf "key not found\n")
+             (let ([v (apply f args)])
+               ;; NOTE: outer b might be stale, if f called ERP!
+               (let ([b (current-global-memo-table)])
+                 (set-box! b (hash-set (unbox b) key v))
+                 v))]))))

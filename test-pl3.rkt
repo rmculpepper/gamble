@@ -71,3 +71,9 @@
 (enumerate-possibilities
  (lambda () (geom 1/2))
  #:limit 1e-6) ;; prune away any path that has prob < 1e-6
+
+;; enumeration and mem
+(enumerate-possibilities
+   (lambda ()
+     (let ([f (mem (lambda (n) (flip)))])
+       (list (f 1) (f 2) (f 1) (f 2)))))
