@@ -93,6 +93,7 @@ To get list of '#%kernel exports:
 ;;    #:nt   - non-tail: definitely not in tail position wrt any WCM with CM-MARK
 ;;    #:tail - tail: definitely in tail position wrt a WCM with CM-MARK
 ;;    #:un   - unknown: use expansion that's safe and correct either way
+;; Non-tail mode has more efficient impl than #:tail/#:un; use when possible.
 (define-syntax (instrument stx0)
   (syntax-parse stx0
     [(instrument form-to-instrument m)
