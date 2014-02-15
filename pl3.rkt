@@ -160,6 +160,9 @@ To get list of '#%kernel exports:
          [(letrec-values ([vars rhs] ...) body ... body*)
           #'(letrec-values ([vars (instrument rhs #:nt)] ...)
               (instrument body #:nt) ... (instrument body* m))]
+         [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ... body*)
+          #'(letrec-syntaxes+values ([svars srhs] ...) ([vvars (instrument vrhs #:nt)] ...)
+              (instrument body #:nt) ... (instrument body* m))]
          [(set! var e)
           (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
           #'(set! var (instrument e #:nt))]
