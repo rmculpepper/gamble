@@ -7,12 +7,21 @@
          flip
          randn)
 
+;; Basic memoization and ERP implementations
+
+(define (base-mem f)
+  (let ([memo-table (make-hash)])
+    (lambda args
+      (hash-ref! memo-table args (lambda () (apply f args))))))
+
+(define (base-ERP tag sampler get-dist)
+  (sampler))
+
+;; ----
+
 ;; mem : procedure -> procedure
 
-(define (no-mem f)
-  (error 'mem "no mem implementation"))
-
-(define current-mem (make-parameter no-mem))
+(define current-mem (make-parameter base-mem))
 
 (define (mem f)
   (unless (procedure? f)
@@ -25,10 +34,7 @@
 ;; First arg is tag w/ ERP function name and params. Same tag should imply same dist.
 ;; Second is sampler. Third is thunk producing discrete dist or #f. Can't both be #f.
 
-(define (no-ERP tag sampler get-dist)
-  (error 'ERP "no ERP implementation"))
-
-(define current-ERP (make-parameter no-ERP))
+(define current-ERP (make-parameter base-ERP))
 
 (define (ERP tag sampler get-dist)
   (let ([sampler (or sampler (lambda () (sample (get-dist))))])
