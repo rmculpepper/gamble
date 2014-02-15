@@ -1,4 +1,5 @@
 #lang s-exp "pl3.rkt"
+(require "private/viz.rkt")
 
 ;; Unlike pl1, doesn't print instrumented applications.
 (define (sum-n-flips n)
