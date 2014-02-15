@@ -1,11 +1,43 @@
 #lang racket/base
-(require math/distributions)
-(provide current-mem
+(require (for-syntax racket/base
+                     syntax/parse)
+         math/distributions)
+(provide rejection-sampler
+         repeat
+         lag
+         current-mem
          mem
          current-ERP
          ERP
          flip
          randn)
+
+;; Rejection sampling
+
+(define-syntax (rejection-sampler stx)
+  (syntax-parse stx
+    [(rejection-query def:expr ... result:expr #:when condition:expr)
+     #'(lambda ()
+         (rejection-sample*
+          (lambda ()
+            def ... (cons result condition))
+          (lambda (p)
+            (cdr p))
+          car))]))
+
+(define (rejection-sample* thunk pred [project values])
+  (let ([v (thunk)])
+    (if (pred v)
+        (project v)
+        (rejection-sample* thunk pred project))))
+
+;; Misc utils
+
+(define (repeat thunk times)
+  (for/list ([i times]) (thunk)))
+
+(define (lag thunk n)
+  (lambda () (for/last ([i n]) (thunk))))
 
 ;; Basic memoization and ERP implementations
 

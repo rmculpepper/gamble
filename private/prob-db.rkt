@@ -1,10 +1,12 @@
 #lang racket/base
-(require racket/list
+(require (for-syntax racket/base
+                     syntax/parse)
+         racket/list
          data/order
          "context.rkt"
          "prob.rkt")
-(provide mh
-         repeat
+(provide mh-sampler
+         mh-sampler*
          print-db
          make-db-ERP
          db-mem
@@ -27,23 +29,35 @@
 
 ;; ----
 
-(define (repeat thunk times)
-  (for/list ([i times]) (thunk)))
+(define-syntax (mh-sampler stx)
+  (syntax-parse stx
+    [(mh-sample def:expr ... result:expr #:when condition:expr)
+     #'(mh-sampler* (lambda () def ... (cons result condition)) cdr car)]))
 
-(define (mh thunk)
+(define (mh-sampler* thunk pred project)
   (let ([last-db (make-hash)]
         [current-db (make-hash)])
-    (lambda ()
+    (define (run)
       ;; Rotate & perturb
+      (define saved-last-db last-db)
+      (define saved-current-db (hash-copy current-db))
       (set! last-db current-db)
       (set! current-db (make-hash))
       (perturb! last-db)
       ;; Run
-      (parameterize ((current-ERP (make-db-ERP last-db current-db))
-                     (current-mem db-mem))
-        (apply/delimit thunk))
+      (define result
+        (parameterize ((current-ERP (make-db-ERP last-db current-db))
+                       (current-mem db-mem))
+          (apply/delimit thunk)))
       ;; Post???
-      )))
+      (cond [(pred result)
+             ;; Post???
+             (project result)]
+            [else
+             (set! last-db saved-last-db)
+             (set! current-db saved-current-db)
+             (run)]))
+    run))
 
 ;; perturb! : DB -> void
 (define (perturb! db)
