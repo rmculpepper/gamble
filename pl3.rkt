@@ -47,7 +47,9 @@ Note: instrumenting-module? hack separates module from repl numbers.
   (define counter 0)
   (define (next-counter)
     (set! counter (add1 counter))
-    counter))
+    (if (instrumenting-module?)
+        counter
+        (- counter))))
 
 ;; FIXME: instead of monolithic instrumentor, maybe use instrument macro?
 
@@ -77,6 +79,67 @@ Note: instrumenting-module? hack separates module from repl numbers.
    (variable-reference->module-declaration-inspector
     (#%variable-reference))))
 
+#|
+To get list of '#%kernel exports:
+(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
+(define knames
+  (filter symbol?
+          (map simplify
+               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
+|#
+
+;; Many functions are "safe": okay to omit WCM around, since no ERP is
+;; executed in the context of a call to them.
+;; TODO: add common Racket functions
+;; TODO: static analysis for locally-defined functions
+(begin-for-syntax
+ ;; classify-function : id -> (U 'safe 'unsafe 'unknown)
+ (define (classify-function f-id)
+   (let ([b (identifier-binding f-id)])
+     (if (list? b)
+         (let ([def-mpi (car b)]
+               [def-name (cadr b)])
+           (let-values ([(def-mod def-relto) (module-path-index-split def-mpi)])
+             (if (equal? def-mod ''#%kernel)
+                 (if (memq def-name HO-kernel-procedures)
+                     'unsafe
+                     'safe)
+                 'unknown)))
+         'unknown)))
+ ;; functions defined in kernel, known to be unsafe
+ (define HO-kernel-procedures
+   '(;; omit indirect HO functions, like make-struct-type, chaperone-*, impersonate-*
+     apply
+     map
+     for-each
+     andmap
+     ormap
+     call-with-values
+     call-with-escape-continuation
+     call/ec
+     call-with-current-continuation
+     call/cc
+     call-with-continuation-barrier
+     call-with-continuation-prompt
+     call-with-composable-continuation
+     abort-current-continuation
+     call-with-semaphore
+     call-with-semaphore/enable-break
+     call-with-immediate-continuation-mark
+     time-apply
+     dynamic-wind
+     hash-map
+     hash-for-each
+     call-with-input-file
+     call-with-output-file
+     with-input-from-file
+     with-output-to-file
+     eval
+     eval-syntax
+     call-in-nested-thread
+     ))
+ )
+
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
 ;;    #:nt   - non-tail: definitely not in tail position wrt any WCM with CM-MARK
@@ -91,17 +154,33 @@ Note: instrumenting-module? hack separates module from repl numbers.
          #:literal-sets (kernel-literals)
          ;; Fully-Expanded Programs
          ;; Rewrite applications
-         [(#%plain-app e ...)
-          (with-syntax ([c (if (instrumenting-module?)
-                               (next-counter)
-                               (- (next-counter)))])
+         [(#%plain-app) stx]
+         [(#%plain-app f:id e ...)
+          (define classification (classify-function #'f))
+          (cond [(eq? classification 'safe)
+                 ;; "safe" function: doesn't need app/call-site*
+                 ;; Benefit: for tail calls, avoid call-with-immediate-continuation-mark
+                 #'(#%plain-app f (instrument e #:nt) ...)]
+                [else
+                 ;; unsafe or unknown; use app/call-site*
+                 (when #f
+                   (when (and (eq? classification 'unknown)
+                              (not (eq? (syntax->datum #'m) '#:nt)))
+                     (eprintf "## ~s\n" (syntax-e #'f))))
+                 (with-syntax ([c (next-counter)])
+                   #'(app/call-site* m 'c f (instrument e #:nt) ...))])]
+         [(#%plain-app f e ...)
+          (with-syntax ([c (next-counter)])
+            (when #f
+              (when (not (eq? (syntax->datum #'m) '#:nt))
+                (eprintf "## ~s\n" (syntax->datum #'f))))
             (when #f
               (eprintf "app ~s = ~a:~a ~.s\n\n"
                        (syntax-e #'c)
                        (or (syntax-line stx) '?)
                        (or (syntax-column stx) '?)
                        (syntax->datum stx)))
-            #'(app/call-site* m 'c (instrument e #:nt) ...))]
+            #'(app/call-site* m 'c (instrument f #:nt) (instrument e #:nt) ...))]
          ;; Just recur through all other forms
          ;; -- module body
          [(#%plain-module-begin form ...)
