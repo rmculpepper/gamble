@@ -1,7 +1,6 @@
 #lang s-exp "pl3.rkt"
 
 ;; Unlike pl1, doesn't print instrumented applications.
-
 (define (sum-n-flips n)
   (if (zero? n)
       0

@@ -58,7 +58,7 @@ Note: instrumenting-module? hack separates module from repl numbers.
                     (local-expand #'(#%module-begin form ...)
                                   'module-begin
                                   null)])
-       #'(instrument e-module-body))]))
+       #'(instrument e-module-body #:un))]))
 
 (define-syntax (instrumenting-top-interaction stx)
   (syntax-case stx ()
@@ -70,16 +70,21 @@ Note: instrumenting-module? hack separates module from repl numbers.
             #'(begin (instrumenting-top-interaction . form) ...)]
            [form
             (with-syntax ([e-form (local-expand #'form 'top-level null)])
-              #'(instrument e-form))])))]))
+              #'(instrument e-form #:un))])))]))
 
 (begin-for-syntax
  (define stx-insp
    (variable-reference->module-declaration-inspector
     (#%variable-reference))))
 
+;; (instrument expanded-form Mode)
+;; where Mode is one of:
+;;    #:nt   - non-tail: definitely not in tail position wrt any WCM with CM-MARK
+;;    #:tail - tail: definitely in tail position wrt a WCM with CM-MARK
+;;    #:un   - unknown: use expansion that's safe and correct either way
 (define-syntax (instrument stx0)
   (syntax-parse stx0
-    [(instrument form-to-instrument)
+    [(instrument form-to-instrument m)
      (define stx (syntax-disarm #'form-to-instrument stx-insp))
      (define instrumented
        (syntax-parse stx
@@ -96,11 +101,11 @@ Note: instrumenting-module? hack separates module from repl numbers.
                        (or (syntax-line stx) '?)
                        (or (syntax-column stx) '?)
                        (syntax->datum stx)))
-            #'(app/call-site 'c (instrument e) ...))]
+            #'(app/call-site* m 'c (instrument e #:nt) ...))]
          ;; Just recur through all other forms
          ;; -- module body
          [(#%plain-module-begin form ...)
-          #'(#%plain-module-begin (instrument form) ...)]
+          #'(#%plain-module-begin (instrument form #:nt) ...)]
          ;; -- module-level form
          [(#%provide . _) stx]
          [(begin-for-syntax . _) stx]
@@ -109,37 +114,40 @@ Note: instrumenting-module? hack separates module from repl numbers.
          ;; [(#%declare . _) stx]
          ;; -- general top-level form
          [(define-values ids e)
-          #'(define-values ids (instrument e))]
+          #'(define-values ids (instrument e #:nt))]
          [(define-syntaxes . _) stx]
          [(#%require . _) stx]
          ;; -- expr
          [var:id #'var]
-         [(#%plain-lambda formals e ...)
-          #'(#%plain-lambda formals (instrument e) ...)]
-         [(case-lambda [formals e ...] ...)
-          #'(case-lambda [formals (instrument e) ...] ...)]
+         [(#%plain-lambda formals e ... e*)
+          #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* #:un))]
+         [(case-lambda [formals e ... e*] ...)
+          #'(case-lambda [formals (instrument e #:nt) ... (instrument e* #:un)] ...)]
          [(if e1 e2 e3)
-          #'(if (instrument e1) (instrument e2) (instrument e3))]
-         [(begin e ...)
-          #'(begin (instrument e) ...)]
+          #'(if (instrument e1 #:nt) (instrument e2 m) (instrument e3 m))]
+         [(begin e ... e*)
+          #'(begin (instrument e #:nt) ... (instrument e* m))]
          [(begin0 e ...)
-          #'(begin0 (instrument e) ...)]
-         [(let-values ([vars rhs] ...) body ...)
-          #'(let-values ([vars (instrument rhs)] ...) (instrument body) ...)]
-         [(letrec-values ([vars rhs] ...) body ...)
-          #'(letrec-values ([vars (instrument rhs)] ...) (instrument body) ...)]
+          #'(begin0 (instrument e #:nt) ...)]
+         [(let-values ([vars rhs] ...) body ... body*)
+          #'(let-values ([vars (instrument rhs #:nt)] ...)
+              (instrument body #:nt) ... (instrument body* m))]
+         [(letrec-values ([vars rhs] ...) body ... body*)
+          #'(letrec-values ([vars (instrument rhs #:nt)] ...)
+              (instrument body #:nt) ... (instrument body* m))]
          [(set! var e)
           (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
-          #'(set! var (instrument e))]
+          #'(set! var (instrument e #:nt))]
          [(quote d) stx]
          [(quote-syntax s) stx]
          [(with-continuation-mark e1 e2 e3)
-          #'(with-continuation-mark (instrument e1) (instrument e2) (instrument e3))]
+          #'(with-continuation-mark (instrument e1 #:nt) (instrument e2 #:nt)
+              (instrument e3 m))]
          ;; #%plain-app -- see above
          [(#%top . _) stx]
          [(#%variable-reference . _) stx]
          [(#%expression e)
-          #'(#%expression (instrument e))]
+          #'(#%expression (instrument e m))]
          [_
           (raise-syntax-error #f "unhandled syntax" stx)]
          ))

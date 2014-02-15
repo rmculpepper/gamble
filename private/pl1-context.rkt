@@ -2,6 +2,7 @@
 (require (for-syntax racket/base))
 (provide CM-KEY
          app/call-site
+         app/call-site*
          get-context
          apply/delimit)
 
@@ -43,13 +44,31 @@ representation optimizations: eg, RLE for self-tail-calling functions.
 (define-syntax (app/call-site stx)
   (syntax-case stx ()
     [(app/call-site call-site f arg ...)
-     (with-syntax ([(tmp-arg ...)
+     #'(app/call-site #:un call-site f arg ...)]))
+
+(define-syntax (app/call-site* stx)
+  (syntax-case stx ()
+    [(app/call-site* mode call-site f arg ...)
+     (with-syntax ([(tmp-f)
+                    (generate-temporaries #'(f))]
+                   [(tmp-arg ...)
                     (generate-temporaries #'(arg ...))])
        #`(let ([c call-site] [tmp-f f] [tmp-arg arg] ...)
-           (call-with-immediate-continuation-mark CM-KEY
-             (lambda (v)
-               (with-continuation-mark CM-KEY (if v (cons c v) c)
-                 (#%app tmp-f tmp-arg ...))))))]))
+           (app/call-site** mode c tmp-f tmp-arg ...)))]))
+
+(define-syntax (app/call-site** stx)
+  (syntax-case stx ()
+    [(app/call-site** #:un c f arg ...)
+     #'(call-with-immediate-continuation-mark CM-KEY
+         (lambda (v)
+           (with-continuation-mark CM-KEY (if v (cons c v) c)
+             (#%app f arg ...))))]
+    [(app/call-site** #:tail c f arg ...)
+     ;; No simpler way when known to be tail call
+     #'(app/call-site** #:un c f arg ...)]
+    [(app/call-site** #:nt c f arg ...)
+     ;; Non-tail; WCM won't overwrite anything
+     #'(with-continuation-mark CM-KEY c (#%app f arg ...))]))
 
 (define (get-context)
   (continuation-mark-set->list (current-continuation-marks) CM-KEY))
