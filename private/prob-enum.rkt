@@ -4,7 +4,8 @@
          racket/control
          unstable/markparam
          "prob.rkt")
-(provide enumerate-possibilities
+(provide enumerate*
+         enumerate-possibilities
          enum-ERP
          enum-mem)
 
@@ -59,6 +60,28 @@ anything reasonable, probably.)
 
 ;; current-global-memo-table : (parameterof (boxof (hash[list => result])))
 (define current-global-memo-table (mark-parameter))
+
+(define (enumerate* thunk pred [project values] #:limit [limit 1e-6])
+  (define possibilities (enumerate-possibilities thunk #:limit limit))
+  (define explored-rate
+    (for/sum ([entry (in-list possibilities)]) (cadr entry)))
+  (when #t
+    (eprintf "enumerate: explored rate ~s\n" explored-rate))
+  (define filtered-possibilities
+    (for/list ([entry (in-list possibilities)]
+               #:when (pred (car entry)))
+      (cons (project (car entry)) (cdr entry))))
+  (define accept-rate
+    (for/sum ([entry (in-list filtered-possibilities)]) (cadr entry)))
+  (when #t
+    (eprintf "enumerate: accept rate ~s\n" accept-rate))
+  #|
+  (define dist
+    (discrete-dist (map car filtered-possibilities)
+                   (map cadr filtered-possibilities)))
+  |#
+  (for/list ([entry (in-list filtered-possibilities)])
+    (list (car entry) (/ (cadr entry) accept-rate))))
 
 (define (enumerate-possibilities thunk #:limit [limit 1e-6])
   (let ([memo-table

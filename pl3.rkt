@@ -15,6 +15,7 @@
                      syntax/stx)
          racket/list
          "private/prob.rkt"
+         "private/prob-syntax.rkt"
          "private/prob-enum.rkt"
          "private/context.rkt"
          "private/prob-db.rkt")
@@ -22,6 +23,7 @@
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
          (all-from-out "private/prob.rkt")
+         (all-from-out "private/prob-syntax.rkt")
          (all-from-out "private/prob-enum.rkt")
          (all-from-out "private/context.rkt")
          (all-from-out "private/prob-db.rkt"))

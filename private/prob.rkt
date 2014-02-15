@@ -1,8 +1,6 @@
 #lang racket/base
-(require (for-syntax racket/base
-                     syntax/parse)
-         math/distributions)
-(provide rejection-sampler
+(require math/distributions)
+(provide rejection-sample
          repeat
          lag
          current-mem
@@ -14,22 +12,11 @@
 
 ;; Rejection sampling
 
-(define-syntax (rejection-sampler stx)
-  (syntax-parse stx
-    [(rejection-query def:expr ... result:expr #:when condition:expr)
-     #'(lambda ()
-         (rejection-sample*
-          (lambda ()
-            def ... (cons result condition))
-          (lambda (p)
-            (cdr p))
-          car))]))
-
-(define (rejection-sample* thunk pred [project values])
+(define (rejection-sample thunk pred [project values])
   (let ([v (thunk)])
     (if (pred v)
         (project v)
-        (rejection-sample* thunk pred project))))
+        (rejection-sample thunk pred project))))
 
 ;; Misc utils
 

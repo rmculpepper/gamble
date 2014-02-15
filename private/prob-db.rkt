@@ -1,12 +1,9 @@
 #lang racket/base
-(require (for-syntax racket/base
-                     syntax/parse)
-         racket/list
+(require racket/list
          data/order
          "context.rkt"
          "prob.rkt")
-(provide mh-sampler
-         mh-sampler*
+(provide mh-sampler*
          print-db
          make-db-ERP
          db-mem
@@ -28,11 +25,6 @@
     (printf "~s => ~s\n" (car entry) (cadr entry))))
 
 ;; ----
-
-(define-syntax (mh-sampler stx)
-  (syntax-parse stx
-    [(mh-sample def:expr ... result:expr #:when condition:expr)
-     #'(mh-sampler* (lambda () def ... (cons result condition)) cdr car)]))
 
 (define (mh-sampler* thunk pred project)
   (let ([last-db (make-hash)]
