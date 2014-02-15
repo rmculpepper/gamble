@@ -1,15 +1,15 @@
 #lang racket/base
 (require racket/list
          data/order
-         "pl1-context.rkt")
+         "context.rkt")
 (provide current-db
          last-db
          reset-db
          apply/reset
          print-db
 
-         pl1-ERP
-         pl1-mem)
+         db-ERP
+         db-mem)
 
 ;; Unlike bher, use two databases---better for detecting collisions.
 
@@ -44,7 +44,7 @@
 
 ;; ----
 
-(define (pl1-ERP tag sample _get-dist)
+(define (db-ERP tag sample _get-dist)
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
@@ -81,7 +81,7 @@
          (eprintf "- NEW ~s: ~s\n" tag context)
          (new!)]))
 
-(define (pl1-mem f)
+(define (db-mem f)
   (let ([context (get-context)])
     (lambda args
       (apply/delimit

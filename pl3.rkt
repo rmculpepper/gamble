@@ -16,21 +16,21 @@
          racket/list
          "private/prob.rkt"
          "private/prob-enum.rkt"
-         "private/pl1-context.rkt"
-         "private/pl1-prob.rkt")
+         "private/context.rkt"
+         "private/prob-db.rkt")
 (provide (except-out (all-from-out racket/base) #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
          (all-from-out "private/prob.rkt")
          (all-from-out "private/prob-enum.rkt")
-         (all-from-out "private/pl1-context.rkt")
-         (all-from-out "private/pl1-prob.rkt"))
+         (all-from-out "private/context.rkt")
+         (all-from-out "private/prob-db.rkt"))
 
-(current-ERP pl1-ERP)
-(current-mem pl1-mem)
+(current-ERP db-ERP)
+(current-mem db-mem)
 
 #|
-See private/pl1-context.rkt for discussion of Address representation.
+See private/context.rkt for discussion of Address representation.
 |#
 
 #|

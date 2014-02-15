@@ -7,19 +7,19 @@
 (require (for-syntax racket/base)
          racket/list
          "private/prob.rkt"
-         "private/pl1-context.rkt"
-         "private/pl1-prob.rkt")
+         "private/context.rkt"
+         "private/prob-db.rkt")
 (provide (except-out (all-from-out racket/base) #%app)
          (rename-out [instrumenting-app #%app])
          (all-from-out "private/prob.rkt")
-         (all-from-out "private/pl1-context.rkt")
-         (all-from-out "private/pl1-prob.rkt"))
+         (all-from-out "private/context.rkt")
+         (all-from-out "private/prob-db.rkt"))
 
-(current-ERP pl1-ERP)
-(current-mem pl1-mem)
+(current-ERP db-ERP)
+(current-mem db-mem)
 
 #|
-See private/pl1-context.rkt for discussion of Address representation.
+See private/context.rkt for discussion of Address representation.
 |#
 
 #|
