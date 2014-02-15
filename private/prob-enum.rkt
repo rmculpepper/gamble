@@ -48,6 +48,12 @@ in which it was created? (The current implementation doesn't do
 anything reasonable, probably.)
 |#
 
+;; TODO:
+;; - laziness
+;; - add limit for prob of explored paths; error if not met
+;; - maybe option to replace integer-valued distributions with
+;;   discrete approximations (cf, geometric dist & repeated flip).
+
 ;; Use default prompt tag for mark-parameter, ctag for delimited
 ;; continuations.
 (define ctag (make-continuation-prompt-tag))
@@ -65,7 +71,7 @@ anything reasonable, probably.)
   (define possibilities (enumerate-possibilities thunk #:limit limit))
   (define explored-rate
     (for/sum ([entry (in-list possibilities)]) (cadr entry)))
-  (when #t
+  (when #f
     (eprintf "enumerate: explored rate ~s\n" explored-rate))
   (define filtered-possibilities
     (for/list ([entry (in-list possibilities)]
@@ -73,7 +79,7 @@ anything reasonable, probably.)
       (cons (project (car entry)) (cdr entry))))
   (define accept-rate
     (for/sum ([entry (in-list filtered-possibilities)]) (cadr entry)))
-  (when #t
+  (when #f
     (eprintf "enumerate: accept rate ~s\n" accept-rate))
   #|
   (define dist

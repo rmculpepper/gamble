@@ -26,7 +26,9 @@
 
 ;; ----
 
-(define (mh-sampler* thunk pred project)
+;; FIXME: could parameterize over perturb! function, or paramters thereof
+
+(define (mh-sampler* thunk pred [project values])
   (let ([last-db (make-hash)]
         [current-db (make-hash)])
     (define (run)
@@ -60,7 +62,7 @@
              [iter (for/fold ([iter (hash-iterate-first db)]) ([i index])
                      (hash-iterate-next db iter))])
         (when (verbose?)
-          (eprintf "removing entry for key: ~s\n" (hash-iterate-key db iter)))
+          (eprintf "perturb: removing ~s\n" (hash-iterate-key db iter)))
         (hash-remove! db (hash-iterate-key db iter))))))
 
 ;; ----
