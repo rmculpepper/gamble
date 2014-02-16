@@ -2,14 +2,12 @@
 (require racket/list
          data/order
          "context.rkt"
+         "util.rkt"
          "prob.rkt")
 (provide mh-sampler*
          print-db
          make-db-ERP
-         db-mem
-         verbose?)
-
-(define verbose? (make-parameter #f))
+         db-mem)
 
 ;; Unlike bher, use two databases---better for detecting collisions (debugging).
 

@@ -1,11 +1,9 @@
 #lang racket/base
 (require math/distributions)
 (provide rejection-sample
-         repeat
-         lag
          current-mem
-         mem
          current-ERP
+         mem
          ERP
          flip
          d2
@@ -18,14 +16,6 @@
     (if (pred v)
         (project v)
         (rejection-sample thunk pred project))))
-
-;; Misc utils
-
-(define (repeat thunk times)
-  (for/list ([i times]) (thunk)))
-
-(define (lag thunk n)
-  (lambda () (for/last ([i n]) (thunk))))
 
 ;; Basic memoization and ERP implementations
 

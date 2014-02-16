@@ -16,17 +16,22 @@
          racket/list
          "private/prob.rkt"
          "private/prob-syntax.rkt"
-         "private/prob-enum.rkt"
-         "private/context.rkt"
-         "private/prob-mh.rkt")
+         (only-in "private/prob-enum.rkt"
+                  enumerate*)
+         (only-in "private/prob-mh.rkt"
+                  mh-sampler*)
+         "private/context.rkt")
 (provide (except-out (all-from-out racket/base) #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
          (all-from-out "private/prob.rkt")
          (all-from-out "private/prob-syntax.rkt")
-         (all-from-out "private/prob-enum.rkt")
-         (all-from-out "private/context.rkt")
-         (all-from-out "private/prob-mh.rkt"))
+         ;; from private/prob-enum.rkt:
+         enumerate*
+         ;; from private/prob-mh.rkt:
+         mh-sampler*
+         ;; from private/context.rkt:
+         apply/delimit)
 
 #|
 See private/context.rkt for discussion of Address representation.

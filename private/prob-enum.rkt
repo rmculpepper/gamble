@@ -5,7 +5,8 @@
          math/distributions
          racket/control
          unstable/markparam
-         "prob.rkt")
+         "prob.rkt"
+         "util.rkt")
 (provide enumerate*
          enum-ERP
          enum-mem)
@@ -79,7 +80,7 @@ anything reasonable, probably.)
                           [else (hash)])])
                (call-with-enum-context memo-table (lambda () (only (thunk)))))
              pred project limit))
-  (when #t
+  (when (verbose?)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
              (/ prob-accepted (- 1 prob-unexplored))))
@@ -103,8 +104,8 @@ anything reasonable, probably.)
     (set! prob-unexplored (- prob-unexplored p))
     (when (pred a)
       (let ([b (project a)])
-        (when #f
-          (when (zero? p)
+        (when (zero? p)
+          (when (verbose?)
             (eprintf "WARNING: zero prob: ~s\n" b)))
         (unless (hash-has-key? table b)
           (set! seen (cons b seen)))
@@ -132,8 +133,9 @@ anything reasonable, probably.)
   (let loop ()
     (cond [(and limit (< prob-unexplored (* limit prob-accepted)))
            ;; Done!
-           (when #f
-             (eprintf "stopping with ~s unexplored paths\n" (heap-count h)))
+           (when (positive? (heap-count h))
+             (when (verbose?)
+               (eprintf "stopping with ~s unexplored paths\n" (heap-count h))))
            (void)]
           [(zero? (heap-count h))
            ;; explored all paths
