@@ -61,11 +61,14 @@
 
 ;; ----
 
-;; flip : -> (U 0 1)
+;; flip : -> (U #t #f)
 (define (flip [prob 1/2])
   (ERP `(flip ,prob)
-       (lambda () (random 2))
-       (lambda () (discrete-dist '(0 1) (list prob (- 1 prob))))))
+       (lambda ()
+         (if (= prob 1/2)
+             (zero? (random 2))
+             (< (random) prob)))
+       (lambda () (discrete-dist '(#t #f) (list prob (- 1 prob))))))
 
 ;; randn : Nat -> Nat
 (define (randn n)

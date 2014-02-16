@@ -109,3 +109,21 @@
    A
    #:when (< 10 A 20))
 |#
+
+(enumerate
+ (define (drop-coin?) (flip 0.9))
+ (define (drunk-flips n)
+   (cond [(zero? n)
+          #t]
+         [(drop-coin?)
+          'failed]
+         [else
+          (define x (flip))
+          ;;(printf "flip ~s was ~s\n" n x)
+          (and x (drunk-flips (sub1 n)))]))
+ (define A (drunk-flips 10))
+ (eq? A #t)
+ #:when (not (eq? A 'failed))
+ #:normalize? #f
+ ;; Need to increase limit to detect #t case:
+ #:limit 1e-20)

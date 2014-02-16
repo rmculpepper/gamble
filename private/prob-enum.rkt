@@ -80,8 +80,7 @@ anything reasonable, probably.)
                (call-with-enum-context memo-table (lambda () (only (thunk)))))
              pred project limit))
   (when #t
-    (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored))
-  (when #t
+    (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
              (/ prob-accepted (- 1 prob-unexplored))))
   (tabulate table prob-accepted #:normalize? normalize?))
@@ -100,6 +99,9 @@ anything reasonable, probably.)
     (set! prob-unexplored (- prob-unexplored p))
     (when (pred a)
       (let ([b (project a)])
+        (when #f
+          (when (zero? p)
+            (eprintf "WARNING: zero prob: ~s\n" b)))
         (unless (hash-has-key? table b)
           (set! seen (cons b seen)))
         (set! prob-accepted (+ p prob-accepted))
@@ -119,6 +121,7 @@ anything reasonable, probably.)
            [(cons p lt)
             (heap-add! h (cons (* prob-of-tree p) lt))]))]))
 
+  ;; FIXME: detect path prob underflow to 0.
   (traverse-tree tree 1)
   (let loop ()
     (cond [(< prob-unexplored (* limit prob-accepted))
