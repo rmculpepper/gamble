@@ -5,7 +5,7 @@
          math/distributions
          racket/control
          unstable/markparam
-         "prob.rkt"
+         "prob-hooks.rkt"
          "util.rkt")
 (provide enumerate*
          enum-ERP

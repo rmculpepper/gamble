@@ -2,7 +2,7 @@
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/parse/experimental/template)
-         "prob.rkt"
+         "prob-util.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt")
 (provide rejection-sampler

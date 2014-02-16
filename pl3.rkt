@@ -14,7 +14,8 @@
                      syntax/parse
                      syntax/stx)
          racket/list
-         "private/prob.rkt"
+         "private/util.rkt"
+         "private/prob-util.rkt"
          "private/prob-syntax.rkt"
          (only-in "private/prob-enum.rkt"
                   enumerate*)
@@ -24,7 +25,8 @@
 (provide (except-out (all-from-out racket/base) #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
-         (all-from-out "private/prob.rkt")
+         (all-from-out "private/util.rkt")
+         (all-from-out "private/prob-util.rkt")
          (all-from-out "private/prob-syntax.rkt")
          ;; from private/prob-enum.rkt:
          enumerate*

@@ -1,8 +1,7 @@
 #lang racket/base
-(require math/distributions)
+(require math/distributions
+         "prob-hooks.rkt")
 (provide rejection-sample
-         current-mem
-         current-ERP
          mem
          ERP
          flip
@@ -17,34 +16,12 @@
         (project v)
         (rejection-sample thunk pred project))))
 
-;; Basic memoization and ERP implementations
-
-(define (base-mem f)
-  (let ([memo-table (make-hash)])
-    (lambda args
-      (hash-ref! memo-table args (lambda () (apply f args))))))
-
-(define (base-ERP tag sampler get-dist)
-  (sampler))
-
-;; ----
-
-;; mem : procedure -> procedure
-
-(define current-mem (make-parameter base-mem))
+;; mem and ERP wrappers
 
 (define (mem f)
   (unless (procedure? f)
     (raise-argument-error 'mem "procedure?" f))
   ((current-mem) f))
-
-;; ----
-
-;; ERP : (Sexpr (-> A) (U #f (-> (Discrete-Dist A))) -> A)
-;; First arg is tag w/ ERP function name and params. Same tag should imply same dist.
-;; Second is sampler. Third is thunk producing discrete dist or #f. Can't both be #f.
-
-(define current-ERP (make-parameter base-ERP))
 
 (define (ERP tag sampler get-dist)
   (let ([sampler (or sampler (lambda () (sample (get-dist))))])
@@ -55,15 +32,12 @@
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
   (ERP `(flip ,prob)
-       (lambda ()
-         (if (= prob 1/2)
-             (zero? (random 2))
-             (< (random) prob)))
+       (and (= prob 1/2) (lambda () (random 2)))
        (lambda () (discrete-dist '(#t #f) (list prob (- 1 prob))))))
 
-;; d2 : Prob -> (U 0 1)
+;; d2 : Prob -> (U 1 0)
 (define (d2 [prob 1/2])
-  (if (flip) 1 0))
+  (if (flip prob) 1 0))
 
 ;; randn : Nat -> Nat
 (define (randn n)

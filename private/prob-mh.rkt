@@ -3,7 +3,7 @@
          data/order
          "context.rkt"
          "util.rkt"
-         "prob.rkt")
+         "prob-hooks.rkt")
 (provide mh-sampler*
          print-db
          make-db-ERP
