@@ -83,6 +83,10 @@ anything reasonable, probably.)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
              (/ prob-accepted (- 1 prob-unexplored))))
+  (when (zero? (hash-count table))
+    (error 'enumerate "condition accepted no paths"))
+  (when (and normalize? (zero? prob-accepted))
+    (error 'enumerate "probability of accepted paths underflowed to 0"))
   (tabulate table prob-accepted #:normalize? normalize?))
 
 ;; explore : (EnumTree A) (A -> Boolean) (A -> B) Prob
@@ -122,14 +126,18 @@ anything reasonable, probably.)
             (heap-add! h (cons (* prob-of-tree p) lt))]))]))
 
   ;; FIXME: detect path prob underflow to 0.
+  ;; FIXME: prob-unexplored can drop below zero because of floating-point
+  ;; inaccuracy. Any remedy?
   (traverse-tree tree 1)
   (let loop ()
-    (cond [(< prob-unexplored (* limit prob-accepted))
+    (cond [(and limit (< prob-unexplored (* limit prob-accepted)))
            ;; Done!
+           (when #f
+             (eprintf "stopping with ~s unexplored paths\n" (heap-count h)))
            (void)]
           [(zero? (heap-count h))
-           ;; shouldn't happen; either internal error or pred accepted no paths
-           (error 'enumerate "predicate accepted no paths")]
+           ;; explored all paths
+           (void)]
           [else
            (define sub (heap-min h)) ;; actually max prob
            (heap-remove-min! h)

@@ -5,7 +5,7 @@
 (define (sum-n-flips n)
   (if (zero? n)
       0
-      (+ (flip) (sum-n-flips (sub1 n)))))
+      (+ (d2) (sum-n-flips (sub1 n)))))
 
 (define s-mh (mh-sampler (sum-n-flips 10)))
 
@@ -33,7 +33,7 @@
   (let loop ([n n] [acc 0])
     (if (zero? n)
         acc
-        (loop (sub1 n) (+ acc (flip))))))
+        (loop (sub1 n) (+ acc (d2))))))
 
 (define s-mh* (mh-sampler (sum-n-flips* 10)))
 
@@ -47,7 +47,7 @@
 
 ;; map is still bad; causes context collisions
 (define (bad-map n)
-  (apply + (map (lambda (n) (flip)) (for/list ([i n]) i))))
+  (apply + (map (lambda (n) (d2)) (for/list ([i n]) i))))
 #|
 (parameterize ((verbose? #t))
     ((mh-sampler (bad-map 10))))
@@ -55,7 +55,7 @@
 
 ;; BUT for/* is now okay; annotator rewrites its applications
 (define (ok-for n)
-  (apply + (for/list ([i n]) (flip))))
+  (apply + (for/list ([i n]) (d2))))
 #|
 (parameterize ((verbose? #t))
     ((mh-sampler (ok-for 10))))
@@ -68,8 +68,8 @@
 (define (make-mem-mh n)
   (mh-sampler
    ;; Note: need to call mem within mh-sampler, not outside
-   (define get-the-flip (mem (lambda (n) (flip))))
-   (for/sum ([i n]) (get-the-flip (modulo i 5)))))
+   (define get-the-d2 (mem (lambda (n) (d2))))
+   (for/sum ([i n]) (get-the-d2 (modulo i 5)))))
 #|
 (parameterize ((verbose? #t))
   ((make-mem-mh 10)))
@@ -79,7 +79,7 @@
 ;; ----
 
 (define (geom p)
-  (if (zero? (flip p)) 0 (add1 (geom p))))
+  (if (flip p) 0 (add1 (geom p))))
 #|
 (enumerate (geom 1/2) #:limit 1e-3)
 (enumerate (geom 1/2) #:limit 1e-9 #:normalize? #f)
@@ -88,7 +88,7 @@
 #|
 ;; enumeration and mem
 (enumerate
- (define f (mem (lambda (n) (flip))))
+ (define f (mem (lambda (n) (d2))))
  (list (f 1) (f 2) (f 1) (f 2)))
 ;; Should produce 4 values, each with prob 0.25.
 
@@ -96,7 +96,7 @@
  (define A (flip))
  (define B (flip))
  A
- #:when (> (+ A B) 0))
+ #:when (or A B))
 
 (enumerate
  (define A (geom 1/2))
@@ -118,12 +118,10 @@
          [(drop-coin?)
           'failed]
          [else
-          (define x (flip))
-          ;;(printf "flip ~s was ~s\n" n x)
-          (and x (drunk-flips (sub1 n)))]))
+          (and (flip) (drunk-flips (sub1 n)))]))
  (define A (drunk-flips 10))
  (eq? A #t)
  #:when (not (eq? A 'failed))
  #:normalize? #f
- ;; Need to increase limit to detect #t case:
- #:limit 1e-20)
+ ;; Need to decrease limit to detect #t case:
+ #:limit #f)
