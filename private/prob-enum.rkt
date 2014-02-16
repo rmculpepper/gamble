@@ -1,33 +1,27 @@
 #lang racket/base
 (require racket/match
+         data/heap
+         data/order
          math/distributions
          racket/control
          unstable/markparam
          "prob.rkt")
 (provide enumerate*
-         enumerate-possibilities
          enum-ERP
          enum-mem)
 
 #|
 Enumeration based on delimited continuations (only for discrete ERPs)
 
-1. Naive approach has limitiation that all paths must terminate
-(not just "terminate with probability 1").
+For enumeration to work:
 
-2. Slightly smarter: keep track of prob of path so far; prune away
-paths with prob below some limit.
+ - All paths must either terminate or evaluate infinitely many ERPS.
+   (and every ERP must generate at least two values with nonzero prob.)
 
-Problem: What if very many distinct paths with individually very low
-probs? That is, what if prob of computed paths sums to significantly
-less than 1?
-
-Problem: What if conditioning focuses on pruned paths? Need to make
-pruning prob adaptive wrt conditioning.
+ - The predicate must accept a nonempty set of paths.
 
 Without knowing structure of paths and conditioning predicate, can't
-make smart distinctions between paths: can only do things like
-iterative deepening (perhaps via laziness).
+make smart distinctions between incomplete paths.
 
 Would be nice if we could tell whether a path was viable or not wrt
 condition. Seems like it would require drastic changes to model of
@@ -54,13 +48,20 @@ anything reasonable, probably.)
 ;; - maybe option to replace integer-valued distributions with
 ;;   discrete approximations (cf, geometric dist & repeated flip).
 
+;; BUG/LIMITATION:
+;; - delimited continuations captured by ERP *must not* use include
+;;   uses of parameterize, because Racket's parameterize is not correct
+;;   wrt delimited control (this is a known Racket WONTFIX bug)
+;;   (ok to use parameterize, just not in captured part of continuation)
+;;   FIXME: possible to detect and issue error??
+
 ;; Use default prompt tag for mark-parameter, ctag for delimited
 ;; continuations.
 (define ctag (make-continuation-prompt-tag))
 
-;; A (EnumDist A) is one of
+;; A (EnumTree A) is one of
 ;; - (only A)
-;; - (split (listof (list Prob (EnumDist A))))
+;; - (split (listof (cons Prob (-> (EnumTree A)))))
 (struct only (answer))
 (struct split (subs))
 
@@ -68,42 +69,77 @@ anything reasonable, probably.)
 (define current-global-memo-table (mark-parameter))
 
 (define (enumerate* thunk pred [project values] #:limit [limit 1e-6])
-  (define possibilities (enumerate-possibilities thunk #:limit limit))
-  (define explored-rate
-    (for/sum ([entry (in-list possibilities)]) (cadr entry)))
-  (when #f
-    (eprintf "enumerate: explored rate ~s\n" explored-rate))
-  (define filtered-possibilities
-    (for/list ([entry (in-list possibilities)]
-               #:when (pred (car entry)))
-      (cons (project (car entry)) (cdr entry))))
-  (define accept-rate
-    (for/sum ([entry (in-list filtered-possibilities)]) (cadr entry)))
-  (when #f
-    (eprintf "enumerate: accept rate ~s\n" accept-rate))
-  #|
-  (define dist
-    (discrete-dist (map car filtered-possibilities)
-                   (map cadr filtered-possibilities)))
-  |#
-  (for/list ([entry (in-list filtered-possibilities)])
-    (list (car entry) (/ (cadr entry) accept-rate))))
+  (explore (let ([memo-table
+                  (cond [(current-global-memo-table)
+                         ;; means recursive enumerate ...
+                         => unbox]
+                        [else (hash)])])
+             (call-with-enum-context memo-table (lambda () (only (thunk)))))
+           pred project limit))
 
-(define (enumerate-possibilities thunk #:limit [limit 1e-6])
-  (let ([memo-table
-         (cond [(current-global-memo-table) => unbox]
-               [else (hash)])])
-    (parameterize ((current-ERP enum-ERP)
-                   (current-mem enum-mem))
-      (mark-parameterize ((current-global-memo-table (box memo-table)))
-        (flatten-enum-dist
-         (call-with-continuation-prompt
-          (lambda () (only (thunk)))
-          ctag
-          (lambda (f) (f 1 limit))))))))
+;; explore : (EnumTree A) (A -> Boolean) (A -> B) Prob -> (listof (list Prob B))
+;; Limit means: explore until potential accepted dist is < limit unaccounted for,
+;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
+(define (explore tree pred project limit)
+  (define prob-unexplored 1) ;; prob of all unexplored paths
+  (define prob-accepted 0) ;; prob of all accepted paths
+  (define table (make-hash)) ;; hash[B => Prob]
+  (define seen '()) ;; (listof B), reversed
+  ;; add! : A Prob -> void
+  (define (add! a p)
+    (set! prob-unexplored (- prob-unexplored p))
+    (when (pred a)
+      (let ([b (project a)])
+        (unless (hash-has-key? table b)
+          (set! seen (cons b seen)))
+        (set! prob-accepted (+ p prob-accepted))
+        (hash-set! table b (+ p (hash-ref table b 0))))))
+  ;; h: heap[(cons Prob (-> (EnumTree A)))]
+  (define (entry->=? x y)
+    (>= (car x) (car y)))
+  (define h (make-heap entry->=?)) ;; Racket has "min-heaps", but want max prob, so >=
+
+  (define (traverse-tree et prob-of-tree)
+    (match et
+      [(only a)
+       (add! a prob-of-tree)]
+      [(split subs)
+       (for ([sub (in-list subs)])
+         (match sub
+           [(cons p lt)
+            (heap-add! h (cons (* prob-of-tree p) lt))]))]))
+
+  (traverse-tree tree 1)
+  (let loop ()
+    (cond [(< prob-unexplored (* limit prob-accepted))
+           ;; Done!
+           (void)]
+          [(zero? (heap-count h))
+           ;; shouldn't happen; either internal error or pred accepted no paths
+           (error 'enumerate "predicate accepted no paths")]
+          [else
+           (define sub (heap-min h)) ;; actually max prob
+           (heap-remove-min! h)
+           (traverse-tree ((cdr sub)) (car sub))
+           (loop)]))
+
+  ;; Finished exploring; now tabulate.
+  (when #t
+    (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored))
+  (when #t
+    (eprintf "enumerate: accept rate: ~s\n" prob-accepted))
+  (tabulate table prob-accepted))
+
+(define (tabulate table prob-accepted)
+  (define entries
+    (for/list ([(val prob) (in-hash table)])
+      (list val (/ prob prob-accepted))))
+  (sort entries (order-<? datum-order)))
+
+;; ----
 
 (define (enum-ERP tag _sampler get-dist)
-  (define g (gensym '@))
+  ;; (define g (gensym '@))
   (let* ([dist (get-dist)]
          [vals (discrete-dist-values dist)]
          [probs (discrete-dist-probs dist)]
@@ -112,35 +148,22 @@ anything reasonable, probably.)
      (lambda (k)
        (abort-current-continuation
         ctag
-        (lambda (current-path-prob limit)
+        (lambda ()
           (split (for/list ([val (in-list vals)]
-                            [prob (in-list probs)]
-                            #:when (> (* prob current-path-prob) limit))
-                   (list prob
-                         (mark-parameterize ((current-global-memo-table (box memo-table)))
-                           (call-with-continuation-prompt
-                            (lambda () (k val))
-                            ctag
-                            (lambda (f) (f (* prob current-path-prob) limit))))))))))
+                            [prob (in-list probs)])
+                   (cons prob
+                         (lambda ()
+                           (call-with-enum-context memo-table (lambda () (k val))))))))))
      ctag)))
 
-(define (flatten-enum-dist ed)
-  (define prob-table (make-hash)) ;; a => prob
-  (define seen '())
-  (define (add! a p)
-    (unless (hash-has-key? prob-table a)
-      (set! seen (cons a seen)))
-    (hash-set! prob-table a (+ p (hash-ref prob-table a 0))))
-  (let loop ([ed ed] [p 1])
-    (match ed
-      [(only a) (add! a p)]
-      [(split subs)
-       (for/list ([sub (in-list subs)])
-         (match sub
-           [(list p* ed*)
-            (loop ed* (* p p*))]))]))
-  (for/list ([a (in-list (reverse seen))])
-    (list a (hash-ref prob-table a))))
+;; calls thunk with memo-table in fresh box, parameters set up
+(define (call-with-enum-context memo-table thunk)
+  (parameterize ((current-ERP enum-ERP)
+                 (current-mem enum-mem))
+    (mark-parameterize ((current-global-memo-table (box memo-table)))
+      (call-with-continuation-prompt
+       thunk
+       ctag))))
 
 ;; ----
 
