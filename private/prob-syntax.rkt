@@ -27,8 +27,11 @@
 (define-syntax (enumerate stx)
   (syntax-parse stx
     [(enumerate def:expr ... result:expr
-                (~optional (~seq #:when condition:expr))
-                (~optional (~seq #:limit limit:expr)))
+                (~or (~optional (~seq #:when condition:expr))
+                     (~optional (~seq #:limit limit:expr))
+                     (~optional (~seq #:normalize? normalize?)))
+                ...)
      (template
       (enumerate* (lambda () def ... (cons result (?? condition #t))) cdr car
-                  (?? (?@ #:limit limit))))]))
+                  (?? (?@ #:limit limit))
+                  (?? (?@ #:normalize? normalize?))))]))

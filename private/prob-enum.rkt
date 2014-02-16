@@ -68,23 +68,33 @@ anything reasonable, probably.)
 ;; current-global-memo-table : (parameterof (boxof (hash[list => result])))
 (define current-global-memo-table (mark-parameter))
 
-(define (enumerate* thunk pred [project values] #:limit [limit 1e-6])
-  (explore (let ([memo-table
-                  (cond [(current-global-memo-table)
-                         ;; means recursive enumerate ...
-                         => unbox]
-                        [else (hash)])])
-             (call-with-enum-context memo-table (lambda () (only (thunk)))))
-           pred project limit))
+(define (enumerate* thunk pred [project values]
+                    #:limit [limit 1e-6]
+                    #:normalize? [normalize? #t])
+  (define-values (table prob-unexplored prob-accepted)
+    (explore (let ([memo-table
+                    (cond [(current-global-memo-table)
+                           ;; means recursive enumerate ...
+                           => unbox]
+                          [else (hash)])])
+               (call-with-enum-context memo-table (lambda () (only (thunk)))))
+             pred project limit))
+  (when #t
+    (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored))
+  (when #t
+    (eprintf "enumerate: accept rate: ~s\n"
+             (/ prob-accepted (- 1 prob-unexplored))))
+  (tabulate table prob-accepted #:normalize? normalize?))
 
-;; explore : (EnumTree A) (A -> Boolean) (A -> B) Prob -> (listof (list Prob B))
+;; explore : (EnumTree A) (A -> Boolean) (A -> B) Prob
+;;        -> hash[B => Prob] Prob Prob
 ;; Limit means: explore until potential accepted dist is < limit unaccounted for,
 ;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
 (define (explore tree pred project limit)
   (define prob-unexplored 1) ;; prob of all unexplored paths
   (define prob-accepted 0) ;; prob of all accepted paths
-  (define table (make-hash)) ;; hash[B => Prob]
-  (define seen '()) ;; (listof B), reversed
+  (define table (make-hash)) ;; hash[B => Prob], probs are not normalized
+  (define seen '()) ;; (listof B), reversed; FIXME currently not used
   ;; add! : A Prob -> void
   (define (add! a p)
     (set! prob-unexplored (- prob-unexplored p))
@@ -123,17 +133,12 @@ anything reasonable, probably.)
            (traverse-tree ((cdr sub)) (car sub))
            (loop)]))
 
-  ;; Finished exploring; now tabulate.
-  (when #t
-    (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored))
-  (when #t
-    (eprintf "enumerate: accept rate: ~s\n" prob-accepted))
-  (tabulate table prob-accepted))
+  (values table prob-unexplored prob-accepted))
 
-(define (tabulate table prob-accepted)
+(define (tabulate table prob-accepted #:normalize? [normalize? #t])
   (define entries
     (for/list ([(val prob) (in-hash table)])
-      (list val (/ prob prob-accepted))))
+      (list val (if normalize? (/ prob prob-accepted) prob))))
   (sort entries (order-<? datum-order)))
 
 ;; ----

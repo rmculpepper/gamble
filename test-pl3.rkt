@@ -82,16 +82,16 @@
   (if (zero? (flip p)) 0 (add1 (geom p))))
 #|
 (enumerate (geom 1/2) #:limit 1e-3)
-(enumerate (geom 1/2) #:limit 1e-9)
+(enumerate (geom 1/2) #:limit 1e-9 #:normalize? #f)
 |#
 
+#|
 ;; enumeration and mem
 (enumerate
  (define f (mem (lambda (n) (flip))))
  (list (f 1) (f 2) (f 1) (f 2)))
 ;; Should produce 4 values, each with prob 0.25.
 
-#|
 (enumerate
  (define A (flip))
  (define B (flip))
@@ -103,4 +103,9 @@
  (define B (* 1/2 (geom 1/2)))
  A
  #:when (> A B))
+
+(enumerate 
+   (define A (geom 1/2))
+   A
+   #:when (< 10 A 20))
 |#
