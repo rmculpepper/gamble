@@ -45,7 +45,7 @@ representation optimizations: eg, RLE for self-tail-calling functions.
 (define-syntax (app/call-site stx)
   (syntax-case stx ()
     [(app/call-site call-site f arg ...)
-     #'(app/call-site #:un call-site f arg ...)]))
+     #'(app/call-site* #:un call-site f arg ...)]))
 
 (define-syntax (app/call-site* stx)
   (syntax-case stx ()
