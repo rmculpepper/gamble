@@ -1,42 +1,21 @@
-;; Experiment to adapt technique from "Lightweight Implementations of 
-;; Probabilistic Programming Languages Via Transformational Compilation"
-;; by al. et Goodman to use continuation marks to localize rewriting and
-;; avoid changing function signatures.
-
-;; Like pl1, but uses post-expansion instrumentation instead of
-;; redefining #%app.
-
-;; Like pl2, but uses trampoline macro instead of monolithic
-;; instrumentor function.
+;; A language for probabilistic programming
 
 #lang racket/base
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/stx)
          racket/list
-         "private/util.rkt"
-         "private/prob-util.rkt"
-         "private/prob-syntax.rkt"
-         (only-in "private/prob-enum.rkt"
-                  enumerate*)
-         (only-in "private/prob-mh.rkt"
-                  mh-sampler*)
-         "private/context.rkt")
+         "private/context.rkt"
+         "private/lib.rkt")
 (provide (except-out (all-from-out racket/base) #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
-         (all-from-out "private/util.rkt")
-         (all-from-out "private/prob-util.rkt")
-         (all-from-out "private/prob-syntax.rkt")
-         ;; from private/prob-enum.rkt:
-         enumerate*
-         ;; from private/prob-mh.rkt:
-         mh-sampler*
-         ;; from private/context.rkt:
-         apply/delimit)
+         (all-from-out "private/lib.rkt"))
 
 #|
 See private/context.rkt for discussion of Address representation.
+See private/lib.rkt for library functions and syntax (flip, samplers, etc).
+This module contains the implementation of the call-site instrumentor.
 |#
 
 #|
@@ -56,8 +35,6 @@ Note: instrumenting-module? hack separates module from repl numbers.
     (if (instrumenting-module?)
         counter
         (- counter))))
-
-;; FIXME: instead of monolithic instrumentor, maybe use instrument macro?
 
 (define-syntax (instrumenting-module-begin stx)
   (syntax-case stx ()
@@ -81,18 +58,10 @@ Note: instrumenting-module? hack separates module from repl numbers.
               #'(instrument e-form #:un))])))]))
 
 (begin-for-syntax
+ ;; Need privileged inspector to rewrite expanded code.
  (define stx-insp
    (variable-reference->module-declaration-inspector
     (#%variable-reference))))
-
-#|
-To get list of '#%kernel exports:
-(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
-(define knames
-  (filter symbol?
-          (map simplify
-               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
-|#
 
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
@@ -201,8 +170,6 @@ To get list of '#%kernel exports:
 TODO: avoid instrumenting *safe* applications?
   - eg known first-order functions like list, +, etc
   - potential benefits: speed, code size, size of address reps
-
-* See also pl1.rkt
 
 Issue: interop w/ Racket, etc
 - solved issue with for/*, other macros

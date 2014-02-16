@@ -133,3 +133,12 @@ representation optimizations: eg, RLE for self-tail-calling functions.
      call-in-nested-thread
      ))
  )
+
+#|
+To get list of '#%kernel exports:
+(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
+(define knames
+  (filter symbol?
+          (map simplify
+               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
+|#
