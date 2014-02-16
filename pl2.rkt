@@ -20,9 +20,6 @@
          (all-from-out "private/context.rkt")
          (all-from-out "private/prob-db.rkt"))
 
-(current-ERP db-ERP)
-(current-mem db-mem)
-
 #|
 See private/context.rkt for discussion of Address representation.
 |#
