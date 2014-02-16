@@ -18,7 +18,7 @@
          "private/prob-syntax.rkt"
          "private/prob-enum.rkt"
          "private/context.rkt"
-         "private/prob-db.rkt")
+         "private/prob-mh.rkt")
 (provide (except-out (all-from-out racket/base) #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
@@ -26,7 +26,7 @@
          (all-from-out "private/prob-syntax.rkt")
          (all-from-out "private/prob-enum.rkt")
          (all-from-out "private/context.rkt")
-         (all-from-out "private/prob-db.rkt"))
+         (all-from-out "private/prob-mh.rkt"))
 
 #|
 See private/context.rkt for discussion of Address representation.

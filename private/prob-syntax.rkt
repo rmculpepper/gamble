@@ -3,7 +3,7 @@
                      syntax/parse
                      syntax/parse/experimental/template)
          "prob.rkt"
-         "prob-db.rkt"
+         "prob-mh.rkt"
          "prob-enum.rkt")
 (provide rejection-sampler
          mh-sampler
