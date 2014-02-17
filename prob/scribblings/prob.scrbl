@@ -7,7 +7,7 @@
 @title{Prob: Probabilistic Programming}
 @author[@author+email["Ryan Culpepper" "ryanc@racket-lang.org"]]
 
-@defmodule[prob]
+@defmodulelang[prob]
 
 @bold{Development} Development of this library is hosted by
 @hyperlink["http://github.com"]{GitHub} at the following project page:
@@ -43,25 +43,31 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 General Public License and GNU Lesser General Public License for more
 details.
 
-@include-section["intro.scrbl"]
-@include-section["erp.scrbl"]
-
+@;@include-section["intro.scrbl"]
+@include-section["erps.scrbl"]
+@include-section["solvers.scrbl"]
+@include-section["notes.scrbl"]
 
 @;{----------------------------------------}
 
 @bibliography[
 #:tag "prob-bibliography"
 
-@bib-entry[#:key "EPP"
-           #:title "Embedded Probabilistic Programming"
-           #:author "Oleg Kiselyov and Chung-chieh Shan"
-           #:location "Domain-Specific Languages, pp 360-384"
-           #:url "http://dx.doi.org/10.1007/978-3-642-03034-5_17"]
+@bib-entry[#:key "Church"
+           #:title "Church: a language for generative models"
+           #:author "Noah Goodman, Vikash Mansinghka, Daniel Roy, Keith Bonawitz, and Joshua Tenenbaum"
+]
 
 @bib-entry[#:key "Bher"
            #:title "Lightweight Imeplementations of Probabilistic Programming Languages Via Transformational Compilation"
            #:author "David Wingate, Andreas Stuhlüller, and Noah Goodman"
            #:location "Proc. of the 14th Artificial Intelligence and Statistics"
            #:url "http://stanford.edu/~ngoodman/papers/WSG-AIStats11.pdf"]
+
+@bib-entry[#:key "EPP"
+           #:title "Embedded Probabilistic Programming"
+           #:author "Oleg Kiselyov and Chung-chieh Shan"
+           #:location "Domain-Specific Languages, pp 360-384"
+           #:url "http://dx.doi.org/10.1007/978-3-642-03034-5_17"]
 
 ]

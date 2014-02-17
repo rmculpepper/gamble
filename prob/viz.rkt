@@ -1,5 +1,7 @@
 #lang racket/base
-(require plot
+(require (rename-in (except-in plot plot plot3d)
+                    [plot-pict plot]
+                    [plot3d-pict plot3d])
          data/order)
 (provide hist)
 

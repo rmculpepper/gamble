@@ -32,7 +32,7 @@
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
   (ERP `(flip ,prob)
-       (and (= prob 1/2) (lambda () (random 2)))
+       (and (= prob 1/2) (lambda () (zero? (random 2))))
        (lambda () (discrete-dist '(#t #f) (list prob (- 1 prob))))))
 
 ;; d2 : Prob -> (U 1 0)
