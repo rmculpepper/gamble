@@ -44,7 +44,7 @@ General Public License and GNU Lesser General Public License for more
 details.
 
 @;@include-section["intro.scrbl"]
-@include-section["erps.scrbl"]
+@include-section["features.scrbl"]
 @include-section["solvers.scrbl"]
 @include-section["notes.scrbl"]
 
