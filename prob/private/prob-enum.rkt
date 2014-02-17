@@ -101,17 +101,17 @@ anything reasonable, probably.)
   (define seen '()) ;; (listof B), reversed; FIXME currently not used
   ;; add! : A Prob -> void
   (define (add! a p)
-    (when (pred a)
-      (let ([b (project a)])
-        (cond [(positive? p)
-               (set! prob-unexplored (- prob-unexplored p))
+    (cond [(positive? p)
+           (set! prob-unexplored (- prob-unexplored p))
+           (when (pred a)
+             (let ([b (project a)])
                (unless (hash-has-key? table b)
                  (set! seen (cons b seen)))
                (set! prob-accepted (+ p prob-accepted))
-               (hash-set! table b (+ p (hash-ref table b 0)))]
-              [else
-               (when #t ;; (verbose?)
-                 (eprintf "WARNING: bad prob ~s for ~s\n" p b))]))))
+               (hash-set! table b (+ p (hash-ref table b 0)))))]
+          [else
+           (when #t ;; (verbose?)
+             (eprintf "WARNING: bad prob ~s for ~s\n" p (project a)))]))
 
   ;; h: heap[(cons Prob (-> (EnumTree A)))]
   (define (entry->=? x y)
@@ -142,7 +142,7 @@ anything reasonable, probably.)
            ;; Done!
            (when (positive? (heap-count h))
              (when (verbose?)
-               (eprintf "stopping with ~s unexplored paths\n" (heap-count h))))
+               (eprintf "stopping with ~s unexplored path(s)\n" (heap-count h))))
            (void)]
           [(zero? (heap-count h))
            ;; explored all paths
