@@ -8,7 +8,7 @@
                      prob/viz))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require prob prob/viz))
+@(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
 
 @title[#:tag "solvers"]{Samplers and Solvers}
 

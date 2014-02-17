@@ -8,7 +8,7 @@
                      prob/viz))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require prob prob/viz))
+@(the-eval '(require prob))
 
 @title[#:tag "notes"]{Notes, Limitations, and Known Bugs}
 

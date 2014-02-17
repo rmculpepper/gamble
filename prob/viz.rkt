@@ -1,12 +1,15 @@
 #lang racket/base
-(require (rename-in (except-in plot plot plot3d)
-                    [plot-pict plot]
-                    [plot3d-pict plot3d])
+(require (rename-in plot)
          data/order)
-(provide hist)
+(provide hist
+         hist-pict)
 
-(define (hist xs
-              #:invert? [invert? #f])
+(define (hist xs #:invert? [invert? #f])
+  (hist* xs invert? plot))
+(define (hist-pict xs #:invert? [invert? #f])
+  (hist* xs invert? plot-pict))
+
+(define (hist* xs invert? plot)
   (define table (make-hash))
   (for ([x xs])
     (hash-set! table x (add1 (hash-ref table x 0))))
