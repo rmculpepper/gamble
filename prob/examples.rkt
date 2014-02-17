@@ -1,5 +1,5 @@
 #lang prob
-(require "private/viz.rkt")
+(require prob/viz)
 
 ;; Unlike pl1, doesn't print instrumented applications.
 (define (sum-n-flips n)

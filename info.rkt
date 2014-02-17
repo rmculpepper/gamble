@@ -1,4 +1,3 @@
-#lang setup/info
+#lang setup/infotab
 
 (define collection 'multi)
-(define deps '(base))
