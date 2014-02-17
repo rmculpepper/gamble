@@ -70,7 +70,7 @@
         exact-nonnegative-integer?)]))
 
 ;; binomial : Nat Prob -> Integer
-;; FIXME: should be discrete for fixed n
+;; FIXME: discretizable
 (define (binomial n p)
   (inexact->exact
    (ERP `(binomial ,n ,p)
@@ -86,8 +86,9 @@
 ;; poisson : Real -> Integer
 ;; FIXME: probably discretizable (???)
 (define (poisson mean)
-  (ERP `(poisson ,mean)
-       (poisson-dist mean)))
+  (inexact->exact
+   (ERP `(poisson ,mean)
+        (poisson-dist mean))))
 
 ;; == Continuous distributions ==
 

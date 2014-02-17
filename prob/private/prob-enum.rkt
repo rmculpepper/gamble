@@ -157,22 +157,32 @@ anything reasonable, probably.)
 ;; ----
 
 (define (enum-ERP tag dist)
-  (unless (memq (car tag) '(flip discrete))
+  (unless (memq (car tag) '(flip discrete binomial #| geometric poisson |#))
     (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
-  (let ([vals (discrete-dist-values dist)]
-         [probs (discrete-dist-probs dist)]
-         [memo-table (unbox (current-global-memo-table))])
-    (call-with-composable-continuation
-     (lambda (k)
-       (abort-current-continuation
-        ctag
-        (lambda ()
-          (split (for/list ([val (in-list vals)]
-                            [prob (in-list probs)])
-                   (cons prob
-                         (lambda ()
-                           (call-with-enum-context memo-table (lambda () (k val))))))))))
-     ctag)))
+  (let ([memo-table (unbox (current-global-memo-table))])
+    (let-values ([(vals probs)
+                  (dist->vals+probs tag dist)])
+      (call-with-composable-continuation
+       (lambda (k)
+         (abort-current-continuation
+          ctag
+          (lambda ()
+            (split (for/list ([val (in-list vals)]
+                              [prob (in-list probs)])
+                     (cons prob
+                           (lambda ()
+                             (call-with-enum-context memo-table (lambda () (k val))))))))))
+       ctag))))
+
+(define (dist->vals+probs tag dist)
+  (case (car tag)
+    [(binomial)
+     (for/lists (vals probs) ([i (in-range (add1 (cadr tag)))])
+       (values i (pdf dist i)))]
+    ;; [(geometric) ...]
+    ;; [(poisson) ...]
+    [else
+     (discrete-dist-values dist)]))
 
 ;; calls thunk with memo-table in fresh box, parameters set up
 (define (call-with-enum-context memo-table thunk)
