@@ -117,7 +117,6 @@
    (define A (geom 1/2))
    A
    #:when (< 10 A 20))
-|#
 
 (enumerate
  (define (drop-coin?) (flip 0.9))
@@ -134,3 +133,4 @@
  #:normalize? #f
  ;; Need to decrease limit to detect #t case:
  #:limit #f)
+|#
