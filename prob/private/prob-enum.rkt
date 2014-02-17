@@ -101,16 +101,18 @@ anything reasonable, probably.)
   (define seen '()) ;; (listof B), reversed; FIXME currently not used
   ;; add! : A Prob -> void
   (define (add! a p)
-    (set! prob-unexplored (- prob-unexplored p))
     (when (pred a)
       (let ([b (project a)])
-        (when (zero? p)
-          (when (verbose?)
-            (eprintf "WARNING: zero prob: ~s\n" b)))
-        (unless (hash-has-key? table b)
-          (set! seen (cons b seen)))
-        (set! prob-accepted (+ p prob-accepted))
-        (hash-set! table b (+ p (hash-ref table b 0))))))
+        (cond [(positive? p)
+               (set! prob-unexplored (- prob-unexplored p))
+               (unless (hash-has-key? table b)
+                 (set! seen (cons b seen)))
+               (set! prob-accepted (+ p prob-accepted))
+               (hash-set! table b (+ p (hash-ref table b 0)))]
+              [else
+               (when #t ;; (verbose?)
+                 (eprintf "WARNING: bad prob ~s for ~s\n" p b))]))))
+
   ;; h: heap[(cons Prob (-> (EnumTree A)))]
   (define (entry->=? x y)
     (>= (car x) (car y)))
@@ -124,7 +126,12 @@ anything reasonable, probably.)
        (for ([sub (in-list subs)])
          (match sub
            [(cons p lt)
-            (heap-add! h (cons (* prob-of-tree p) lt))]))]))
+            (let ([p* (* prob-of-tree p)])
+              (cond [(positive? p)
+                     (heap-add! h (cons p* lt))]
+                    [else
+                     (when (verbose?)
+                       (eprintf "WARNING: bad prob ~s in path\n" p*))]))]))]))
 
   ;; FIXME: detect path prob underflow to 0.
   ;; FIXME: prob-unexplored can drop below zero because of floating-point
@@ -143,6 +150,8 @@ anything reasonable, probably.)
           [else
            (define sub (heap-min h)) ;; actually max prob
            (heap-remove-min! h)
+           ;; (eprintf "** prob-unexplored = ~s; prob-accepted = ~s\n" prob-unexplored prob-accepted)
+           ;; (eprintf "** picked ~s\n" sub)
            (traverse-tree ((cdr sub)) (car sub))
            (loop)]))
 
@@ -157,32 +166,73 @@ anything reasonable, probably.)
 ;; ----
 
 (define (enum-ERP tag dist)
-  (unless (memq (car tag) '(flip discrete binomial #| geometric poisson |#))
+  (unless (memq (car tag) '(flip discrete binomial geometric poisson continue-special))
     (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
-  (let ([memo-table (unbox (current-global-memo-table))])
-    (let-values ([(vals probs)
-                  (dist->vals+probs tag dist)])
-      (call-with-composable-continuation
-       (lambda (k)
-         (abort-current-continuation
-          ctag
-          (lambda ()
-            (split (for/list ([val (in-list vals)]
-                              [prob (in-list probs)])
-                     (cons prob
-                           (lambda ()
-                             (call-with-enum-context memo-table (lambda () (k val))))))))))
-       ctag))))
+  (define memo-table (unbox (current-global-memo-table)))
+  (define-values (vals probs tail-prob+tag)
+    (dist->vals+probs tag dist))
+  (call-with-composable-continuation
+   (lambda (k)
+     (abort-current-continuation
+      ctag
+      (lambda ()
+        (split
+         (cons/f (and tail-prob+tag
+                      (let ([tail-prob (car tail-prob+tag)]
+                            [tail-tag (cdr tail-prob+tag)])
+                        (cons tail-prob
+                              (lambda ()
+                                (call-with-enum-context memo-table
+                                  (lambda () (k (enum-ERP tail-tag dist))))))))
+                 (for/list ([val (in-list vals)]
+                            [prob (in-list probs)])
+                   (cons prob
+                         (lambda ()
+                           (call-with-enum-context memo-table (lambda () (k val)))))))))))
+   ctag))
 
 (define (dist->vals+probs tag dist)
-  (case (car tag)
-    [(binomial)
-     (for/lists (vals probs) ([i (in-range (add1 (cadr tag)))])
-       (values i (pdf dist i)))]
-    ;; [(geometric) ...]
-    ;; [(poisson) ...]
-    [else
-     (discrete-dist-values dist)]))
+  (match tag
+    [(list* 'binomial _)
+     (let-values ([(vals probs)
+                   (for/lists (vals probs) ([i (in-range (add1 (cadr tag)))])
+                     (values i (pdf dist i)))])
+       (values vals probs #f))]
+    [(list* 'geometric _)
+     (special-dist->vals+probs tag dist 0)]
+    [(list* 'poisson _)
+     (special-dist->vals+probs tag dist 0)]
+    [(list* 'continue-special start base-tag)
+     (special-dist->vals+probs base-tag dist start)]
+    [_
+     (values (discrete-dist-values dist)
+             (discrete-dist-probs dist)
+             #f)]))
+
+(define TAKE 10)
+
+;; FIXME: scale underflow, +inf.0, +nan.0 ... when running:
+;; - (enumerate (geometric) 1e-7)
+;; - (enumerate (poisson 10) #:limit 1e-3)
+;; NOTE: "fixed" by avoiding 0.0-prob paths, but results now have
+;; very implausible jumps...
+
+;; FIXME: for geometric, can use memoryless feature; just generate
+;; same sequence each time (no need to scale/unscale)
+
+(define (special-dist->vals+probs tag dist start)
+  (define scale (- 1 (cdf dist (sub1 start))))
+  (define-values (vals probs)
+    (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
+      (values i (/ (pdf dist i) scale))))
+  ;; (eprintf "generated values: ~s\n" vals)
+  ;; (eprintf "generated probs: ~s\n" probs)
+  ;; (eprintf "tail prob is ~s\n" (- 1 (cdf dist (+ start TAKE -1))))
+  (values vals probs
+          (cons (/ (- 1 (cdf dist (+ start TAKE -1))) scale)
+                `(continue-special ,(+ start TAKE) . ,tag))))
+
+(define (cons/f x xs) (if x (cons x xs) xs))
 
 ;; calls thunk with memo-table in fresh box, parameters set up
 (define (call-with-enum-context memo-table thunk)
