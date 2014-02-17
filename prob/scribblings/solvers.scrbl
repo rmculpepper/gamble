@@ -91,9 +91,9 @@ variant of Metropolis-Hastings as described in @cite{Bher}.
 @defform[(enumerate def/expr ... result-expr
            maybe-when-clause maybe-limit-clause maybe-normalize-clause)
          #:grammar ([maybe-when-clause (code:line)
-                                     (code:line #:when condition-expr)]
+                                       (code:line #:when condition-expr)]
                     [maybe-limit-clause (code:line)
-                                      (code:line #:limit limit-expr)]
+                                        (code:line #:limit limit-expr)]
                     [maybe-normalize-clause (code:line)
                                             (code:line #:normalize? normalize?-expr)])]{
 
@@ -107,13 +107,17 @@ instead.
 The @racket[enumerate] form works by exploring all possibilities using
 the technique described in @cite{EPP}. If @racket[limit-expr]
 evaluates to a probability @racket[_limit], then exploration ceases
-when the sum of the probabilities of the results accepted by
-@racket[condition-expr] reaches at least @racket[(- 1 _limit)]. If
-@racket[limit-expr] evalues to @racket[#f], then exploration ceases
-only when all paths have been explored; if any path is infinite, then
-@racket[enumerate] fails to terminate.
+when the unexplored possibilities have probability less than
+@racket[_limit] times the sum of the probabilities of the results
+accepted by @racket[condition-expr] so far. If @racket[limit-expr]
+evalues to @racket[#f], then exploration ceases only when all paths
+have been explored; if any path is infinite, then @racket[enumerate]
+fails to terminate.
 
-Only discrete @tech{ERP}s can be used with @racket[enumerate].
+Only discrete and integer-valued @tech{ERP}s can be used with
+@racket[enumerate], and infinite-range ERPs (such as
+@racket[geometric]) require the use of @racket[#:limit] to enforce
+termination.
 
 @examples[#:eval the-eval
 (enumerate

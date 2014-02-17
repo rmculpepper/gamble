@@ -30,11 +30,8 @@
   [flip
    (->* [] [probability?] boolean?)]
   [d2
-   (->* [] [probability?] (or/c 1 0))]
-  [discrete
-   (-> (or/c exact-positive-integer?
-             (listof (list/c any/c (>/c 0))))
-       any/c)]))
+   (->* [] [probability?] (or/c 1 0))])
+ discrete)
 
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
@@ -47,13 +44,29 @@
 
 ;; discrete : Nat -> Nat
 ;; discrete : (listof (list A Prob))) -> A
-(define (discrete v)
-  (cond [(list? v)
-         (ERP `(discrete ,v)
-              (lambda () (discrete-dist v)))]
-        [else
-         (ERP `(discrete ,v)
-              (discrete-dist (for/list ([i v]) i)))]))
+(define discrete
+  (case-lambda
+    [(n/vals)
+     (cond [(and (list? n/vals) (pair? n/vals))
+            (ERP `(discrete ,n/vals)
+                 (discrete-dist n/vals))]
+           [(exact-positive-integer? n/vals)
+            (ERP `(discrete ,n/vals)
+                 (discrete-dist (for/list ([i (in-range n/vals)]) i)))]
+           [else
+            (raise-argument-error 'discrete
+              "(or/c exact-positive-integer? (and/c list? pair?))" 0 n/vals)])]
+    [(vals probs)
+     (unless (and (list? vals) (pair? vals))
+       (raise-argument-error 'discrete "(and/c list? pair?)" 0 vals probs))
+     (unless (and (list? probs) (pair? probs) (andmap real? probs) (andmap positive? probs))
+       (raise-argument-error 'discrete "(non-empty-listof (>/c 0))" 1 vals probs))
+     (unless (= (length vals) (length probs))
+       (error 'discrete
+              "values and probability weights have different lengths\n  values: ~e\n  weights: ~e"
+              vals probs))
+     (ERP `(discrete ,vals ,probs)
+          (discrete-dist vals probs))]))
 
 ;; == Countable distributions ==
 
@@ -63,7 +76,7 @@
    (->* [] [probability?]
         exact-nonnegative-integer?)]
   [poisson
-   (->* [] [(>/c 0)]
+   (->* [(>/c 0)] []
         exact-nonnegative-integer?)]
   [binomial
    (->* [exact-nonnegative-integer? probability?] []
