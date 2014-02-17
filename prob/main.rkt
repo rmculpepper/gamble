@@ -33,3 +33,6 @@ Issue: interop w/ Racket, etc
       where (lift* f) = (lambda (x) (app/call-site (list 'map f x) f x)) ????
 
 |#
+
+(module reader syntax/module-reader
+  prob)
