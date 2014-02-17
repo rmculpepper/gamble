@@ -45,9 +45,18 @@
 
 ;; ** interaction with untranslated code causes problems
 
-;; map is still bad; causes context collisions
-(define (bad-map n)
+;; map is now okay; comes from private/ho-functions.rkt w/ instrumented call sites
+(define (ok-map n)
   (apply + (map (lambda (n) (d2)) (for/list ([i n]) i))))
+#|
+(parameterize ((verbose? #t))
+    ((mh-sampler (ok-map 10))))
+|#
+
+;; racket's map is bad; causes context collisions
+(require (only-in racket/base [map racket:map]))
+(define (bad-map n)
+  (apply + (racket:map (lambda (n) (d2)) (for/list ([i n]) i))))
 #|
 (parameterize ((verbose? #t))
     ((mh-sampler (bad-map 10))))
