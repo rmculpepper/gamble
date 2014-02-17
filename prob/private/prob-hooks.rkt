@@ -54,23 +54,33 @@
 (define-syntax (make-dist stx)
   (syntax-case stx ()
     [(make-dist name #:params (param ...) #:enum enum)
-     (with-syntax ([name-pdf (format-id #'name "fl~a-pdf" #'name)]
-                   [name-cdf (format-id #'name "fl~a-cdf" #'name)]
-                   [name-inv-cdf (format-id #'name "fl~a-inv-cdf" #'name)]
-                   [name-sample (format-id #'name "fl~a-sample" #'name)])
+     (with-syntax ([name-pdf (format-id #'name "~a-pdf" #'name)]
+                   [name-cdf (format-id #'name "~a-cdf" #'name)]
+                   [name-inv-cdf (format-id #'name "~a-inv-cdf" #'name)]
+                   [name-sample (format-id #'name "~a-sample" #'name)]
+
+                   [fl-pdf (format-id #'name "fl~a-pdf" #'name)]
+                   [fl-cdf (format-id #'name "fl~a-cdf" #'name)]
+                   [fl-inv-cdf (format-id #'name "fl~a-inv-cdf" #'name)]
+                   [fl-sample (format-id #'name "fl~a-sample" #'name)]
+                   )
        #'(let ([param (exact->inexact param)] ...)
-           (pdist (lambda (x log?) (name-pdf param ... (exact->inexact x) log?))
-                  (lambda (x log? 1-p?) (name-cdf param ... (exact->inexact x) log? 1-p?))
-                  (lambda (p log? 1-p?) (name-inv-cdf param ... (exact->inexact p) log? 1-p?))
-                  (lambda (n) (name-sample param ... n))
-                  enum)))]))
+           (let ([name-pdf
+                  (lambda (x log?) (fl-pdf param ... (exact->inexact x) log?))]
+                 [name-cdf
+                  (lambda (x log? 1-p?) (fl-cdf param ... (exact->inexact x) log? 1-p?))]
+                 [name-inv-cdf
+                  (lambda (p log? 1-p?) (fl-inv-cdf param ... (exact->inexact p) log? 1-p?))]
+                 [name-sample
+                  (lambda (n) (fl-sample param ... n))])
+             (pdist name-pdf name-cdf name-inv-cdf name-sample enum))))]))
 
 (define (dist? x)
   (pdist? x))
 (define (dist-pdf d x [log? #f])
   ((pdist-pdf d) x log?))
 (define (dist-cdf d x [log? #f] [1-p? #f])
-  ((pdist-pdf d) x log? 1-p?))
+  ((pdist-cdf d) x log? 1-p?))
 (define (dist-inv-cdf d x [log? #f] [1-p? #f])
   ((pdist-inv-cdf d) x log? 1-p?))
 (define (dist-sample d)
