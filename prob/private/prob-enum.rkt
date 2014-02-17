@@ -42,12 +42,6 @@ in which it was created? (The current implementation doesn't do
 anything reasonable, probably.)
 |#
 
-;; TODO:
-;; - laziness
-;; - add limit for prob of explored paths; error if not met
-;; - maybe option to replace integer-valued distributions with
-;;   discrete approximations (cf, geometric dist & repeated flip).
-
 ;; BUG/LIMITATION:
 ;; - delimited continuations captured by ERP *must not* use include
 ;;   uses of parameterize, because Racket's parameterize is not correct
@@ -68,6 +62,8 @@ anything reasonable, probably.)
 ;; current-global-memo-table : (parameterof (boxof (hash[list => result])))
 (define current-global-memo-table (mark-parameter))
 
+;; enumerate* : (-> A) (A -> Boolean) (A -> B) etc -> (Listof (List B Prob))
+;; Note: pred and project must be pure; applied outside of prompt
 (define (enumerate* thunk pred [project values]
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
@@ -249,3 +245,17 @@ anything reasonable, probably.)
                (let ([b (current-global-memo-table)])
                  (set-box! b (hash-set (unbox b) key v))
                  v))]))))
+
+#|
+TODO: reify-reflect
+
+For example, flip-based defn of geometric dist is more precise than
+flonum-based, but would like to avoid running whole series of flips
+whenever geometric is used. Better to have lazy geom tree,
+explore (memoized) when needed.
+
+Maybe new abstraction, alternative to sampler: enumerator. Produces
+stream (finite or infinite) of weighted partitions of
+distribution. (Note: values may may repeat, just add probs.) Can't
+normalize unless stream is finite or we truncate it.
+|#
