@@ -35,17 +35,11 @@
                  [flip (case->
                         (-> Boolean)
                         (Real -> Boolean))]
-                 [d2 (case->
-                      (-> (U 0 1))
-                      (Real -> (U 0 1)))]
-                 [randn (Exact-Positive-Integer -> Exact-Nonnegative-Integer)]
                  ;; [mem (All (B A ... ) ((A ... -> B) -> (A ... -> B)))]
                  [mem (All (A R) (A -> R))]
                  [verbose? (Parameterof Boolean)]
                  )
   (provide flip
-           d2
-           randn
            mem
            verbose?))
 

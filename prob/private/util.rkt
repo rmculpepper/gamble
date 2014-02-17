@@ -1,7 +1,8 @@
 #lang racket/base
 (provide verbose?
          repeat
-         lag)
+         lag
+         probability?)
 
 ;; Parameters
 
@@ -14,3 +15,8 @@
 
 (define (lag thunk n)
   (lambda () (for/last ([i n]) (thunk))))
+
+;; Predicate
+
+(define (probability? x)
+  (and (real? x) (<= 0 x 1)))

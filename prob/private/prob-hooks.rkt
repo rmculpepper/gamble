@@ -1,4 +1,5 @@
 #lang racket/base
+(require math/distributions)
 (provide current-mem
          current-ERP)
 
@@ -9,8 +10,8 @@
     (lambda args
       (hash-ref! memo-table args (lambda () (apply f args))))))
 
-(define (base-ERP tag sampler get-dist)
-  (sampler))
+(define (base-ERP tag dist)
+  (sample dist))
 
 ;; ----
 
@@ -20,8 +21,8 @@
 
 (define current-mem (make-parameter base-mem))
 
-;; ERP : (Sexpr (-> A) (U #f (-> (Discrete-Dist A))) -> A)
+;; ERP : (Sexpr (Discrete-Dist A)) -> A)
 ;; First arg is tag w/ ERP function name and params. Same tag should imply same dist.
-;; Second is sampler. Third is thunk producing discrete dist or #f. Can't both be #f.
+;; Second is dist.
 
 (define current-ERP (make-parameter base-ERP))

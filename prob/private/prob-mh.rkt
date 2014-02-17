@@ -1,5 +1,6 @@
 #lang racket/base
 (require racket/list
+         math/distributions
          data/order
          "context.rkt"
          "util.rkt"
@@ -65,14 +66,14 @@
 
 ;; ----
 
-(define ((make-db-ERP last-db current-db) tag sample _get-dist)
+(define ((make-db-ERP last-db current-db) tag dist)
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
          (let ([frame (last context)])
            (and (list? frame) (memq 'mem frame)))))
   (define (new!)
-    (define result (sample))
+    (define result (sample dist))
     (hash-set! current-db context (entry tag result))
     result)
   (cond [(hash-ref current-db context #f)

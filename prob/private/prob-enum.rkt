@@ -156,10 +156,10 @@ anything reasonable, probably.)
 
 ;; ----
 
-(define (enum-ERP tag _sampler get-dist)
-  ;; (define g (gensym '@))
-  (let* ([dist (get-dist)]
-         [vals (discrete-dist-values dist)]
+(define (enum-ERP tag dist)
+  (unless (memq (car tag) '(flip discrete))
+    (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
+  (let ([vals (discrete-dist-values dist)]
          [probs (discrete-dist-probs dist)]
          [memo-table (unbox (current-global-memo-table))])
     (call-with-composable-continuation
