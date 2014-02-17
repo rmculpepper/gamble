@@ -1,6 +1,5 @@
 #lang racket/base
 (require racket/list
-         math/distributions
          data/order
          "context.rkt"
          "util.rkt"
@@ -73,7 +72,7 @@
          (let ([frame (last context)])
            (and (list? frame) (memq 'mem frame)))))
   (define (new!)
-    (define result (sample dist))
+    (define result (dist-sample dist))
     (hash-set! current-db context (entry tag result))
     result)
   (cond [(hash-ref current-db context #f)

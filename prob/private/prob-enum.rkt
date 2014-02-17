@@ -2,7 +2,6 @@
 (require racket/match
          data/heap
          data/order
-         math/distributions
          racket/control
          unstable/markparam
          "prob-hooks.rkt"
@@ -192,45 +191,37 @@ anything reasonable, probably.)
    ctag))
 
 (define (dist->vals+probs tag dist)
-  (match tag
-    [(list* 'binomial _)
-     (let-values ([(vals probs)
-                   (for/lists (vals probs) ([i (in-range (add1 (cadr tag)))])
-                     (values i (pdf dist i)))])
-       (values vals probs #f))]
-    [(list* 'geometric _)
-     (special-dist->vals+probs tag dist 0)]
-    [(list* 'poisson _)
-     (special-dist->vals+probs tag dist 0)]
-    [(list* 'continue-special start base-tag)
-     (special-dist->vals+probs base-tag dist start)]
-    [_
-     (values (discrete-dist-values dist)
-             (discrete-dist-probs dist)
-             #f)]))
+  (let ([enum (dist-enum dist)])
+    (cond [(eq? enum 'lazy)
+           (lazy-dist->vals+probs tag dist 0)]
+          [(eq? enum #f)
+           (error 'ERP "cannot enumerate non-integer distribution: ~s" tag)]
+          [else ;; positive integer
+           (define-values (vals probs)
+             (for/lists (vals probs) ([i (in-range enum)])
+               (values i (dist-pdf dist i))))
+           (values vals probs #f)])))
 
 (define TAKE 10)
-
-;; FIXME: scale underflow, +inf.0, +nan.0 ... when running:
-;; - (enumerate (geometric) 1e-7)
-;; - (enumerate (poisson 10) #:limit 1e-3)
-;; NOTE: "fixed" by avoiding 0.0-prob paths, but results now have
-;; very implausible jumps...
 
 ;; FIXME: for geometric, can use memoryless feature; just generate
 ;; same sequence each time (no need to scale/unscale)
 
-(define (special-dist->vals+probs tag dist start)
-  (define scale (- 1 (cdf dist (sub1 start))))
-  (define-values (vals probs)
-    (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
-      (values i (/ (pdf dist i) scale))))
-  ;; (eprintf "generated values: ~s\n" vals)
-  ;; (eprintf "generated probs: ~s\n" probs)
-  ;; (eprintf "tail prob is ~s\n" (- 1 (cdf dist (+ start TAKE -1))))
-  (values vals probs
-          (cons (/ (- 1 (cdf dist (+ start TAKE -1))) scale)
-                `(continue-special ,(+ start TAKE) . ,tag))))
+(define (lazy-dist->vals+probs tag dist start)
+  (match tag
+    [(list* 'continue-special _ (and base-tag (list* 'geometric _)))
+     ;; Special case: for geometric, no need to resume
+     (lazy-dist->vals+probs base-tag dist 0)]
+    [(list* 'continue-special start base-tag)
+     (lazy-dist->vals+probs base-tag dist start)]
+    [_
+     (define scale (- 1 (dist-cdf dist (sub1 start))))
+     (define-values (vals probs)
+       (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
+         (values i (/ (dist-pdf dist i) scale))))
+     (values vals probs
+             (cons (/ (- 1 (dist-cdf dist (+ start TAKE -1))) scale)
+                   `(continue-special ,(+ start TAKE) . ,tag)))]))
 
 (define (cons/f x xs) (if x (cons x xs) xs))
 
