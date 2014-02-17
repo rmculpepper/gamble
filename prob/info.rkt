@@ -1,3 +1,3 @@
-#lang setup/info
+#lang setup/infotab
 
 (define name "prob")

@@ -1,4 +1,4 @@
-#lang s-exp "main.rkt"
+#lang prob
 (require "private/viz.rkt")
 
 ;; Unlike pl1, doesn't print instrumented applications.
