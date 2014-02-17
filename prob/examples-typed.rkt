@@ -1,5 +1,11 @@
 #lang prob/typed
 
+;; Very preliminary typed version of language.
+;; Only a few bindings are provided.
+
+;; Code in the module works, but require doesn't, and
+;; the DrRacket REPL doesn't either. To be investigated...
+
 (: f : Integer -> Integer)
 (define (f x)
   (add1 x))
