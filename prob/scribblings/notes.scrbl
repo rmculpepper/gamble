@@ -17,6 +17,8 @@ Side effects, especially mutation, should be avoided.
 Solvers currently don't nest and don't mix well, particularly
 when it comes to memoized functions.
 
+My code is not written numerically carefully at all.
+
 @section{Notes on @racket[mh-sampler]}
 
 Currently the ``proposal function'' just picks an ERP choice at random
