@@ -11,7 +11,7 @@
 @(define the-eval (make-base-eval))
 @(the-eval '(require prob))
 
-@title[#:tag "notes"]{Notes, Limitations, and Known Bugs}
+@title[#:tag "notes"]{Notes, Plans, Limitations, and Known Bugs}
 
 Users must various language features, including side effects
 (particularly mutation) and certain higher-order functions in certain
@@ -162,4 +162,18 @@ What nestings are okay? I've put more thought and effort into the
       retain value.}
 ]
 
+@section{Plans}
+
+Improve the syntax of @racket[mh-sampler] etc to support conditions
+intermixed with definitions, subject to proper scoping. That would
+make it easier (potentially) to reject samples at an earlier stage.
+
+Module/unit/structure/functor-like thing for models. Should be able to
+define a model once and then plug it into any kind of sampler/solver
+framework, compose it with other models, add conditions, apply
+transformations (eg, replace definitions a la traits or mixin
+modules?), etc.
+
+Address-based caching.
+              
 @(close-eval the-eval)
