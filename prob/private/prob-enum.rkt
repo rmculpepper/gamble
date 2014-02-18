@@ -42,6 +42,42 @@ in which it was created? (The current implementation doesn't do
 anything reasonable, probably.)
 |#
 
+
+#|
+
+How to make enumeration nest?
+
+(enum ;; outer
+ ...
+ (enum ;; inner
+  ...))
+
+- Straightforward except for mem:
+
+  - An outer-created memoized function that is invoked in the inner
+    enum should fork its possibilities to the *outer* prompt.
+  - Except... what if the outer-mem-fun calls its argument, which is an
+    inner-mem-fun? Then that "should" fork its possibilities to inner
+    prompt.
+  - Bleh, mem probably only makes sense on first-order functions.
+  - Alternatively, in that case we say the inner-mem-fun has escaped
+    its context, error. (In general, mem-fun that escapes its context
+    is problematical, except for direct-style mem.)
+  - What if outer-mem-fun is (lambda (n) (lambda () (flip (/ n))))?
+    Then if applied, gets thunk, then applied in inner, inner explores
+    branches. That seems reasonable.
+
+  - Anyway... when an outer-mem-fun is invoked, it needs to restore
+    the outer ERP (and mem) impls.
+    - That means nested enum can't use parameterize ... :/
+    - A memoized function must close over the activation support (ctag,
+      markparam) for the mem that created it.
+  - Each enumeration activation needs a separate prompt tag and
+    memo-table key.
+  - explore must be rewritten in pure code: find functional priority
+    queue (PFDS from planet?), use immutable hash, etc
+|#
+
 ;; BUG/LIMITATION:
 ;; - delimited continuations captured by ERP *must not* use include
 ;;   uses of parameterize, because Racket's parameterize is not correct
