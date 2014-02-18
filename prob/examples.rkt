@@ -134,3 +134,34 @@
  ;; Need to decrease limit to detect #t case:
  #:limit #f)
 |#
+
+;; Nested enumerations
+#|
+(enumerate
+ (define A (flip))
+ (define B
+   (enumerate
+    (define C (flip))
+    (define D (flip))
+    (or C D)
+    #:when (or (and C D) A)))
+ (list A B))
+
+;; with mem (trivial)
+(enumerate
+ (define A (mem flip))
+ (define B
+   (enumerate
+    (define C (flip))
+    (define D (flip))
+    (or C D)
+    #:when (or (and C D) (A))))
+ (list (A) B))
+
+;; memoized function escaping context produces error
+(enumerate
+ (define B
+   (enumerate
+    (mem flip)))
+ ((caar B)))
+|#

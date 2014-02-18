@@ -85,9 +85,17 @@ How to make enumeration nest?
 ;;   (ok to use parameterize, just not in captured part of continuation)
 ;;   FIXME: possible to detect and issue error??
 
-;; Use default prompt tag for mark-parameter, ctag for delimited
-;; continuations.
-(define ctag (make-continuation-prompt-tag))
+;; Each enumeration activation has a prompt-tag and memo-table key.
+;; The current prompt-tag is stored by ctag-key.f
+
+(define ctag-table (make-weak-hasheq))
+(define (ctag-name ctag)
+  (hash-ref! ctag-table ctag (lambda () (gensym 'CTAG_))))
+
+;; CCM(activation-key) : (cons PromptTag MarkParameter)
+(define activation-key (mark-parameter))
+
+;; CCM(memo-key) : (Boxof (Hash[ArgList => Result]))
 
 ;; A (EnumTree A) is one of
 ;; - (only A)
@@ -95,21 +103,16 @@ How to make enumeration nest?
 (struct only (answer))
 (struct split (subs))
 
-;; current-global-memo-table : (parameterof (boxof (hash[list => result])))
-(define current-global-memo-table (mark-parameter))
-
 ;; enumerate* : (-> A) (A -> Boolean) (A -> B) etc -> (Listof (List B Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
 (define (enumerate* thunk pred [project values]
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
+  (define memo-key (mark-parameter))
+  (define memo-table (hash))
+  (define ctag (make-continuation-prompt-tag))
   (define-values (table prob-unexplored prob-accepted)
-    (explore (let ([memo-table
-                    (cond [(current-global-memo-table)
-                           ;; means recursive enumerate ...
-                           => unbox]
-                          [else (hash)])])
-               (call-with-enum-context memo-table (lambda () (only (thunk)))))
+    (explore (call-with-enum-context ctag memo-key memo-table (lambda () (only (thunk))))
              pred project limit))
   (when (verbose?)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
@@ -120,6 +123,16 @@ How to make enumeration nest?
   (when (and normalize? (zero? prob-accepted))
     (error 'enumerate "probability of accepted paths underflowed to 0"))
   (tabulate table prob-accepted #:normalize? normalize?))
+
+;; calls thunk with memo-table in fresh box, parameters set up
+(define (call-with-enum-context ctag memo-key memo-table thunk)
+  (parameterize ((current-ERP enum-ERP)
+                 (current-mem enum-mem))
+    (mark-parameterize ((memo-key (box memo-table))
+                        (activation-key (cons ctag memo-key)))
+      (call-with-continuation-prompt thunk ctag))))
+
+;; ----
 
 ;; explore : (EnumTree A) (A -> Boolean) (A -> B) Prob
 ;;        -> hash[B => Prob] Prob Prob
@@ -211,7 +224,10 @@ How to make enumeration nest?
 (define (enum-ERP tag dist)
   (unless (memq (car tag) '(flip discrete binomial geometric poisson continue-special))
     (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
-  (define memo-table (unbox (current-global-memo-table)))
+  (define activation (activation-key))
+  (define ctag (car activation))
+  (define memo-key (cdr activation))
+  (define memo-table (unbox (memo-key)))
   (define-values (vals probs tail-prob+tag)
     (dist->vals+probs tag dist))
   (call-with-composable-continuation
@@ -225,13 +241,14 @@ How to make enumeration nest?
                             [tail-tag (cdr tail-prob+tag)])
                         (cons tail-prob
                               (lambda ()
-                                (call-with-enum-context memo-table
+                                (call-with-enum-context ctag memo-key memo-table
                                   (lambda () (k (enum-ERP tail-tag dist))))))))
                  (for/list ([val (in-list vals)]
                             [prob (in-list probs)])
                    (cons prob
                          (lambda ()
-                           (call-with-enum-context memo-table (lambda () (k val)))))))))))
+                           (call-with-enum-context ctag memo-key memo-table
+                             (lambda () (k val)))))))))))
    ctag))
 
 (define (dist->vals+probs tag dist)
@@ -247,9 +264,6 @@ How to make enumeration nest?
            (values vals probs #f)])))
 
 (define TAKE 10)
-
-;; FIXME: for geometric, can use memoryless feature; just generate
-;; same sequence each time (no need to scale/unscale)
 
 (define (lazy-dist->vals+probs tag dist start)
   (match tag
@@ -269,30 +283,31 @@ How to make enumeration nest?
 
 (define (cons/f x xs) (if x (cons x xs) xs))
 
-;; calls thunk with memo-table in fresh box, parameters set up
-(define (call-with-enum-context memo-table thunk)
-  (parameterize ((current-ERP enum-ERP)
-                 (current-mem enum-mem))
-    (mark-parameterize ((current-global-memo-table (box memo-table)))
-      (call-with-continuation-prompt
-       thunk
-       ctag))))
-
 ;; ----
 
-;; use global-memo-table to effects can be unwound
 (define (enum-mem f)
-  (lambda args
-    (let ([b (current-global-memo-table)]
+  (define activation (activation-key))
+  (define ctag (car activation))
+  (define memo-key (cdr activation))
+  (define (memoized-function . args)
+    (let ([b (memo-key)]
           [key (cons f args)])
+      (unless (continuation-prompt-available? ctag)
+        (error 'mem
+               "memoized function escaped its creating context\n  function: ~e\n  arguments: ~e\n"
+               f args))
       (cond [(hash-has-key? (unbox b) key)
              (hash-ref (unbox b) key)]
             [else
-             (let ([v (apply f args)])
-               ;; NOTE: outer b might be stale, if f called ERP!
-               (let ([b (current-global-memo-table)])
-                 (set-box! b (hash-set (unbox b) key v))
-                 v))]))))
+             ;; Call with saved activation; may be outer enumeration!
+             (define v
+               (mark-parameterize ((activation-key (cons ctag memo-key)))
+                 (apply f args)))
+             ;; NOTE: outer b might be stale, if f called ERP!
+             (define b (memo-key))
+             (set-box! b (hash-set (unbox b) key v))
+             v])))
+  memoized-function)
 
 #|
 TODO: reify-reflect
