@@ -78,23 +78,6 @@ How to make enumeration nest?
     queue (PFDS from planet?), use immutable hash, etc
 |#
 
-#|
-What nestings are okay?
- - enum within enum
-   mem both ways okay: either works or raises sensible error
-   except HO case... TODO: need way to mark activation illegal
- - enum within mh: should just work
-   (if mh gets caching, TODO: disable within enum)
-   - outer-mem-fun called in inner ok
-   - inner-mem-fun called in outer
-     - error if out of dynamic extent enum (TODO: confirm)
-     - if HO, TODO: mark activation illegal
- - mh within mh, TODO: confirm
-   - inner mh db won't affect outer mh
- - mh within enum: should work, but need to prohibit
-   outer-mem-fun from begin called from mh
-|#
-
 ;; BUG/LIMITATION:
 ;; - delimited continuations captured by ERP *must not* use include
 ;;   uses of parameterize, because Racket's parameterize is not correct

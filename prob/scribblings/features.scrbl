@@ -5,17 +5,31 @@
           racket/list
           (for-label racket/contract
                      math/distributions
-                     prob))
+                     prob
+                     prob/viz))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require prob))
+@(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
 
 @title[#:tag "features"]{Probabilistic Features}
 
+The probabilistic features of this language consist of @tech[#:key
+"erp"]{elementary random procedures (ERPs)}, a memoizer, and a set of
+sampler/solvers.
+
+At a high level, every ERP when called produces a value from an
+associated probability distribution. The precise behavior of an ERP,
+however, depends on the sampler/solver context it is executed
+under. In a @racket[mh-sampler] context, for example, an ERP might
+reuse a choice from a previous run, subject to random
+perturbations. In an @racket[enumeration] context, an ERP will fork
+its context and potentially the consequences of all values in its
+distribution.
+
 @section[#:tag "erps"]{Elementary Random Procedures}
 
-An elementary random procedure (@deftech{ERP}) returns a value drawn
-from some distribution each time it is called.
+An @deftech[#:key "erp"]{elementary random procedure (ERP)} returns a
+value drawn from some distribution each time it is called.
 
 @subsection[#:tag "discrete-erps"]{Discrete ERPs}
 
@@ -130,12 +144,16 @@ respectively.
 }
 
 
-@section[#:tag "mem"]{Stochastic Memoization}
+@section[#:tag "mem"]{Memoization}
 
 @defproc[(mem [f procedure?])
          procedure?]{
 
 Returns a memoized version of @racket[f].
+
+In general, a memoized function must not be called outside of the
+dynamic extent of the sampler/solver context in which it was
+created. See @seclink["nesting"] for more discussion.
 
 @examples[#:eval the-eval
 (define f (mem (lambda (n) (d2))))
@@ -145,9 +163,6 @@ Returns a memoized version of @racket[f].
 (for/list ([i 10]) (f i))
 (for/list ([i 10]) (f i))
 ]
-
-TODO: document interaction between memoized functions and dynamic
-extents of solvers.
 }
 
 
@@ -185,6 +200,29 @@ list.
 Lags a @tech{sampler}; when the resulting thunk is called, the given
 @racket[thunk] is called @racket[n] times and only the last value is
 returned.
+
+@examples[#:eval the-eval
+(repeat (lag (let ([n 0]) (lambda () (set! n (add1 n)) n)) 10) 10)
+]
+}
+
+
+@section[#:tag "viz"]{Visualization Utilities}
+
+@defmodule[prob/viz]
+
+This module provides very basic utilities for visualizing data. For a
+much more flexible and comprehensive visualization support, see the
+@racketmodname[plot] library.
+
+@defproc[(hist [vals (listof any/c)])
+         @#,elem{display}]{
+
+Plots a histogram of @racket[vals].
+
+@examples[#:eval the-eval
+(hist (list 1 2 3 1 1))
+]
 }
 
 

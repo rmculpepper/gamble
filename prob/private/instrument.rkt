@@ -170,7 +170,7 @@ distinct call-site indexes.
           #'(letrec-syntaxes+values ([svars srhs] ...) ([vvars (instrument vrhs #:nt)] ...)
               (instrument body #:nt) ... (instrument body* m))]
          [(set! var e)
-          (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
+          ;; (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
           #'(set! var (instrument e #:nt))]
          [(quote d) stx]
          [(quote-syntax s) stx]
