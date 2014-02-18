@@ -151,12 +151,14 @@ How to make enumeration nest?
   ;; add : A Prob table prob-unexplored prob-accepted
   ;;    -> (values table prob-unexplored prob-accepted)
   (define (add a p table prob-unexplored prob-accepted)
+    ;; (eprintf "- consider add A=~s\n" a)
     (cond [(positive? p)
            (let ([prob-unexplored (- prob-unexplored p)])
              (cond [(pred a)
                     (let* ([b (project a)]
                            [prob-accepted (+ p prob-accepted)]
                            [table (hash-set table b (+ p (hash-ref table b 0)))])
+                      ;; (eprintf "- add B=~s\n" b)
                       (values table prob-unexplored prob-accepted))]
                    [else
                     (values table prob-unexplored prob-accepted)]))]
@@ -199,6 +201,7 @@ How to make enumeration nest?
           [else
            (let* ([sub (heap-find-min/max h)]
                   [h (heap-delete-min/max h)])
+             ;; (eprintf "- picked ~s\n" sub)
              (let-values ([(h table prob-unexplored prob-accepted)
                            (traverse-tree ((cdr sub)) (car sub)
                                           h table prob-unexplored prob-accepted)])

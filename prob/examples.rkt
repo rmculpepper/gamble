@@ -165,3 +165,32 @@
     (mem flip)))
  ((caar B)))
 |#
+
+(define (other-color c) (if (eq? c 'blue) 'green 'blue))
+
+#|
+(enumerate
+ (define num-balls (max 1 (poisson 6)))
+ (define color (mem (lambda (b) (discrete (list 'blue 'green)))))
+ (define drawn (mem (lambda (d) (discrete num-balls))))
+ (define (obs-color d)
+   (if (flip 0.8) 
+       (color (drawn d))
+       (other-color (color (drawn d)))))
+ num-balls
+ #:when (equal? (map obs-color '(1 2 3 4))
+                '(blue blue blue green)))
+
+(enumerate
+ (define num-balls (max 1 (poisson 6)))
+ (define colors (for/list ([b num-balls]) (discrete '(blue green))))
+ (define drawn (for/list ([d 4]) (discrete num-balls)))
+ (define (obs-color d)
+   (if (flip 0.8) 
+       (list-ref colors (list-ref drawn d))
+       (other-color (list-ref colors (list-ref drawn d)))))
+ num-balls
+ #:when (equal? (for/list ([d 4]) (obs-color d))
+                '(blue blue blue green))
+ #:limit 1e-1)
+|#
