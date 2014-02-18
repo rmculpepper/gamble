@@ -30,16 +30,15 @@ conditions. Would that be a profitable place to spend effort?
 |#
 
 #|
-For mem, have a global store that gets rewound after each ERP choice
-exploration.
+For mem, have an activation-specific store that gets rewound after
+each ERP choice exploration.
 
-Use markparam to store current global store. (Racket parameters don't
+Use markparam to store the memotable. (Racket parameters don't
 work well with delimited continuations.) Since prompts also delimit
 CCM, need a separate prompt tag (sigh... it's complicated).
 
 What should it mean for a memoized function to escape the enumeration
-in which it was created? (The current implementation doesn't do
-anything reasonable, probably.)
+in which it was created? Should probably be forbidden.
 |#
 
 
@@ -70,12 +69,30 @@ How to make enumeration nest?
   - Anyway... when an outer-mem-fun is invoked, it needs to restore
     the outer ERP (and mem) impls.
     - That means nested enum can't use parameterize ... :/
+      ??? Doesn't work without parameterize ... investigate?
     - A memoized function must close over the activation support (ctag,
       markparam) for the mem that created it.
   - Each enumeration activation needs a separate prompt tag and
     memo-table key.
   - explore must be rewritten in pure code: find functional priority
     queue (PFDS from planet?), use immutable hash, etc
+|#
+
+#|
+What nestings are okay?
+ - enum within enum
+   mem both ways okay: either works or raises sensible error
+   except HO case... TODO: need way to mark activation illegal
+ - enum within mh: should just work
+   (if mh gets caching, TODO: disable within enum)
+   - outer-mem-fun called in inner ok
+   - inner-mem-fun called in outer
+     - error if out of dynamic extent enum (TODO: confirm)
+     - if HO, TODO: mark activation illegal
+ - mh within mh, TODO: confirm
+   - inner mh db won't affect outer mh
+ - mh within enum: should work, but need to prohibit
+   outer-mem-fun from begin called from mh
 |#
 
 ;; BUG/LIMITATION:
