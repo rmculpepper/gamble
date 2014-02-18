@@ -38,9 +38,9 @@
   (for/fold ([h (PairingHeap comparer null)]) ([a (in-list lst)])
     (heap-insert h a)))
 
-;; heap-insert : (All (A) (A (PairingHeap A) -> (PairingHeap A)))
+;; heap-insert : (All (A) ((PairingHeap A) A -> (PairingHeap A)))
 ;; Inserts an element into the heap
-(define (heap-insert elem pheap)
+(define (heap-insert pheap elem)
   (let ([comparer (PairingHeap-comparer pheap)])
     (PairingHeap comparer
                  (in-merge (Tree elem null) 
