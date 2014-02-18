@@ -57,17 +57,18 @@
   (case-lambda
     [(n/vals)
      (cond [(and (list? n/vals) (pair? n/vals))
-            (inexact->exact
-             (floor
-              (ERP `(discrete ,n/vals)
-                   (make-dist uniform #:params (ZERO n/vals) #:enum n/vals))))]
-           [(exact-positive-integer? n/vals)
             (let ([n (length n/vals)])
               (list-ref n/vals
                         (inexact->exact
                          (floor
                           (ERP `(discrete ,n/vals)
                                (make-dist uniform #:params (ZERO n) #:enum n))))))]
+           [(exact-positive-integer? n/vals)
+            (let ([n n/vals])
+              (inexact->exact
+               (floor
+                (ERP `(discrete ,n)
+                     (make-dist uniform #:params (ZERO n) #:enum n)))))]
            [else
             (raise-argument-error 'discrete
               "(or/c exact-positive-integer? (and/c list? pair?))" 0 n/vals)])]
