@@ -1,10 +1,10 @@
 #lang racket/base
 (require racket/match
-         data/heap
          data/order
          racket/control
          unstable/markparam
          "prob-hooks.rkt"
+         "pairingheap.rkt"
          "util.rkt")
 (provide enumerate*
          enum-ERP
@@ -128,65 +128,77 @@ How to make enumeration nest?
 (define (explore tree pred project limit)
   (define prob-unexplored 1) ;; prob of all unexplored paths
   (define prob-accepted 0) ;; prob of all accepted paths
-  (define table (make-hash)) ;; hash[B => Prob], probs are not normalized
-  (define seen '()) ;; (listof B), reversed; FIXME currently not used
-  ;; add! : A Prob -> void
-  (define (add! a p)
-    (cond [(positive? p)
-           (set! prob-unexplored (- prob-unexplored p))
-           (when (pred a)
-             (let ([b (project a)])
-               (unless (hash-has-key? table b)
-                 (set! seen (cons b seen)))
-               (set! prob-accepted (+ p prob-accepted))
-               (hash-set! table b (+ p (hash-ref table b 0)))))]
-          [else
-           (when #t ;; (verbose?)
-             (eprintf "WARNING: bad prob ~s for ~s\n" p (project a)))]))
+  (define table (hash)) ;; hash[B => Prob], probs are not normalized
 
   ;; h: heap[(cons Prob (-> (EnumTree A)))]
   (define (entry->=? x y)
     (>= (car x) (car y)))
-  (define h (make-heap entry->=?)) ;; Racket has "min-heaps", but want max prob, so >=
+  (define h (heap entry->=?)) ;; "min-heap", but want max prob, so >=
 
-  (define (traverse-tree et prob-of-tree)
+  ;; add : A Prob table prob-unexplored prob-accepted
+  ;;    -> (values table prob-unexplored prob-accepted)
+  (define (add a p table prob-unexplored prob-accepted)
+    (cond [(positive? p)
+           (let ([prob-unexplored (- prob-unexplored p)])
+             (cond [(pred a)
+                    (let* ([b (project a)]
+                           [prob-accepted (+ p prob-accepted)]
+                           [table (hash-set table b (+ p (hash-ref table b 0)))])
+                      (values table prob-unexplored prob-accepted))]
+                   [else
+                    (values table prob-unexplored prob-accepted)]))]
+          [else
+           (when #t ;; (verbose?)
+             (eprintf "WARNING: bad prob ~s for ~s\n" p (project a)))
+           (values table prob-unexplored prob-accepted)]))
+
+  ;; traverse-tree : (EnumTree A) Prob ... -> (values h table prob-unexplored prob-accepted)
+  (define (traverse-tree et prob-of-tree h table prob-unexplored prob-accepted)
     (match et
       [(only a)
-       (add! a prob-of-tree)]
+       (let-values ([(table prob-unexplored prob-accepted)
+                     (add a prob-of-tree table prob-unexplored prob-accepted)])
+         (values h table prob-unexplored prob-accepted))]
       [(split subs)
-       (for ([sub (in-list subs)])
+       (for/fold ([h h] [table table] [prob-unexplored prob-unexplored] [prob-accepted prob-accepted])
+           ([sub (in-list subs)])
          (match sub
            [(cons p lt)
             (let ([p* (* prob-of-tree p)])
               (cond [(positive? p)
-                     (heap-add! h (cons p* lt))]
+                     (values (heap-insert h (cons p* lt)) table prob-unexplored prob-accepted)]
                     [else
                      (when (verbose?)
-                       (eprintf "WARNING: bad prob ~s in path\n" p*))]))]))]))
+                       (eprintf "WARNING: bad prob ~s in path\n" p*))
+                     (values h table prob-unexplored prob-accepted)]))]))]))
 
-  ;; FIXME: detect path prob underflow to 0.
-  ;; FIXME: prob-unexplored can drop below zero because of floating-point
-  ;; inaccuracy. Any remedy?
-  (traverse-tree tree 1)
-  (let loop ()
+  ;; heap-loop : ... -> ...
+  (define (heap-loop h table prob-unexplored prob-accepted)
     (cond [(and limit (< prob-unexplored (* limit prob-accepted)))
            ;; Done!
            (when (positive? (heap-count h))
              (when (verbose?)
                (eprintf "stopping with ~s unexplored path(s)\n" (heap-count h))))
-           (void)]
+           (done h table prob-unexplored prob-accepted)]
           [(zero? (heap-count h))
            ;; explored all paths
-           (void)]
+           (done h table prob-unexplored prob-accepted)]
           [else
-           (define sub (heap-min h)) ;; actually max prob
-           (heap-remove-min! h)
-           ;; (eprintf "** prob-unexplored = ~s; prob-accepted = ~s\n" prob-unexplored prob-accepted)
-           ;; (eprintf "** picked ~s\n" sub)
-           (traverse-tree ((cdr sub)) (car sub))
-           (loop)]))
+           (let* ([sub (heap-find-min/max h)]
+                  [h (heap-delete-min/max h)])
+             (let-values ([(h table prob-unexplored prob-accepted)
+                           (traverse-tree ((cdr sub)) (car sub)
+                                          h table prob-unexplored prob-accepted)])
+               (heap-loop h table prob-unexplored prob-accepted)))]))
 
-  (values table prob-unexplored prob-accepted))
+  (define (done h table prob-unexplored prob-accepted)
+    (values table prob-unexplored prob-accepted))
+
+  ;; FIXME: prob-unexplored can drop below zero because of floating-point
+  ;; inaccuracy. Any remedy?
+  (let-values ([(h table prob-unexplored prob-accepted)
+                (traverse-tree tree 1 h table prob-unexplored prob-accepted)])
+    (heap-loop h table prob-unexplored prob-accepted)))
 
 (define (tabulate table prob-accepted #:normalize? [normalize? #t])
   (define entries
