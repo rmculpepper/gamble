@@ -99,10 +99,10 @@ The context of an ERP use must not include any uses of
 @racket[parameterize], which doesn't cooperate correctly with
 delimited continuations.
 
-I believe I implemented importance sampling, but @cite{EPP} is vague
-about exactly how it works, so there might be deviations. I also made
-up some stuff to handle countable distributions and infinite trees by
-pruning low-relevance paths.
+I haven't quite figured out what importance sampling is.
+
+I made up some stuff to handle countable distributions and infinite
+trees by pruning low-relevance paths.
 
 Note: pruning only happens on terminated paths. There's no way to
 reject a path based on the choices it's made so far. How would such a
