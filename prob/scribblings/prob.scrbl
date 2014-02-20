@@ -13,6 +13,8 @@
 
 @defmodulelang[prob]
 
+@(local-table-of-contents)
+
 @bold{Development} Development of this library is hosted by
 @hyperlink["http://github.com"]{GitHub} at the following project page:
 
