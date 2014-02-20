@@ -1,3 +1,7 @@
+;; Copyright (c) 2014 Ryan Culpepper
+;; Released under the terms of the 2-clause BSD license.
+;; See the file COPYRIGHT for details.
+
 ;; Aggregating module for library functions and syntax.
 ;; Doesn't include instrumentor.
 

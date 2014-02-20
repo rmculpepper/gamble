@@ -1,3 +1,7 @@
+;; Copyright (c) 2014 Ryan Culpepper
+;; Released under the terms of the 2-clause BSD license.
+;; See the file COPYRIGHT for details.
+
 ;; A language for probabilistic programming
 
 #lang racket/base

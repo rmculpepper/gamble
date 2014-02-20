@@ -1,3 +1,7 @@
+;; Copyright (c) 2014 Ryan Culpepper
+;; Released under the terms of the 2-clause BSD license.
+;; See the file COPYRIGHT for details.
+
 #lang s-exp "instrumenting-lang.rkt"
 (require (only-in racket/base [map racket:map]))
 (provide map
