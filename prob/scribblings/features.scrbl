@@ -68,6 +68,13 @@ corresponding element in @racket[weights], if present.
 See also @racket[discrete-dist].
 }
 
+@defproc[(discrete-from-enumeration [dist (listof (list/c any/c (>/c 0)))])
+         any/c]{
+
+Given @racket[(list (list _val _weight) ...)], equivalent to
+@racket[(discrete (list _val ...) (list _weight ...))].
+}
+
 
 @subsection[#:tag "integer-erps"]{Integer-Valued ERPs}
 
