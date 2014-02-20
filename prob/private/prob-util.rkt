@@ -1,5 +1,6 @@
 #lang racket/base
 (require math/distributions
+         racket/flonum
          racket/contract/base
          "prob-hooks.rkt"
          "util.rkt")
@@ -30,7 +31,10 @@
   [flip
    (->* [] [probability?] boolean?)]
   [d2
-   (->* [] [probability?] (or/c 1 0))])
+   (->* [] [probability?] (or/c 1 0))]
+  [discrete-from-enumeration
+   (-> (non-empty-listof (list/c any/c (>/c 0)))
+       any)])
  discrete)
 
 ;; flip : Prob -> (U #t #f)
@@ -48,9 +52,6 @@
    (ERP `(bernoulli ,prob)
         (make-dist bernoulli #:params (prob) #:enum 2))))
 
-;; Used in #:params, syntactically required to be identifier.
-(define ZERO 0.0)
-
 ;; discrete : Nat -> Nat
 ;; discrete : (listof (list A Prob))) -> A
 (define discrete
@@ -62,13 +63,13 @@
                         (inexact->exact
                          (floor
                           (ERP `(discrete ,n/vals)
-                               (make-dist uniform #:params (ZERO n) #:enum n))))))]
+                               (make-dist uniform #:params (0 n) #:enum n))))))]
            [(exact-positive-integer? n/vals)
             (let ([n n/vals])
               (inexact->exact
                (floor
                 (ERP `(discrete ,n)
-                     (make-dist uniform #:params (ZERO n) #:enum n)))))]
+                     (make-dist uniform #:params (0 n) #:enum n)))))]
            [else
             (raise-argument-error 'discrete
               "(or/c exact-positive-integer? (and/c list? pair?))" 0 n/vals)])]
@@ -82,16 +83,36 @@
               "values and probability weights have different lengths\n  values: ~e\n  weights: ~e"
               vals probs))
      (define n (length vals))
-     (lookup-discrete vals probs 
-                      (ERP `(discrete ,vals ,probs)
-                           (make-dist uniform #:params (ZERO n) #:enum n)))]))
+     (list-ref vals (inexact->exact
+                     (ERP `(discrete ,vals ,probs)
+                          (let ([prob-sum (apply + probs)])
+                            (make-dist discrete #:raw-params (probs prob-sum) #:enum n)))))]))
 
-(define (lookup-discrete vals probs p)
-  (cond [(null? vals)
-         (error 'discrete "internal error: out of values")]
-        [(< p (car probs))
-         (car vals)]
-        [else (lookup-discrete (cdr vals) (cdr probs) (- p (car probs)))]))
+(define (discrete-from-enumeration e)
+  (discrete (map car e) (map cadr e)))
+
+;; Discrete weighted dist functions
+(define (fldiscrete-pdf probs prob-sum k log?)
+  (/ (list-ref probs (inexact->exact k)) prob-sum))
+(define (fldiscrete-cdf probs prob-sum k log? 1-p?)
+  (when (or log? 1-p?) (error 'fldiscrete-cdf "unimplemented"))
+  (let ([k (inexact->exact k)])
+    (/ (for/sum ([i (in-range (add1 k))] [prob (in-list probs)]) prob)
+       prob-sum)))
+(define (fldiscrete-inv-cdf probs prob-sum p log? 1-p?)
+  (when (or log? 1-p?) (error 'fldiscrete-inv-cdf "unimplemented"))
+  (let loop ([probs probs] [p (* p prob-sum)] [i 0])
+    (cond [(null? probs)
+           (error 'fldiscrete-inv-cdf "out of values")]
+          [(< p (car probs))
+           i]
+          [else
+           (loop (cdr probs) (- p (car probs)) (add1 i))])))
+(define (fldiscrete-sample probs prob-sum n)
+  (define v (make-flvector n))
+  (for ([i (in-range n)])
+    (flvector-set! v i (fldiscrete-inv-cdf probs prob-sum (random) #f #f)))
+  v)
 
 ;; == Countable distributions ==
 

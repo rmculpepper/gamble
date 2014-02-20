@@ -54,26 +54,32 @@
 (define-syntax (make-dist stx)
   (syntax-case stx ()
     [(make-dist name #:params (param ...) #:enum enum)
+     (with-syntax ([(tmp-param ...) (generate-temporaries #'(param ...))])
+       #'(let ([tmp-param (exact->inexact param)] ...)     
+           (make-dist* name #:params (tmp-param ...) #:enum enum)))]
+    [(make-dist name #:raw-params (param ...) #:enum enum)
+     #'(make-dist* name #:params (param ...) #:enum enum)]))
+
+(define-syntax (make-dist* stx)
+  (syntax-case stx ()
+    [(make-dist* name #:params (param ...) #:enum enum)
      (with-syntax ([name-pdf (format-id #'name "~a-pdf" #'name)]
                    [name-cdf (format-id #'name "~a-cdf" #'name)]
                    [name-inv-cdf (format-id #'name "~a-inv-cdf" #'name)]
                    [name-sample (format-id #'name "~a-sample" #'name)]
-
                    [fl-pdf (format-id #'name "fl~a-pdf" #'name)]
                    [fl-cdf (format-id #'name "fl~a-cdf" #'name)]
                    [fl-inv-cdf (format-id #'name "fl~a-inv-cdf" #'name)]
-                   [fl-sample (format-id #'name "fl~a-sample" #'name)]
-                   )
-       #'(let ([param (exact->inexact param)] ...)
-           (let ([name-pdf
-                  (lambda (x log?) (fl-pdf param ... (exact->inexact x) log?))]
-                 [name-cdf
-                  (lambda (x log? 1-p?) (fl-cdf param ... (exact->inexact x) log? 1-p?))]
-                 [name-inv-cdf
-                  (lambda (p log? 1-p?) (fl-inv-cdf param ... (exact->inexact p) log? 1-p?))]
-                 [name-sample
-                  (lambda (n) (fl-sample param ... n))])
-             (pdist name-pdf name-cdf name-inv-cdf name-sample enum))))]))
+                   [fl-sample (format-id #'name "fl~a-sample" #'name)])
+       #'(let ([name-pdf
+                (lambda (x log?) (fl-pdf param ... (exact->inexact x) log?))]
+               [name-cdf
+                (lambda (x log? 1-p?) (fl-cdf param ... (exact->inexact x) log? 1-p?))]
+               [name-inv-cdf
+                (lambda (p log? 1-p?) (fl-inv-cdf param ... (exact->inexact p) log? 1-p?))]
+               [name-sample
+                (lambda (n) (fl-sample param ... n))])
+           (pdist name-pdf name-cdf name-inv-cdf name-sample enum)))]))
 
 (define (dist? x)
   (pdist? x))

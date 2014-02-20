@@ -292,9 +292,10 @@ How to make enumeration nest?
   (define activation (activation-key))
   (define ctag (car activation))
   (define memo-key (cdr activation))
+  (define f-key (gensym))
   (define (memoized-function . args)
     (let ([b (memo-key)]
-          [key (cons f args)])
+          [key (cons f-key args)])
       (unless (continuation-prompt-available? ctag)
         (error 'mem
                "memoized function escaped its creating context\n  function: ~e\n  arguments: ~e\n"

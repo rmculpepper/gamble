@@ -99,6 +99,25 @@ The context of an ERP use must not include any uses of
 @racket[parameterize], which doesn't cooperate correctly with
 delimited continuations.
 
+@cite{EPP} talks about 
+@itemlist[
+
+@item{@bold{reification and reflection}---Working, using @racket[enumerate]
+to reify and @racket[discrete-from-enumeration] to reflect. See
+example @tt{xor-flips} (exponential time) and @tt{xor-flips*}
+(linear).
+
+Question: is the @tt{memo} function at the end of@cite{EPP} section 3
+just naive memoization?}
+
+@item{@bold{importance sampling with look-ahead}---Not implemented
+yet. Looks promising.}
+
+@item{@bold{lazy evaluation}---I think the implementation of
+@racket[mem] I have for is a generalization of their @tt{letlazy}. See @tt{flips-all-true} and @tt{flips-all-true*} for supporting evidence.}
+
+]
+
 I haven't quite figured out what importance sampling is.
 
 I made up some stuff to handle countable distributions and infinite

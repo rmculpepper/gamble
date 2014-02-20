@@ -194,3 +194,44 @@
                 '(blue blue blue green))
  #:limit 1e-1)
 |#
+
+#|
+;; reify/reflect = enumerate and discrete/enumeration
+(define (xor a b)
+  (and (or a b) (not (and a b))))
+
+(define (xor-flips n)
+  (let loop ([n n])
+    (if (zero? n)
+        #f
+        (xor (flip) (loop (sub1 n))))))
+
+(time (enumerate (xor-flips 12)))
+
+(define (xor-flips* n)
+  (let loop ([n n])
+    (if (zero? n)
+        #f
+        (let ([r (discrete-from-enumeration
+                  (enumerate (loop (sub1 n))))])
+          (xor (flip) r)))))
+
+(time (enumerate (xor-flips* 120)))
+|#
+
+#|
+;; mem generalizes EPP letlazy
+(define (flips-all-true n)
+  (enumerate
+   (define Flips (for/list ([i n]) (flip)))
+   (andmap values Flips)))
+
+(time (flips-all-true 12))
+
+(define (flips-all-true* n)
+  (enumerate
+   (define LFlips (for/list ([i n]) (mem flip)))
+   (andmap (lambda (p) (p)) LFlips)))
+
+(time (flips-all-true* 12))
+|#
