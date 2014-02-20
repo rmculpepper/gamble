@@ -114,11 +114,10 @@ just naive memoization?}
 yet. Looks promising.}
 
 @item{@bold{lazy evaluation}---I think the implementation of
-@racket[mem] I have for is a generalization of their @tt{letlazy}. See @tt{flips-all-true} and @tt{flips-all-true*} for supporting evidence.}
+@racket[mem] I have for is a generalization of their @tt{letlazy}. See
+@tt{flips-all-true} and @tt{flips-all-true*} for supporting evidence.}
 
 ]
-
-I haven't quite figured out what importance sampling is.
 
 I made up some stuff to handle countable distributions and infinite
 trees by pruning low-relevance paths.
@@ -126,8 +125,6 @@ trees by pruning low-relevance paths.
 Note: pruning only happens on terminated paths. There's no way to
 reject a path based on the choices it's made so far. How would such a
 condition be formulated, and how would it be implemented?
-
-TODO: reify and reflect; see @cite{EPP}.
 
 @section[#:tag "nesting"]{Nesting Samplers/Solvers}
 
