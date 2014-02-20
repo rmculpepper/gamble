@@ -112,7 +112,7 @@ distribution:
 The @racket[enumerate] form can be used to approximate countable
 distributions by using a limit parameter; the tree search stops when
 the distribution is correct to within the given limit. (FIXME: is this
-description quite accurate?)
+description quite right?)
 
 @interaction[#:eval the-eval
 (define (geom)
@@ -122,7 +122,19 @@ description quite accurate?)
   #:limit 1e-6)
 ]
 
-The @racket[mem] function is also available in @racket[enumerate].
+Note that the probabilities are not quite the negative powers of 2,
+because they are normalized after the search stops at
+@racket[19]. There is an option to skip normalization, however:
+
+@interaction[#:eval the-eval
+(enumerate
+  (geom)
+  #:limit 1e-6
+  #:normalize? #f)
+]
+
+The @racket[enumerate] form supports memoization through
+@racket[mem]:
 
 @interaction[#:eval the-eval
 (enumerate
