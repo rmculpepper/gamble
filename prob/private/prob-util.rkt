@@ -191,7 +191,7 @@
 
 ;; exponential : PositiveReal -> PositiveReal
 ;; NOTE: mean aka scale = 1/rate
-(define (exponential mean)
+(define (exponential [mean 1])
   (ERP `(exponential ,mean)
        (make-dist exponential #:params (mean) #:enum #f)))
 
