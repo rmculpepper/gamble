@@ -229,7 +229,7 @@ How to make enumeration nest?
 ;; ----
 
 (define (enum-ERP tag dist)
-  (unless (memq (car tag) '(flip discrete binomial geometric poisson continue-special))
+  (unless (memq (car tag) '(bernoulli flip discrete binomial geometric poisson continue-special))
     (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
   (define activation (activation-key))
   (define ctag (car activation))
