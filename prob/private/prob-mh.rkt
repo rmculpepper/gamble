@@ -115,9 +115,10 @@ depending on only choices reused w/ different params.
       ;; Accept/reject
       (when (verbose?)
         (eprintf "# lldiff = ~s\n" (unbox current-lldiff)))
-      (cond [(< (log (random)) (unbox current-lldiff))
+      (define u (log (random)))
+      (cond [(< u (unbox current-lldiff))
              (when (verbose?)
-               (eprintf "# Accepted MH step\n"))
+               (eprintf "# Accepted MH step with ~s\n" u))
              (cond [(pred result)
                     ;; Post???
                     (when (verbose?)
@@ -144,6 +145,8 @@ depending on only choices reused w/ different params.
                    (hash-iterate-next db iter))])
            (hash-iterate-key db iter)))))
 
+(require math/distributions)
+
 ;; perturb! : DB Address (BoxOf Real) -> void
 (define (perturb! db key-to-change lldiff)
   ;; Most naive possible perturbation: just delete an entry
@@ -153,6 +156,12 @@ depending on only choices reused w/ different params.
     [(entry tag dist value)
      (define proposal-dist
        (match tag
+         #|
+         [`(normal ,mean ,stddev)
+          (let ([mean* value]
+                [stddev* (/ stddev 2.0)])
+            (make-dist normal #:params (mean* stddev*) #:enum #f))]
+         |#
          ;; FIXME: insert specialized proposal distributions here
          [_ ;; Fallback: Just resample from same dist.
           ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
@@ -165,6 +174,9 @@ depending on only choices reused w/ different params.
                      (dist-pdf proposal-dist value* #t)) ;; F
                   (- (dist-pdf dist value* #t)           ;; ll'
                      (dist-pdf dist value #t))))         ;; ll
+     (when (verbose?)
+       (eprintf "  from ~e to ~e\n" value value*)
+       (eprintf "  lldiff = ~s\n" (unbox lldiff)))
      (hash-set! db key-to-change (entry tag dist value*))]))
 
 ;; ----
