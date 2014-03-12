@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/list
+         racket/match
          data/order
          "context.rkt"
          "util.rkt"
@@ -15,9 +16,9 @@
 
 ;; Unlike bher, use two databases---better for detecting collisions (debugging).
 
-;; An Entry is (entry ERPTag Any)
+;; An Entry is (entry ERPTag Dist Any)
 ;; where the value is appropriate for the ERP denoted by the tag.
-(struct entry (tag value) #:prefab)
+(struct entry (tag dist value) #:prefab)
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -28,48 +29,150 @@
 
 ;; ----
 
-;; FIXME: could parameterize over perturb! function, or paramters thereof
+#|
+MH Acceptance
+
+Let X, X' be full traces (dbs)
+
+X  = Xsame  U Xdiff  U Xstale  U Xfresh
+X' = Xsame' U Xdiff' U Xstale' U Xfresh'
+
+  Xsame = Xsame' -- part of trace that stayed same
+  Xdiff != Xdiff' -- part of trace w/ changed params, kept value
+                  -- OR is the directly perturbed part
+  Xstale -- part of old trace not reused
+  Xfresh' -- new part of new trace
+
+  Note: Xfresh = empty, Xstale' = empty
+
+MH acceptance ratio (from Sean):
+
+  P(X' | Obs)   Q(X | X')
+  ----------- * ---------
+  P(x  | Obs)   Q(X' | X)
+
+  where Q is whole-trace proposal distribution
+
+MH acceptance ratio from Bher paper:
+
+  P(X')   Kt(x|x', theta)   P(Xstale)
+  ----- * --------------- * ----------
+  P(X)    Kt(x'|x, theta)   P(Xfresh')
+
+  where x,x' are values of a single ERP
+
+Many things cancel, resulting in
+
+  P(Xdiff')   Kt(x|x', theta)
+  --------- * ---------------
+  P(Xdiff)    Kt(x'|x, theta)
+
+So, need to accumulate
+
+  lldiff = log Kt(x|x', theta) - log Kt(x'|x, theta)
+           + log P(Xdiff') - log P(Xdiff')
+
+depending on only choices reused w/ different params.
+
+|#
+
+;; RUN-FROM-TOP? : Boolean
+;; If #t, then run from top (re-pick choice to change) on rejection;
+;; if #f, then run with same choice.
+(define RUN-FROM-TOP? #t)
+
+;; FIXME: could parameterize over perturb! function, or parameters thereof
 
 (define (mh-sampler* thunk pred [project values])
   (let ([last-db (make-hash)]
-        [current-db (make-hash)])
+        [current-db (make-hash)]
+        [current-lldiff (box 0)])
     (define (run)
-      ;; Rotate & perturb
+      (run/picked-key (pick-a-key current-db)))
+    (define (run/picked-key key-to-change)
       (define saved-last-db last-db)
       (define saved-current-db (hash-copy current-db))
+      (define saved-current-lldiff (unbox current-lldiff))
+      ;; Prepare
+      ;; TODO: avoid so many hash-copies
       (set! last-db current-db)
       (set! current-db (make-hash))
-      (perturb! last-db)
+      (set-box! current-lldiff 0)
+      ;; Retry undoes prepare step
+      (define (retry)
+        (set! last-db saved-last-db)
+        (set! current-db saved-current-db)
+        (set-box! current-lldiff 0)
+        (if RUN-FROM-TOP? (run) (run/picked-key key-to-change)))
+      ;; Rotate & perturb
+      (when key-to-change
+        (perturb! last-db key-to-change current-lldiff))
       ;; Run
       (define result
-        (parameterize ((current-ERP (make-db-ERP last-db current-db))
+        (parameterize ((current-ERP (make-db-ERP last-db current-db current-lldiff))
                        (current-mem db-mem))
           (apply/delimit thunk)))
-      ;; Post???
-      (cond [(pred result)
-             ;; Post???
-             (project result)]
+      ;; Accept/reject
+      (when (verbose?)
+        (eprintf "# lldiff = ~s\n" (unbox current-lldiff)))
+      (cond [(< (log (random)) (unbox current-lldiff))
+             (when (verbose?)
+               (eprintf "# Accepted MH step\n"))
+             (cond [(pred result)
+                    ;; Post???
+                    (when (verbose?)
+                      (eprintf "# Accepted condition\n"))
+                    (project result)]
+                   [else
+                    (when (verbose?)
+                      (eprintf "# Rejected condition"))
+                    (retry)])]
             [else
-             (set! last-db saved-last-db)
-             (set! current-db saved-current-db)
-             (run)]))
+             (when (verbose?)
+               (eprintf "# Rejected MH step\n"))
+             (retry)]))
     run))
 
-;; perturb! : DB -> void
-(define (perturb! db)
-  ;; Most naive possible perturbation: just delete an entry
+;; pick-a-key : DB -> (U Address #f)
+(define (pick-a-key db)
   (let ([n (hash-count db)])
-    (unless (zero? n)
-      (let* ([index (random n)] ;; more intelligent dist ???
-             [iter (for/fold ([iter (hash-iterate-first db)]) ([i index])
-                     (hash-iterate-next db iter))])
-        (when (verbose?)
-          (eprintf "perturb: removing ~s\n" (hash-iterate-key db iter)))
-        (hash-remove! db (hash-iterate-key db iter))))))
+    (and (positive? n)
+         (let* ([index (random n)]
+                [iter
+                 (for/fold ([iter (hash-iterate-first db)])
+                     ([i (in-range index)])
+                   (hash-iterate-next db iter))])
+           (hash-iterate-key db iter)))))
+
+;; perturb! : DB Address (BoxOf Real) -> void
+(define (perturb! db key-to-change lldiff)
+  ;; Most naive possible perturbation: just delete an entry
+  (when (verbose?)
+    (eprintf "perturb: changing ~s\n" key-to-change))
+  (match (hash-ref db key-to-change)
+    [(entry tag dist value)
+     (define proposal-dist
+       (match tag
+         ;; FIXME: insert specialized proposal distributions here
+         [_ ;; Fallback: Just resample from same dist.
+          ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
+          ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
+          dist]))
+     (define value* (dist-sample proposal-dist))
+     (set-box! lldiff
+               (+ (unbox lldiff)
+                  (- (dist-pdf proposal-dist value #t)   ;; R
+                     (dist-pdf proposal-dist value* #t)) ;; F
+                  (- (dist-pdf dist value* #t)           ;; ll'
+                     (dist-pdf dist value #t))))         ;; ll
+     (hash-set! db key-to-change (entry tag dist value*))]))
 
 ;; ----
 
-(define ((make-db-ERP last-db current-db) tag dist)
+;; FIXME: handle same w/ different params
+
+(define ((make-db-ERP last-db current-db current-lldiff) tag dist)
+  ;; Only need to update lldiff on reused w/ different params.
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
@@ -77,7 +180,7 @@
            (and (list? frame) (memq 'mem frame)))))
   (define (new!)
     (define result (dist-sample dist))
-    (hash-set! current-db context (entry tag result))
+    (hash-set! current-db context (entry tag dist result))
     result)
   (cond [(hash-ref current-db context #f)
          => (lambda (e)
@@ -97,20 +200,35 @@
                      (entry-value e)]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
-              (cond [(not (equal? (entry-tag e) tag))
-                     (when (verbose?)
-                       (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
-                     (new!)]
-                    [else
+              (cond [(equal? (entry-tag e) tag)
                      (when (verbose?)
                        (eprintf "- REUSED ~s: ~s\n" tag context))
                      (define result (entry-value e))
-                     (hash-set! current-db context (entry tag result))
-                     result]))]
+                     (hash-set! current-db context (entry tag dist result))
+                     result]
+                    [(and (tags-compatible? (entry-tag e) tag)
+                          (positive? (dist-pdf dist (entry-value e))))
+                     ;; Rescore, adjust lldiff
+                     (define value (entry-value e))
+                     (define rescore
+                       (- (dist-pdf dist value #t)               ;; ll'
+                          (dist-pdf (entry-dist e) value #t)))   ;; ll
+                     (when (verbose?)
+                       (eprintf "- RESCORE by ~s: ~s\n" rescore context))
+                     (set-box! current-lldiff (+ (unbox current-lldiff) rescore))
+                     (hash-set! current-db context (entry tag dist value))
+                     value]
+                    [(not (equal? (entry-tag e) tag))
+                     (when (verbose?)
+                       (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
+                     (new!)]))]
         [else
          (when (verbose?)
            (eprintf "- NEW ~s: ~s\n" tag context))
          (new!)]))
+
+(define (tags-compatible? old-tag new-tag)
+  (and (eq? (car old-tag) (car new-tag))))
 
 (define (db-mem f)
   (let ([context (get-context)])
