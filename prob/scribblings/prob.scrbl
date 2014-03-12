@@ -2,7 +2,7 @@
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
-#lang scribble/doc
+#lang scribble/manual
 @(require scribble/manual
           scribble/basic
           (for-label racket/contract
