@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/list
+         racket/class
          racket/match
          data/order
          "context.rkt"
@@ -76,65 +77,87 @@ depending on only choices reused w/ different params.
 
 |#
 
-;; RUN-FROM-TOP? : Boolean
+;; RETRY-FROM-TOP? : Boolean
 ;; If #t, then run from top (re-pick choice to change) on rejection;
 ;; if #f, then run with same choice.
-(define RUN-FROM-TOP? #t)
+(define RETRY-FROM-TOP? #t)
 
 ;; MH-threshold-method : (U 'simple 'stale/fresh)
-(define MH-threshold-method 'stale/fresh)
+(define MH-threshold-method 'simple)
 
 ;; FIXME: could parameterize over perturb! function, or parameters thereof
 
 (define (mh-sampler* thunk pred [project values])
-  (let ([last-db #f]
-        [current-db #f])
-    (define (run)
-      (run/picked-key (and current-db (pick-a-key current-db))))
-    (define (run/picked-key key-to-change)
-      ;; FIXME: last-db vs saved-current-db ...
-      (define saved-last-db last-db)
-      (define saved-current-db (and current-db (hash-copy current-db)))
-      ;; Prepare
-      ;; TODO: avoid so many hash-copies
-      (set! last-db current-db)
-      (set! current-db (make-hash))
-      ;; Retry undoes prepare step
+  (new mh-sampler% (thunk thunk) (pred pred) (project project)))
+
+(define sampler<%>
+  (interface* ()
+              ([prop:procedure (lambda (this) (send this sample))])
+    sample))
+
+(define mh-sampler%
+  (class* object% (sampler<%>)
+    (init-field thunk
+                pred
+                project)
+    (field [last-db #f]
+           [accepts 0]
+           [cond-rejects 0]
+           [mh-rejects 0])
+    (super-new)
+
+    (define/public (sample)
+      (sample/picked-key (and last-db (pick-a-key last-db))))
+
+    (define/private (sample/picked-key key-to-change)
       (define (retry)
-        (set! last-db saved-last-db)
-        (set! current-db saved-current-db)
-        (if RUN-FROM-TOP? (run) (run/picked-key key-to-change)))
-      ;; Rotate & perturb
-      (define R-F (if key-to-change (perturb! last-db key-to-change) 0))
-      ;; Run
+        (if RETRY-FROM-TOP? (sample) (sample/picked-key key-to-change)))
+      ;; FIXME: avoid so many hash-copies
+      (define perturbed-last-db (if last-db (hash-copy last-db) '#hash()))
+      (define R-F (if key-to-change (perturb! perturbed-last-db key-to-change) 0))
+      (define current-db (make-hash))
+      ;; Run program
       (define result
-        (parameterize ((current-ERP (make-db-ERP (or last-db '#hash()) current-db))
+        (parameterize ((current-ERP (make-db-ERP perturbed-last-db current-db))
                        (current-mem db-mem))
           (apply/delimit thunk)))
       ;; Accept/reject
-      ;; NOTE: use saved-current-db; last-db is saved-current-db BUT with perturbation
-      ;; FIXME: yuck
-      (define threshold (accept-threshold R-F current-db saved-current-db))
+      (define threshold (accept-threshold R-F current-db last-db))
       (when (verbose?)
-        (eprintf "# accept thresold = ~s\n" threshold))
+        (eprintf "# accept threshold = ~s\n" threshold))
       (define u (log (random)))
       (cond [(< u threshold)
              (when (verbose?)
                (eprintf "# Accepted MH step with ~s\n" u))
              (cond [(pred result)
-                    ;; Post???
+                    (set! last-db current-db)
+                    (set! accepts (add1 accepts))
                     (when (verbose?)
                       (eprintf "# Accepted condition\n"))
                     (project result)]
                    [else
+                    (set! cond-rejects (add1 cond-rejects))
                     (when (verbose?)
                       (eprintf "# Rejected condition"))
                     (retry)])]
             [else
+             (set! mh-rejects (add1 mh-rejects))
              (when (verbose?)
                (eprintf "# Rejected MH step with ~s\n" u))
              (retry)]))
-    run))
+
+    (define/public (info)
+      (define total (+ accepts cond-rejects mh-rejects))
+      (cond [(zero? total)
+             (printf "No samples taken.\n")]
+            [else
+             (printf "Accepted samples: ~s, ~a%\n"
+                     accepts (* 100.0 (/ accepts total)))
+             (printf "Samples rejected by condition: ~s, ~a%\n"
+                     cond-rejects (* 100.0 (/ cond-rejects total)))
+             (printf "Samples rejected by MH threshold: ~s, ~a%\n"
+                     mh-rejects (* 100.0 (/ mh-rejects total)))]))
+    ))
 
 (define (accept-threshold R-F current-db prev-db)
   (define prev-ll (if prev-db (db-ll prev-db) -inf.0))
