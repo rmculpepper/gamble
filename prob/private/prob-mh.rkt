@@ -149,35 +149,40 @@ depending on only choices reused w/ different params.
 
 ;; perturb! : DB Address (BoxOf Real) -> void
 (define (perturb! db key-to-change lldiff)
-  ;; Most naive possible perturbation: just delete an entry
   (when (verbose?)
     (eprintf "perturb: changing ~s\n" key-to-change))
   (match (hash-ref db key-to-change)
     [(entry tag dist value)
-     (define proposal-dist
-       (match tag
-         #|
-         [`(normal ,mean ,stddev)
+     (define (update! R F ll* ll value*)
+       (set-box! lldiff (+ (unbox lldiff) (- R F) (- ll* ll)))
+       (when (verbose?)
+         (eprintf "  from ~e to ~e\n" value value*)
+         (eprintf "  R = ~s, F = ~s\n" R F)
+         (eprintf "  ll* = ~s, ll = ~s\n" ll* ll)
+         (eprintf "  lldiff = ~s\n" (unbox lldiff)))
+       (hash-set! db key-to-change (entry tag dist value*)))
+     (match tag
+       [`(normal ,mean ,stddev)
+        (define forward-dist
           (let ([mean* value]
                 [stddev* (/ stddev 2.0)])
-            (make-dist normal #:params (mean* stddev*) #:enum #f))]
-         |#
-         ;; FIXME: insert specialized proposal distributions here
-         [_ ;; Fallback: Just resample from same dist.
-          ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
-          ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
-          dist]))
-     (define value* (dist-sample proposal-dist))
-     (set-box! lldiff
-               (+ (unbox lldiff)
-                  (- (dist-pdf proposal-dist value #t)   ;; R
-                     (dist-pdf proposal-dist value* #t)) ;; F
-                  (- (dist-pdf dist value* #t)           ;; ll'
-                     (dist-pdf dist value #t))))         ;; ll
-     (when (verbose?)
-       (eprintf "  from ~e to ~e\n" value value*)
-       (eprintf "  lldiff = ~s\n" (unbox lldiff)))
-     (hash-set! db key-to-change (entry tag dist value*))]))
+            (make-dist normal #:params (mean* stddev*) #:enum #f)))
+        (define value* (dist-sample forward-dist))
+        (define backward-dist
+          (let ([mean* value*]
+                [stddev* (/ stddev 2.0)])
+            (make-dist normal #:params (mean* stddev*) #:enum #f)))
+        (define R (dist-pdf backward-dist value #t))
+        (define F (dist-pdf forward-dist value* #t))
+        (define ll* (dist-pdf dist value* #t))
+        (define ll (dist-pdf dist value #t))
+        (update! R F ll* ll value*)]
+       ;; FIXME: insert specialized proposal distributions here
+       [_ ;; Fallback: Just resample from same dist.
+        ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
+        ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
+        ;; All cancel, so just pass 0 for all.
+        (update! 0 0 0 0 (dist-sample dist))])]))
 
 ;; ----
 
