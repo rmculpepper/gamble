@@ -81,6 +81,9 @@ depending on only choices reused w/ different params.
 ;; if #f, then run with same choice.
 (define RUN-FROM-TOP? #t)
 
+;; MH-threshold-method : (U 'simple 'stale/fresh)
+(define MH-threshold-method 'stale/fresh)
+
 ;; FIXME: could parameterize over perturb! function, or parameters thereof
 
 (define (mh-sampler* thunk pred [project values])
@@ -96,9 +99,6 @@ depending on only choices reused w/ different params.
       ;; TODO: avoid so many hash-copies
       (set! last-db current-db)
       (set! current-db (make-hash))
-      ;; NOTE: use saved-current-db; last-db is saved-current-db BUT with perturbation
-      ;; FIXME: yuck
-      (define last-ll (if saved-current-db (db-ll saved-current-db) -inf.0))
       ;; Retry undoes prepare step
       (define (retry)
         (set! last-db saved-last-db)
@@ -112,12 +112,13 @@ depending on only choices reused w/ different params.
                        (current-mem db-mem))
           (apply/delimit thunk)))
       ;; Accept/reject
-      (define current-ll (db-ll current-db))
+      ;; NOTE: use saved-current-db; last-db is saved-current-db BUT with perturbation
+      ;; FIXME: yuck
+      (define threshold (accept-threshold R-F current-db saved-current-db))
       (when (verbose?)
-        (eprintf "# last-ll = ~s, current-ll = ~s\n" last-ll current-ll)
-        (eprintf "# accept ratio = ~s\n" (+ R-F (- current-ll last-ll))))
+        (eprintf "# accept thresold = ~s\n" threshold))
       (define u (log (random)))
-      (cond [(< u (+ R-F (- current-ll last-ll)))
+      (cond [(< u threshold)
              (when (verbose?)
                (eprintf "# Accepted MH step with ~s\n" u))
              (cond [(pred result)
@@ -134,6 +135,17 @@ depending on only choices reused w/ different params.
                (eprintf "# Rejected MH step with ~s\n" u))
              (retry)]))
     run))
+
+(define (accept-threshold R-F current-db prev-db)
+  (define prev-ll (if prev-db (db-ll prev-db) -inf.0))
+  (define current-ll (db-ll current-db))
+  (case MH-threshold-method
+    [(simple)
+     (+ R-F (- current-ll prev-ll))]
+    [(stale/fresh)
+     (define stale (db-ll/difference (or prev-db '#hash()) current-db))
+     (define fresh (db-ll/difference current-db (or prev-db '#hash())))
+     (+ R-F (- current-ll prev-ll) (- stale fresh))]))
 
 ;; pick-a-key : DB -> (U Address #f)
 (define (pick-a-key db)
@@ -187,6 +199,17 @@ depending on only choices reused w/ different params.
     (match v
       [(entry tag dist value)
        (dist-pdf dist value #t)])))
+
+(define (db-ll/difference db exclude)
+  (for/sum ([(k v) (in-hash db)])
+    (match v
+      [(entry tag dist value)
+       (match (hash-ref exclude k #f)
+         [(entry ex-tag ex-dist ex-value)
+          (if (equal? tag ex-tag) ;; FIXME: approx!
+              0
+              (dist-pdf dist value #t))]
+         [_ (dist-pdf dist value #t)])])))
 
 ;; ----
 
