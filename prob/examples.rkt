@@ -170,9 +170,8 @@
  ((caar B)))
 |#
 
-(define (other-color c) (if (eq? c 'blue) 'green 'blue))
-
 #|
+(define (other-color c) (if (eq? c 'blue) 'green 'blue))
 (enumerate
  (define num-balls (max 1 (poisson 6)))
  (define color (mem (lambda (b) (discrete (list 'blue 'green)))))
