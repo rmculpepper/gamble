@@ -199,14 +199,10 @@ depending on only choices reused w/ different params.
      (match tag
        [`(normal ,mean ,stddev)
         (define forward-dist
-          (let ([mean* value]
-                [stddev* (/ stddev 2.0)])
-            (make-dist normal #:params (mean* stddev*) #:enum #f)))
+          (make-normal-dist value (/ stddev 2.0)))
         (define value* (dist-sample forward-dist))
         (define backward-dist
-          (let ([mean* value*]
-                [stddev* (/ stddev 2.0)])
-            (make-dist normal #:params (mean* stddev*) #:enum #f)))
+          (make-normal-dist value* (/ stddev 2.0)))
         (define R (dist-pdf backward-dist value #t))
         (define F (dist-pdf forward-dist value* #t))
         (update! R F value*)]

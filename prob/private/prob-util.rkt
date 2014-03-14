@@ -3,8 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require math/distributions
-         racket/flonum
+(require racket/flonum
          racket/contract/base
          "prob-hooks.rkt"
          "util.rkt")
@@ -45,7 +44,7 @@
 (define (flip [prob 1/2])
   (positive?
    (ERP `(flip ,prob)
-        (make-dist bernoulli #:params (prob) #:enum 2))))
+        (make-bernoulli-dist prob))))
 
 ;; d2 : Prob -> (U 1 0)
 (define (d2 [prob 1/2])
@@ -53,8 +52,7 @@
 
 (define (bernoulli [prob 1/2])
   (inexact->exact
-   (ERP `(bernoulli ,prob)
-        (make-dist bernoulli #:params (prob) #:enum 2))))
+   (ERP `(bernoulli ,prob) (make-bernoulli-dist prob))))
 
 ;; discrete : Nat -> Nat
 ;; discrete : (listof (list A Prob))) -> A
@@ -67,13 +65,13 @@
                         (inexact->exact
                          (floor
                           (ERP `(discrete ,n/vals)
-                               (make-dist uniform #:params (0 n) #:enum n))))))]
+                               (make-uniform-dist 0 n))))))]
            [(exact-positive-integer? n/vals)
             (let ([n n/vals])
               (inexact->exact
                (floor
                 (ERP `(discrete ,n)
-                     (make-dist uniform #:params (0 n) #:enum n)))))]
+                     (make-uniform-dist 0 n)))))]
            [else
             (raise-argument-error 'discrete
               "(or/c exact-positive-integer? (and/c list? pair?))" 0 n/vals)])]
@@ -86,37 +84,12 @@
        (error 'discrete
               "values and probability weights have different lengths\n  values: ~e\n  weights: ~e"
               vals probs))
-     (define n (length vals))
      (list-ref vals (inexact->exact
                      (ERP `(discrete ,vals ,probs)
-                          (let ([prob-sum (apply + probs)])
-                            (make-dist discrete #:raw-params (probs prob-sum) #:enum n)))))]))
+                          (make-discrete-dist probs))))]))
 
 (define (discrete-from-enumeration e)
   (discrete (map car e) (map cadr e)))
-
-;; Discrete weighted dist functions
-(define (fldiscrete-pdf probs prob-sum k log?)
-  (/ (list-ref probs (inexact->exact k)) prob-sum))
-(define (fldiscrete-cdf probs prob-sum k log? 1-p?)
-  (when (or log? 1-p?) (error 'fldiscrete-cdf "unimplemented"))
-  (let ([k (inexact->exact k)])
-    (/ (for/sum ([i (in-range (add1 k))] [prob (in-list probs)]) prob)
-       prob-sum)))
-(define (fldiscrete-inv-cdf probs prob-sum p log? 1-p?)
-  (when (or log? 1-p?) (error 'fldiscrete-inv-cdf "unimplemented"))
-  (let loop ([probs probs] [p (* p prob-sum)] [i 0])
-    (cond [(null? probs)
-           (error 'fldiscrete-inv-cdf "out of values")]
-          [(< p (car probs))
-           i]
-          [else
-           (loop (cdr probs) (- p (car probs)) (add1 i))])))
-(define (fldiscrete-sample probs prob-sum n)
-  (define v (make-flvector n))
-  (for ([i (in-range n)])
-    (flvector-set! v i (fldiscrete-inv-cdf probs prob-sum (random) #f #f)))
-  v)
 
 ;; == Countable distributions ==
 
@@ -137,21 +110,20 @@
 (define (binomial n p)
   (inexact->exact
    (ERP `(binomial ,n ,p)
-        (make-dist binomial #:params (n p) #:enum (add1 n)))))
+        (make-binomial-dist n p))))
 
 ;; geometric : Prob -> Integer
 ;; FIXME: discretizable
 (define (geometric [p 1/2])
   (inexact->exact
    (ERP `(geometric ,p)
-        (make-dist geometric #:params (p) #:enum 'lazy))))
+        (make-geometric-dist p))))
 
 ;; poisson : Real -> Integer
-;; FIXME: probably discretizable (???)
 (define (poisson mean)
   (inexact->exact
    (ERP `(poisson ,mean)
-        (make-dist poisson #:params (mean) #:enum 'lazy))))
+        (make-poisson-dist mean))))
 
 ;; == Continuous distributions ==
 
@@ -183,34 +155,34 @@
 ;; beta : PositiveReal PositiveReal -> Real in [0,1]
 (define (beta a b)
   (ERP `(beta ,a ,b)
-       (make-dist beta #:params (a b) #:enum #f)))
+       (make-beta-dist a b)))
 
 (define (cauchy [mode 0] [scale 1])
   (ERP `(cauchy ,mode ,scale)
-       (make-dist cauchy #:params (mode scale) #:enum #f)))
+       (make-cauchy-dist mode scale)))
 
 ;; exponential : PositiveReal -> PositiveReal
 ;; NOTE: mean aka scale = 1/rate
 (define (exponential [mean 1])
   (ERP `(exponential ,mean)
-       (make-dist exponential #:params (mean) #:enum #f)))
+       (make-exponential-dist mean)))
 
 ;; gamma : PositiveReal PositiveReal -> Real
 ;; NOTE: scale = 1/rate
 (define (gamma [shape 1] [scale 1])
   (ERP `(gamma ,shape ,scale)
-       (make-dist gamma #:params (shape scale) #:enum #f)))
+       (make-gamma-dist shape scale)))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
   (ERP `(logistic ,mean ,scale)
-       (make-dist logistic #:params (mean scale) #:enum #f)))
+       (make-logistic-dist mean scale)))
 
 ;; normal : Real PositiveReal -> Real
 ;; NOTE: stddev = (sqrt variance)
 (define (normal [mean 0] [stddev 1])
   (ERP `(normal ,mean ,stddev)
-       (make-dist normal #:params (mean stddev) #:enum #f)))
+       (make-normal-dist mean stddev)))
 
 ;; uniform : Real Real -> Real
 (define uniform
@@ -219,4 +191,4 @@
     [(max) (uniform 0 max)]
     [(min max)
      (ERP `(uniform ,min ,max)
-          (make-dist uniform #:params (min max) #:enum #f))]))
+          (make-uniform-dist min max))]))
