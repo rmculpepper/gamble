@@ -9,6 +9,7 @@
          data/order
          "context.rkt"
          "util.rkt"
+         "sampler.rkt"
          "prob-hooks.rkt")
 (provide mh-sampler*
          print-db
@@ -74,26 +75,23 @@ So, need to accumulate
            + log P(Xdiff') - log P(Xdiff')
 
 depending on only choices reused w/ different params.
-
 |#
 
-;; RETRY-FROM-TOP? : Boolean
-;; If #t, then run from top (re-pick choice to change) on rejection;
-;; if #f, then run with same choice.
-(define RETRY-FROM-TOP? #t)
+;; default-reject-mode : (U 'top 'same-choice)
+;; - 'retry-from-top : re-pick db key to change on rejection
+;; - 'retry/same-choice : keep same db key to change on rejection
+;; - 'last : replay last state (ie, produce same sample as prev)
+(define default-reject-mode 'retry-from-top)
 
-;; MH-threshold-method : (U 'simple 'stale/fresh)
-(define MH-threshold-method 'simple)
+;; default-threshold-mode : (U 'simple 'stale/fresh)
+;; - 'simple : R - F + ll_new - ll_old
+;; - 'stale/fresh : R - F + ll_new - ll_old + ll_stale - ll_fresh
+(define default-threshold-mode 'simple)
 
-;; FIXME: could parameterize over perturb! function, or parameters thereof
+;; ----
 
 (define (mh-sampler* thunk pred [project values])
   (new mh-sampler% (thunk thunk) (pred pred) (project project)))
-
-(define sampler<%>
-  (interface* ()
-              ([prop:procedure (lambda (this) (send this sample))])
-    sample))
 
 (define mh-sampler%
   (class* object% (sampler<%>)
@@ -103,15 +101,20 @@ depending on only choices reused w/ different params.
     (field [last-db #f]
            [accepts 0]
            [cond-rejects 0]
-           [mh-rejects 0])
+           [mh-rejects 0]
+           [reject-mode default-reject-mode]
+           [threshold-mode default-threshold-mode])
     (super-new)
 
     (define/public (sample)
       (sample/picked-key (and last-db (pick-a-key last-db))))
 
     (define/private (sample/picked-key key-to-change)
-      (define (retry)
-        (if RETRY-FROM-TOP? (sample) (sample/picked-key key-to-change)))
+      (define (reject)
+        (case reject-mode
+          [(retry-from-top) (sample)]
+          [(retry/same-choice) (sample/picked-key key-to-change)]
+          [(last) (sample/picked-key #f)]))
       ;; FIXME: avoid so many hash-copies
       (define perturbed-last-db (if last-db (hash-copy last-db) '#hash()))
       (define R-F (if key-to-change (perturb! perturbed-last-db key-to-change) 0))
@@ -139,12 +142,23 @@ depending on only choices reused w/ different params.
                     (set! cond-rejects (add1 cond-rejects))
                     (when (verbose?)
                       (eprintf "# Rejected condition"))
-                    (retry)])]
+                    (reject)])]
             [else
              (set! mh-rejects (add1 mh-rejects))
              (when (verbose?)
                (eprintf "# Rejected MH step with ~s\n" u))
-             (retry)]))
+             (reject)]))
+
+    (define/private (accept-threshold R-F current-db prev-db)
+      (define prev-ll (if prev-db (db-ll prev-db) -inf.0))
+      (define current-ll (db-ll current-db))
+      (case threshold-mode
+        [(simple)
+         (+ R-F (- current-ll prev-ll))]
+        [(stale/fresh)
+         (define stale (db-ll/difference (or prev-db '#hash()) current-db))
+         (define fresh (db-ll/difference current-db (or prev-db '#hash())))
+         (+ R-F (- current-ll prev-ll) (- stale fresh))]))
 
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
@@ -158,17 +172,6 @@ depending on only choices reused w/ different params.
              (printf "Samples rejected by MH threshold: ~s, ~a%\n"
                      mh-rejects (* 100.0 (/ mh-rejects total)))]))
     ))
-
-(define (accept-threshold R-F current-db prev-db)
-  (define prev-ll (if prev-db (db-ll prev-db) -inf.0))
-  (define current-ll (db-ll current-db))
-  (case MH-threshold-method
-    [(simple)
-     (+ R-F (- current-ll prev-ll))]
-    [(stale/fresh)
-     (define stale (db-ll/difference (or prev-db '#hash()) current-db))
-     (define fresh (db-ll/difference current-db (or prev-db '#hash())))
-     (+ R-F (- current-ll prev-ll) (- stale fresh))]))
 
 ;; pick-a-key : DB -> (U Address #f)
 (define (pick-a-key db)
