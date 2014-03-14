@@ -22,11 +22,21 @@
         (rejection-sample (lambda () def ... (cons result (?? condition #t)))
                           cdr car)))]))
 
+(define (rejection-sample thunk pred [project values])
+  (let ([v (thunk)])
+    (if (pred v)
+        (project v)
+        (rejection-sample thunk pred project))))
+
+;; ----
+
 (define-syntax (mh-sampler stx)
   (syntax-parse stx
     [(mh-sample def:expr ... result:expr (~optional (~seq #:when condition:expr)))
      (template
       (mh-sampler* (lambda () def ... (cons result (?? condition #t))) cdr car))]))
+
+;; ----
 
 (define-syntax (enumerate stx)
   (syntax-parse stx
