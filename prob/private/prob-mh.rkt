@@ -295,5 +295,5 @@ depending on only choices reused w/ different params.
     (lambda args
       (apply/delimit
        (lambda ()
-         (with-continuation-mark CM-KEY (list 'mem args context)
+         (parameterize ((the-context (list (list 'mem args context))))
            (apply f args)))))))
