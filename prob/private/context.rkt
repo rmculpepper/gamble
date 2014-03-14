@@ -57,7 +57,10 @@ my microbenchmarks is slightly faster than parameters. It would also
 allow for safety checking. The downside is all reads to the context
 have to be in tail position wrt a call from instrumented code. So eg
 flip impl would have to either grab context or call (current-ERP) in
-tail position. Or flip could be defined in instrumented module.
+tail position. Or flip could be defined in instrumented module. But
+would contracts interfere? (Probably not, if both definition and use
+site are instrumented.)
+
 |#
 
 (define the-context (make-parameter null))
