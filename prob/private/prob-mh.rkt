@@ -189,7 +189,7 @@ depending on only choices reused w/ different params.
 ;; perturb! : DB Address (BoxOf Real) -> Real
 (define (perturb! db key-to-change)
   (when (verbose?)
-    (eprintf "perturb: changing ~s\n" key-to-change))
+    (eprintf "# perturb: changing ~s\n" key-to-change))
   (match (hash-ref db key-to-change)
     [(entry tag dist value)
      ;; update! : ... -> Real
@@ -228,10 +228,12 @@ depending on only choices reused w/ different params.
       [(entry tag dist value)
        (match (hash-ref exclude k #f)
          [(entry ex-tag ex-dist ex-value)
-          (if (equal? tag ex-tag) ;; FIXME: approx!
-              0
-              (dist-pdf dist value #t))]
-         [_ (dist-pdf dist value #t)])])))
+          (cond [(and (tags-compatible? tag ex-tag)
+                      (equal? value ex-value))
+                 ;; kept value and rescored; don't count as fresh/stale
+                 0]
+                [else (dist-pdf dist value #t)])]
+         [#f (dist-pdf dist value #t)])])))
 
 ;; ----
 
