@@ -7,12 +7,23 @@
          racket/contract/base
          "prob-hooks.rkt"
          "util.rkt")
-(provide (contract-out
+(provide rejection-sample
+         (contract-out
           [mem (-> procedure? procedure?)])
          ERP)
 
+;; Rejection sampling
+
+(define (rejection-sample thunk pred [project values])
+  (let ([v (thunk)])
+    (if (pred v)
+        (project v)
+        (rejection-sample thunk pred project))))
+
 ;; mem and ERP wrappers
 
+;; NOTE: enum-ERP knows about discrete dists by tag
+;; FIXME: add discrete-dist? to math/distributions
 (define (mem f) ((current-mem) f))
 (define (ERP tag dist) ((current-ERP) tag dist))
 
