@@ -15,9 +15,5 @@
 (provide (all-from-out "util.rkt")
          (all-from-out "prob-util.rkt")
          (all-from-out "prob-syntax.rkt")
-         ;; from prob-enum.rkt:
-         enumerate*
-         ;; from prob-mh.rkt:
-         mh-sampler*
          ;; from context.rkt:
          apply/delimit)
