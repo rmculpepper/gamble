@@ -90,14 +90,12 @@ depending on only choices reused w/ different params.
 
 ;; ----
 
-(define (mh-sampler* thunk pred [project values])
-  (new mh-sampler% (thunk thunk) (pred pred) (project project)))
+(define (mh-sampler* thunk)
+  (new mh-sampler% (thunk thunk)))
 
 (define mh-sampler%
   (class* object% (sampler<%>)
-    (init-field thunk
-                pred
-                project)
+    (init-field thunk)
     (field [last-db #f]
            [accepts 0]
            [cond-rejects 0]
@@ -121,33 +119,37 @@ depending on only choices reused w/ different params.
       (define current-db (make-hash))
       ;; Run program
       (define result
-        (parameterize ((current-ERP (make-db-ERP perturbed-last-db current-db))
-                       (current-mem db-mem))
-          (apply/delimit thunk)))
+        (let/ec escape
+          (parameterize ((current-ERP (make-db-ERP perturbed-last-db current-db))
+                         (current-mem db-mem)
+                         (current-fail (lambda (r) (escape (cons 'fail r)))))
+            (cons 'okay (apply/delimit thunk)))))
       ;; Accept/reject
-      (define threshold (accept-threshold R-F current-db last-db))
-      (when (verbose?)
-        (eprintf "# accept threshold = ~s\n" threshold))
-      (define u (log (random)))
-      (cond [(< u threshold)
-             (when (verbose?)
-               (eprintf "# Accepted MH step with ~s\n" u))
-             (cond [(pred result)
-                    (set! last-db current-db)
-                    (set! accepts (add1 accepts))
-                    (when (verbose?)
-                      (eprintf "# Accepted condition\n"))
-                    (project result)]
-                   [else
-                    (set! cond-rejects (add1 cond-rejects))
-                    (when (verbose?)
-                      (eprintf "# Rejected condition"))
-                    (reject)])]
-            [else
-             (set! mh-rejects (add1 mh-rejects))
-             (when (verbose?)
-               (eprintf "# Rejected MH step with ~s\n" u))
-             (reject)]))
+      ;; FIXME: check condition or MH step first?
+      (match result
+        [(cons 'okay sample-value)
+         (define threshold (accept-threshold R-F current-db last-db))
+         (when (verbose?)
+           (eprintf "# accept threshold = ~s\n" threshold))
+         (define u (log (random)))
+         (cond [(< u threshold)
+                (when (verbose?)
+                  (eprintf "# Accepted MH step with ~s\n" u))
+                (set! last-db current-db)
+                (set! accepts (add1 accepts))
+                (when (verbose?)
+                  (eprintf "# Accepted condition\n"))
+                sample-value]
+               [else
+                (set! mh-rejects (add1 mh-rejects))
+                (when (verbose?)
+                  (eprintf "# Rejected MH step with ~s\n" u))
+                (reject)])]
+        [(cons 'fail fail-reason)
+         (set! cond-rejects (add1 cond-rejects))
+         (when (verbose?)
+           (eprintf "# Rejected condition (~s)" fail-reason))
+         (reject)]))
 
     (define/private (accept-threshold R-F current-db prev-db)
       (define prev-ll (if prev-db (db-ll prev-db) -inf.0))
@@ -183,8 +185,6 @@ depending on only choices reused w/ different params.
                      ([i (in-range index)])
                    (hash-iterate-next db iter))])
            (hash-iterate-key db iter)))))
-
-(require math/distributions)
 
 ;; perturb! : DB Address (BoxOf Real) -> Real
 (define (perturb! db key-to-change)

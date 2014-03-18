@@ -9,7 +9,8 @@
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)])
-         ERP)
+         ERP
+         fail)
 
 ;; mem and ERP wrappers
 
@@ -17,8 +18,9 @@
 ;; FIXME: add discrete-dist? to math/distributions
 (define (mem f) ((current-mem) f))
 (define (ERP tag dist) ((current-ERP) tag dist))
+(define (fail [reason #f]) ((current-fail) reason))
 
-;; ==  Finite distributions ==
+;; == Finite distributions ==
 
 (provide
  (contract-out

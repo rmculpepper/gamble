@@ -6,6 +6,7 @@
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/parse/experimental/template)
+         "prob-hooks.rkt"
          "prob-util.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt")
@@ -19,14 +20,16 @@
                       (~optional (~seq #:when condition:expr)))
      (template
       (lambda ()
-        (rejection-sample (lambda () def ... (cons result (?? condition #t)))
-                          cdr car)))]))
+        (rejection-sample
+         (lambda () def ... (begin0 result (unless (?? condition #t) (fail)))))))]))
 
-(define (rejection-sample thunk pred [project values])
-  (let ([v (thunk)])
-    (if (pred v)
-        (project v)
-        (rejection-sample thunk pred project))))
+(define (rejection-sample thunk)
+  (let ([v (let/ec escape
+             (parameterize ((current-fail (lambda (r) (escape (cons 'fail r)))))
+               (cons 'succeed (thunk))))])
+    (case (car v)
+      [(succeed) (cadr v)]
+      [(fail) (rejection-sample thunk)])))
 
 ;; ----
 
@@ -34,7 +37,8 @@
   (syntax-parse stx
     [(mh-sample def:expr ... result:expr (~optional (~seq #:when condition:expr)))
      (template
-      (mh-sampler* (lambda () def ... (cons result (?? condition #t))) cdr car))]))
+      (mh-sampler*
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
 
 ;; ----
 
@@ -46,6 +50,7 @@
                      (~optional (~seq #:normalize? normalize?)))
                 ...)
      (template
-      (enumerate* (lambda () def ... (cons result (?? condition #t))) cdr car
-                  (?? (?@ #:limit limit))
-                  (?? (?@ #:normalize? normalize?))))]))
+      (enumerate*
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (?? (?@ #:limit limit))
+       (?? (?@ #:normalize? normalize?))))]))

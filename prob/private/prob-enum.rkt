@@ -10,9 +10,7 @@
          "prob-hooks.rkt"
          "pairingheap.rkt"
          "util.rkt")
-(provide enumerate*
-         enum-ERP
-         enum-mem)
+(provide enumerate*)
 
 #|
 Enumeration based on delimited continuations (only for discrete ERPs)
@@ -90,7 +88,7 @@ How to make enumeration nest?
 ;;   FIXME: possible to detect and issue error??
 
 ;; Each enumeration activation has a prompt-tag and memo-table key.
-;; The current prompt-tag is stored by ctag-key.f
+;; The current prompt-tag is stored by ctag-key.
 
 (define ctag-table (make-weak-hasheq))
 (define (ctag-name ctag)
@@ -104,12 +102,14 @@ How to make enumeration nest?
 ;; A (EnumTree A) is one of
 ;; - (only A)
 ;; - (split (listof (cons Prob (-> (EnumTree A)))))
+;; - (failed Any)
 (struct only (answer))
 (struct split (subs))
+(struct failed (reason))
 
-;; enumerate* : (-> A) (A -> Boolean) (A -> B) etc -> (Listof (List B Prob))
+;; enumerate* : (-> A) etc -> (Listof (List A Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
-(define (enumerate* thunk pred [project values]
+(define (enumerate* thunk
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
   (define memo-key (mark-parameter))
@@ -117,7 +117,7 @@ How to make enumeration nest?
   (define ctag (make-continuation-prompt-tag))
   (define-values (table prob-unexplored prob-accepted)
     (explore (call-with-enum-context ctag memo-key memo-table (lambda () (only (thunk))))
-             pred project limit))
+             limit))
   (when (verbose?)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
@@ -131,21 +131,22 @@ How to make enumeration nest?
 ;; calls thunk with memo-table in fresh box, parameters set up
 (define (call-with-enum-context ctag memo-key memo-table thunk)
   (parameterize ((current-ERP enum-ERP)
-                 (current-mem enum-mem))
+                 (current-mem enum-mem)
+                 (current-fail enum-fail))
     (mark-parameterize ((memo-key (box memo-table))
                         (activation-key (cons ctag memo-key)))
       (call-with-continuation-prompt thunk ctag))))
 
 ;; ----
 
-;; explore : (EnumTree A) (A -> Boolean) (A -> B) Prob
-;;        -> hash[B => Prob] Prob Prob
+;; explore : (EnumTree A)
+;;        -> hash[A => Prob] Prob Prob
 ;; Limit means: explore until potential accepted dist is < limit unaccounted for,
 ;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
-(define (explore tree pred project limit)
+(define (explore tree limit)
   (define prob-unexplored 1) ;; prob of all unexplored paths
   (define prob-accepted 0) ;; prob of all accepted paths
-  (define table (hash)) ;; hash[B => Prob], probs are not normalized
+  (define table (hash)) ;; hash[A => Prob], probs are not normalized
 
   ;; h: heap[(cons Prob (-> (EnumTree A)))]
   (define (entry->=? x y)
@@ -157,18 +158,14 @@ How to make enumeration nest?
   (define (add a p table prob-unexplored prob-accepted)
     ;; (eprintf "- consider add A=~s\n" a)
     (cond [(positive? p)
-           (let ([prob-unexplored (- prob-unexplored p)])
-             (cond [(pred a)
-                    (let* ([b (project a)]
-                           [prob-accepted (+ p prob-accepted)]
-                           [table (hash-set table b (+ p (hash-ref table b 0)))])
-                      ;; (eprintf "- add B=~s\n" b)
-                      (values table prob-unexplored prob-accepted))]
-                   [else
-                    (values table prob-unexplored prob-accepted)]))]
+           (let* ([prob-unexplored (- prob-unexplored p)]
+                  [prob-accepted (+ p prob-accepted)]
+                  [table (hash-set table a (+ p (hash-ref table a 0)))])
+             ;; (eprintf "- add B=~s\n" b)
+             (values table prob-unexplored prob-accepted))]
           [else
            (when #t ;; (verbose?)
-             (eprintf "WARNING: bad prob ~s for ~s\n" p (project a)))
+             (eprintf "WARNING: bad prob ~s for ~s\n" p a))
            (values table prob-unexplored prob-accepted)]))
 
   ;; traverse-tree : (EnumTree A) Prob ... -> (values h table prob-unexplored prob-accepted)
@@ -189,7 +186,10 @@ How to make enumeration nest?
                     [else
                      (when (verbose?)
                        (eprintf "WARNING: bad prob ~s in path\n" p*))
-                     (values h table prob-unexplored prob-accepted)]))]))]))
+                     (values h table prob-unexplored prob-accepted)]))]))]
+      [(failed reason)
+       (let ([prob-unexplored (- prob-unexplored prob-of-tree)])
+         (values h table prob-unexplored prob-accepted))]))
 
   ;; heap-loop : ... -> ...
   (define (heap-loop h table prob-unexplored prob-accepted)
@@ -227,6 +227,12 @@ How to make enumeration nest?
   (sort entries (order-<? datum-order)))
 
 ;; ----
+
+(define (enum-fail reason)
+  (define activation (activation-key))
+  (define ctag (car activation))
+  (abort-current-continuation ctag
+   (lambda () (failed reason))))
 
 (define (enum-ERP tag dist)
   (unless (memq (car tag) '(bernoulli flip discrete binomial geometric poisson continue-special))

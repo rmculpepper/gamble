@@ -8,6 +8,7 @@
          racket/flonum)
 (provide current-mem
          current-ERP
+         current-fail
          dist?
          dist-pdf
          dist-cdf
@@ -38,6 +39,11 @@
 (define (base-ERP tag dist)
   (dist-sample dist))
 
+(define (base-fail reason)
+  (if reason
+      (error 'fail "path failed\n  reason: ~s" reason)
+      (error 'fail "path failed")))
+
 ;; ----
 
 ;; mem and ERP hooks; samplers/solvers override
@@ -46,11 +52,15 @@
 
 (define current-mem (make-parameter base-mem))
 
-;; ERP : (Sexpr (Discrete-Dist A)) -> A)
+;; ERP : (Sexpr Dist) -> A)
 ;; First arg is tag w/ ERP function name and params. Same tag should imply same dist.
-;; Second is dist.
+;; Second is dist (or #f to represent fail).
 
 (define current-ERP (make-parameter base-ERP))
+
+;; fail : Any -> (escapes)
+
+(define current-fail (make-parameter base-fail))
 
 ;; ----
 
