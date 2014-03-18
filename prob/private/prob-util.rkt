@@ -222,7 +222,7 @@
 
 (define (sampler->mean+variance s n [f values])
   (define-values (sum-f sum-f^2)
-    (for/fold ([sum-f 0] [sum-f^2 0]) ([i (in-range n)])
+    (for/fold ([sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
       (let ([v (f (s))])
         (values (+ sum-f v) (+ sum-f^2 (* v v))))))
   (define Ef (/ sum-f n))
@@ -231,7 +231,7 @@
 
 (define (weighted-sampler->mean+variance s n [f values])
   (define-values (sum-w sum-f sum-f^2)
-    (for/fold ([sum-w 0] [sum-f 0] [sum-f^2 0]) ([i (in-range n)])
+    (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
       (let* ([r (s)]
              [v (f (car r))]
              [w (cadr r)])

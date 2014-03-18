@@ -155,6 +155,27 @@ respectively.
 }
 
 
+@section[#:tag "fail"]{Condition Failure}
+
+@defproc[(fail [reason any/c #f]) any]{
+
+Used to express condition failure. When used within a sampler or
+solver, it typically causes the sampler/solver to try again with a
+different set of choices.
+
+For example, the following function models two coin flips where at
+least one of them is known to be heads (@racket[#t]):
+
+@racketblock[
+(define (flip-two-coins/one-heads)
+  (define A (flip))
+  (define B (flip))
+  (unless (or A B) (fail))
+  (list A B))
+]
+}
+
+
 @section[#:tag "mem"]{Memoization}
 
 @defproc[(mem [f procedure?])
@@ -173,66 +194,6 @@ created. See @seclink["nesting"] for more discussion.
 (code:line (f 1) (code:comment "calling (f 1) again will get the same value"))
 (for/list ([i 10]) (f i))
 (for/list ([i 10]) (f i))
-]
-}
-
-
-@section[#:tag "util"]{Utilities}
-
-@defproc[(probability? [v any/c])
-         boolean?]{
-
-Returns @racket[#t] if @racket[v] is a real number between 0 and 1
-(inclusive), @racket[#f] otherwise.
-}
-
-@defparam[verbose? v? boolean?]{
-
-Parameter that controls whether informative messages are printed by
-solvers and ERPs.
-}
-
-@defproc[(repeat [thunk (-> any/c)]
-                 [n exact-nonnegative-integer?])
-         list?]{
-
-Calls @racket[thunk] @racket[n] times, accumulating the results in a
-list.
-
-@examples[#:eval the-eval
-(repeat flip 10)
-]
-}
-
-@defproc[(lag [thunk (-> any/c)]
-              [n exact-positive-integer?])
-         (-> any/c)]{
-
-Lags a @tech{sampler}; when the resulting thunk is called, the given
-@racket[thunk] is called @racket[n] times and only the last value is
-returned.
-
-@examples[#:eval the-eval
-(repeat (lag (let ([n 0]) (lambda () (set! n (add1 n)) n)) 10) 10)
-]
-}
-
-
-@section[#:tag "viz"]{Visualization Utilities}
-
-@defmodule[prob/viz]
-
-This module provides very basic utilities for visualizing data. For a
-much more flexible and comprehensive visualization support, see the
-@racketmodname[plot] library.
-
-@defproc[(hist [vals (listof any/c)])
-         @#,elem{display}]{
-
-Plots a histogram of @racket[vals].
-
-@examples[#:eval the-eval
-(hist (list 1 2 3 1 1))
 ]
 }
 

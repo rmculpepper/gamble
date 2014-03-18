@@ -166,4 +166,26 @@ normalizing by the acceptance rate:
 ]
 }
 
+
+@defform[(importance-sampler def/expr ... result-expr maybe-when-clause)
+         #:grammar ([maybe-when-clause (code:line)
+                                       (code:line #:when condition-expr)])]{
+
+Like @racket[rejection-sampler], but uses the lazy-search tree
+mechanism of @racket[enumerate], although without exhaustively
+exploring it.
+
+Produces a @emph{weighted sampler}.
+
+@examples[#:eval the-eval
+(define ws
+  (importance-sampler
+    (define A (flip))
+    (define B (flip))
+    A
+    #:when (or A B)))
+(repeat ws 10)
+]
+}
+
 @(close-eval the-eval)
