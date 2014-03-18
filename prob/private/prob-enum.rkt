@@ -10,7 +10,8 @@
          "prob-hooks.rkt"
          "pairingheap.rkt"
          "util.rkt")
-(provide enumerate*)
+(provide enumerate*
+         importance-sampler*)
 
 #|
 Enumeration based on delimited continuations (only for discrete ERPs)
@@ -107,17 +108,15 @@ How to make enumeration nest?
 (struct split (subs))
 (struct failed (reason))
 
+
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
 (define (enumerate* thunk
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
-  (define memo-key (mark-parameter))
-  (define memo-table (hash))
-  (define ctag (make-continuation-prompt-tag))
+  (define tree (reify-tree thunk))
   (define-values (table prob-unexplored prob-accepted)
-    (explore (call-with-enum-context ctag memo-key memo-table (lambda () (only (thunk))))
-             limit))
+    (explore tree limit))
   (when (verbose?)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
@@ -127,6 +126,70 @@ How to make enumeration nest?
   (when (and normalize? (zero? prob-accepted))
     (error 'enumerate "probability of accepted paths underflowed to 0"))
   (tabulate table prob-accepted #:normalize? normalize?))
+
+
+;; importance-sampler* : (-> A) -> (List A Positive-Real)
+;; FIXME: can get stuck on infinitely deep path (eg, geometric)
+(define (importance-sampler* thunk)
+  (define tree (reify-tree thunk))
+  ;; cache : (listof (List A Positive-Real))
+  (define cache null)
+  ;; get-samples : (EnumTree A) Prob -> (listof (List A Positive-Real))
+  (define (get-samples tree prob)
+    (match tree
+      [(only a)
+       (list (list a prob))]
+      [(split subs)
+       (define forced-subs 
+         (for/list ([sub (in-list subs)])
+           (match sub
+             [(cons sub-prob sub-thunk)
+              (cons sub-prob (sub-thunk))])))
+       (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
+       (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
+       (define unknowns (filter (lambda (s) (split? (cdr s))) forced-subs))
+       (append (for/list ([success (in-list successes)])
+                 (match success
+                   [(cons sub-prob (only value))
+                    (list value (* prob sub-prob))]))
+               (if (null? unknowns)
+                   null
+                   (let* ([unknown-probs (map car unknowns)]
+                          [unknown-prob-total (apply + unknown-probs)]
+                          [index (discrete-sample unknown-probs unknown-prob-total)]
+                          [unknown (list-ref unknowns index)])
+                     (match unknown
+                       [(cons sub-prob sub-tree)
+                        (get-samples sub-tree (* prob (/ sub-prob unknown-prob-total)))]))))]
+      [(failed _)
+       null]))
+  ;; discrete-sample : (listof Positive-Real) Positive-Real -> Nat
+  (define (discrete-sample weights weight-total)
+    (let loop ([weights weights] [p (* (random) weight-total)] [i 0])
+      (cond [(null? weights)
+             (error 'importance-sampler "internal error: out of weights")]
+            [(< p (car weights))
+             i]
+            [else (loop (cdr weights) (- p (car weights)) (add1 i))])))
+  ;; get-one-sample : -> (List A Prob)
+  (define (get-one-sample)
+    (cond [(pair? cache)
+           (begin0 (car cache)
+             (set! cache (cdr cache)))]
+          [else
+           (set! cache (get-samples tree 1.0))
+           (get-one-sample)]))
+  get-one-sample)
+
+;; ----------------------------------------
+
+;; reify-tree : (-> A) -> (EnumTree A)
+(define (reify-tree thunk)
+  (define memo-key (mark-parameter))
+  (define memo-table (hash))
+  (define ctag (make-continuation-prompt-tag))
+  (call-with-enum-context ctag memo-key memo-table (lambda () (only (thunk)))))
+
 
 ;; calls thunk with memo-table in fresh box, parameters set up
 (define (call-with-enum-context ctag memo-key memo-table thunk)

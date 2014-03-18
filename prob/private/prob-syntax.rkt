@@ -12,7 +12,8 @@
          "prob-enum.rkt")
 (provide rejection-sampler
          mh-sampler
-         enumerate)
+         enumerate
+         importance-sampler)
 
 (define-syntax (rejection-sampler stx)
   (syntax-parse stx
@@ -54,3 +55,10 @@
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
        (?? (?@ #:limit limit))
        (?? (?@ #:normalize? normalize?))))]))
+
+(define-syntax (importance-sampler stx)
+  (syntax-parse stx
+    [(importance-sample def:expr ... result:expr (~optional (~seq #:when condition:expr)))
+     (template
+      (importance-sampler*
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
