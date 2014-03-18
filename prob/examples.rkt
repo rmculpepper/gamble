@@ -123,19 +123,19 @@
    #:when (< 10 A 20))
 
 (enumerate
- (define (drop-coin?) (flip 0.9))
- (define (drunk-flips n)
+ (define (drunk-flip)
+   (if (flip 0.9)
+       (fail) ;; dropped the coin
+       (flip .05)))
+ (define (drunk-andflips n)
    (cond [(zero? n)
           #t]
-         [(drop-coin?)
-          'failed]
          [else
-          (and (flip) (drunk-flips (sub1 n)))]))
- (define A (drunk-flips 10))
- (eq? A #t)
- #:when (not (eq? A 'failed))
+          (and (drunk-flip)
+               (drunk-andflips (sub1 n)))]))
+ (drunk-andflips 10)
  #:normalize? #f
- ;; Need to decrease limit to detect #t case:
+ ;; Need to disable limit to detect #t case
  #:limit #f)
 |#
 
