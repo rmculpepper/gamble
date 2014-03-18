@@ -5,6 +5,7 @@
 #lang racket/base
 (require racket/flonum
          racket/contract/base
+         data/order
          "prob-hooks.rkt"
          "util.rkt")
 (provide (contract-out
@@ -185,3 +186,62 @@
     [(min max)
      (ERP `(uniform ,min ,max)
           (make-uniform-dist min max))]))
+
+;; ========================================
+
+(provide sampler->discrete-dist
+         weighted-sampler->discrete-dist
+         sampler->mean+variance
+         weighted-sampler->mean+variance
+         indicator/value
+         indicator/predicate)
+
+(define (sampler->discrete-dist s n)
+  (define h (make-hash))
+  (for ([i (in-range n)])
+    (let ([a (s)])
+      (hash-set! h a (add1 (hash-ref h a 0)))))
+  (table->discrete-dist h))
+
+(define (weighted-sampler->discrete-dist s n)
+  (define h (make-hash))
+  (for ([i (in-range n)])
+    (let* ([r (s)]
+           [a (car r)]
+           [p (cadr r)])
+      (hash-set! h a (+ p (hash-ref h a 0)))))
+  (table->discrete-dist h))
+
+(define (table->discrete-dist h)
+  (define total-w
+    (for/sum ([(a w) (in-hash h)]) w))
+  (define entries
+    (for/list ([(a w) (in-hash h)])
+      (list a (exact->inexact (/ w total-w)))))
+  (sort entries (order-<? datum-order)))
+
+(define (sampler->mean+variance s n [f values])
+  (define-values (sum-f sum-f^2)
+    (for/fold ([sum-f 0] [sum-f^2 0]) ([i (in-range n)])
+      (let ([v (f (s))])
+        (values (+ sum-f v) (+ sum-f^2 (* v v))))))
+  (define Ef (/ sum-f n))
+  (values Ef
+          (- (/ sum-f^2 n) (* Ef Ef))))
+
+(define (weighted-sampler->mean+variance s n [f values])
+  (define-values (sum-w sum-f sum-f^2)
+    (for/fold ([sum-w 0] [sum-f 0] [sum-f^2 0]) ([i (in-range n)])
+      (let* ([r (s)]
+             [v (f (car r))]
+             [w (cadr r)])
+        (values (+ sum-w w) (+ sum-f (* w v)) (+ sum-f^2 (* w v v))))))
+  (define Ef (/ sum-f sum-w))
+  (values Ef
+          (- (/ sum-f^2 sum-w) (* Ef Ef))))
+
+(define ((indicator/value v) x)
+  (if (equal? x v) 1 0))
+
+(define ((indicator/predicate p?) x)
+  (if (p? x) 1 0))
