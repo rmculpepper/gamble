@@ -63,6 +63,8 @@
 (define current-ERP (make-parameter base-ERP))
 
 ;; fail : Any -> (escapes)
+;; FIXME: Maybe change primitive from fail to fail-if (w/ boolean arg), so
+;; can dynamically detect condition-free models?
 
 (define current-fail (make-parameter base-fail))
 
