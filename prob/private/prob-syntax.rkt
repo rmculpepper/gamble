@@ -29,7 +29,7 @@
              (parameterize ((current-fail (lambda (r) (escape (cons 'fail r)))))
                (cons 'succeed (thunk))))])
     (case (car v)
-      [(succeed) (cadr v)]
+      [(succeed) (cdr v)]
       [(fail) (rejection-sample thunk)])))
 
 ;; ----
