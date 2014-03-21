@@ -5,7 +5,6 @@
 #lang racket/base
 (require racket/match
          data/order
-         racket/control
          unstable/markparam
          "prob-hooks.rkt"
          "pairingheap.rkt"
