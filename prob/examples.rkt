@@ -250,6 +250,12 @@
    (define S (label 'S (normal R 1)))
    R
    #:cond (= S 9)))
-
 (sampler->mean+variance s-c 1000)
+
+;; Works for enumerate also!
+(enumerate
+ (define A (label 'A (geom 1/2)))
+ (define B (label 'B (normal A 1)))
+ A
+ #:cond (= B 10))
 |#

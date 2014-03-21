@@ -73,10 +73,13 @@
 
 (define-syntax (importance-sampler stx)
   (syntax-parse stx
-    [(importance-sample def:expr ... result:expr (~optional (~seq #:when condition:expr)))
+    [(importance-sample def:expr ... result:expr
+                        (~optional (~seq #:when condition:expr))
+                        (~seq #:cond sp:special-condition) ...)
      (template
       (importance-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (list sp.e ...)))]))
 
 ;; ----
 
