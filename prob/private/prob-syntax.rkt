@@ -13,7 +13,8 @@
 (provide rejection-sampler
          mh-sampler
          enumerate
-         importance-sampler)
+         importance-sampler
+         label)
 
 (define-syntax (rejection-sampler stx)
   (syntax-parse stx
@@ -34,12 +35,24 @@
 
 ;; ----
 
+(begin-for-syntax
+ (define-syntax-class special-condition
+   (pattern ((~datum =) label value:expr)
+            #:with e #'(cons `label (spcond:equal value)))
+   (pattern ((~datum ~) label dist:expr)
+            ;; FIXME: contract on dist
+            #:with e #'(cons `label (spcond:drawn dist)))))
+
 (define-syntax (mh-sampler stx)
   (syntax-parse stx
-    [(mh-sample def:expr ... result:expr (~optional (~seq #:when condition:expr)))
+    [(mh-sampler def:expr ... result:expr
+                 (~optional (~seq #:when condition:expr))
+                 (~seq #:cond sp:special-condition)
+                 ...)
      (template
       (mh-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (list sp.e ...)))]))
 
 ;; ----
 
@@ -62,3 +75,8 @@
      (template
       (importance-sampler*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
+
+;; ----
+
+(define-syntax-rule (label l e)
+  (parameterize ((current-label l)) e))

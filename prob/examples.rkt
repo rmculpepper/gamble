@@ -238,3 +238,18 @@
 
 (time (flips-all-true* 12))
 |#
+
+;; ----
+
+;; "Special Conditioning"
+#|
+;; Note: syntax is undocumented, still in flux
+(define s-c
+  (mh-sampler
+   (define R (normal 10 3))
+   (define S (label 'S (normal R 1)))
+   R
+   #:cond (= S 9)))
+
+(sampler->mean+variance s-c 1000)
+|#

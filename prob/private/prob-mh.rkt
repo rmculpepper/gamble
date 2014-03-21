@@ -10,7 +10,8 @@
          "context.rkt"
          "util.rkt"
          "sampler.rkt"
-         "prob-hooks.rkt")
+         "prob-hooks.rkt"
+         "prob-util.rkt")
 (provide mh-sampler*
          print-db
          make-db-ERP
@@ -21,6 +22,7 @@
 ;; An Entry is (entry ERPTag Dist Any)
 ;; where the value is appropriate for the ERP denoted by the tag.
 (struct entry (tag dist value) #:prefab)
+(struct entry/special entry () #:prefab)
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -90,12 +92,13 @@ depending on only choices reused w/ different params.
 
 ;; ----
 
-(define (mh-sampler* thunk)
-  (new mh-sampler% (thunk thunk)))
+(define (mh-sampler* thunk spconds)
+  (new mh-sampler% (thunk thunk) (spconds spconds)))
 
 (define mh-sampler%
   (class* object% (sampler<%>)
-    (init-field thunk)
+    (init-field thunk
+                spconds)
     (field [last-db #f]
            [accepts 0]
            [cond-rejects 0]
@@ -114,13 +117,15 @@ depending on only choices reused w/ different params.
           [(retry/same-choice) (sample/picked-key key-to-change)]
           [(last) (sample/picked-key #f)]))
       ;; FIXME: avoid so many hash-copies
+      (when (verbose?)
+        (eprintf "# perturb: changing ~s\n" key-to-change))
       (define perturbed-last-db (if last-db (hash-copy last-db) '#hash()))
       (define R-F (if key-to-change (perturb! perturbed-last-db key-to-change) 0))
       (define current-db (make-hash))
       ;; Run program
       (define result
         (let/ec escape
-          (parameterize ((current-ERP (make-db-ERP perturbed-last-db current-db))
+          (parameterize ((current-ERP (make-db-ERP perturbed-last-db current-db spconds))
                          (current-mem db-mem)
                          (current-fail (lambda (r) (escape (cons 'fail r)))))
             (cons 'okay (apply/delimit thunk)))))
@@ -176,20 +181,24 @@ depending on only choices reused w/ different params.
     ))
 
 ;; pick-a-key : DB -> (U Address #f)
+;; Returns a key s.t. the value is not an entry/special.
+;; FIXME: bleh
 (define (pick-a-key db)
-  (let ([n (hash-count db)])
+  (let ([n (for/sum ([(k v) (in-hash db)]
+                     #:when (not (entry/special? v)))
+             1)])
     (and (positive? n)
-         (let* ([index (random n)]
-                [iter
-                 (for/fold ([iter (hash-iterate-first db)])
-                     ([i (in-range index)])
-                   (hash-iterate-next db iter))])
-           (hash-iterate-key db iter)))))
+         (let ([index (random n)])
+           (let loop ([iter (hash-iterate-first db)] [i index])
+             (cond [(entry/special? (hash-iterate-value db iter))
+                    (loop (hash-iterate-next db iter) i)]
+                   [(zero? i)
+                    (hash-iterate-key db iter)]
+                   [else
+                    (loop (hash-iterate-next db iter) (sub1 i))]))))))
 
 ;; perturb! : DB Address (BoxOf Real) -> Real
 (define (perturb! db key-to-change)
-  (when (verbose?)
-    (eprintf "# perturb: changing ~s\n" key-to-change))
   (match (hash-ref db key-to-change)
     [(entry tag dist value)
      ;; update! : ... -> Real
@@ -239,7 +248,7 @@ depending on only choices reused w/ different params.
 
 ;; FIXME: handle same w/ different params
 
-(define ((make-db-ERP last-db current-db) tag dist)
+(define ((make-db-ERP last-db current-db spconds) tag dist)
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
@@ -265,6 +274,20 @@ depending on only choices reused w/ different params.
                      (when (verbose?)
                        (eprintf "- COLLISION ~s: ~s\n" tag context))
                      (entry-value e)]))]
+        [(assq (current-label) spconds)
+         => (lambda (e)
+              (match (cdr e)
+                [(spcond:equal value)
+                 ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
+                 (cond [(positive? (dist-pdf dist value))
+                        (when (verbose?)
+                          (eprintf "- CONDITIONED ~s, ~s: ~s\n" (current-label) tag context))
+                        (hash-set! current-db context (entry/special tag dist value))
+                        value]
+                       [else
+                        (fail 'condition)])]
+                [(spcond:drawn alt-dist)
+                 (error "unimplemented")]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
               (cond [(equal? (entry-tag e) tag)
