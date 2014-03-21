@@ -95,7 +95,7 @@ How to make enumeration nest?
 (define (ctag-name ctag)
   (hash-ref! ctag-table ctag (lambda () (gensym 'CTAG_))))
 
-;; CCM(activation-key) : (cons PromptTag MarkParameter)
+;; CCM(activation-key) : (list* PromptTag MarkParameter (Listof Condition))
 (define activation-key (mark-parameter))
 
 ;; CCM(memo-key) : (Boxof (Hash[ArgList => Result]))
@@ -111,10 +111,10 @@ How to make enumeration nest?
 
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
-(define (enumerate* thunk
+(define (enumerate* thunk spconds
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
-  (define tree (reify-tree thunk))
+  (define tree (reify-tree thunk spconds))
   (define-values (table prob-unexplored prob-accepted)
     (explore tree limit))
   (when (verbose?)
@@ -130,8 +130,8 @@ How to make enumeration nest?
 
 ;; importance-sampler* : (-> A) -> (List A Positive-Real)
 ;; FIXME: can get stuck on infinitely deep path (eg, geometric)
-(define (importance-sampler* thunk)
-  (define tree (reify-tree thunk))
+(define (importance-sampler* thunk spconds)
+  (define tree (reify-tree thunk spconds))
   ;; cache : (listof (List A Positive-Real))
   (define cache null)
   ;; get-samples : (EnumTree A) Prob -> (listof (List A Positive-Real))
@@ -183,21 +183,21 @@ How to make enumeration nest?
 
 ;; ----------------------------------------
 
-;; reify-tree : (-> A) -> (EnumTree A)
-(define (reify-tree thunk)
+;; reify-tree : (-> A) (Listof Condition) -> (EnumTree A)
+(define (reify-tree thunk spconds)
   (define memo-key (mark-parameter))
   (define memo-table (hash))
   (define ctag (make-continuation-prompt-tag))
-  (call-with-enum-context ctag memo-key memo-table (lambda () (only (thunk)))))
+  (call-with-enum-context ctag memo-key memo-table spconds (lambda () (only (thunk)))))
 
 
 ;; calls thunk with memo-table in fresh box, parameters set up
-(define (call-with-enum-context ctag memo-key memo-table thunk)
+(define (call-with-enum-context ctag memo-key memo-table spconds thunk)
   (parameterize ((current-ERP enum-ERP)
                  (current-mem enum-mem)
                  (current-fail enum-fail))
     (mark-parameterize ((memo-key (box memo-table))
-                        (activation-key (cons ctag memo-key)))
+                        (activation-key (list* ctag memo-key spconds)))
       (call-with-continuation-prompt thunk ctag))))
 
 ;; ----
@@ -298,34 +298,59 @@ How to make enumeration nest?
    (lambda () (failed reason))))
 
 (define (enum-ERP tag dist)
-  (unless (memq (car tag) '(bernoulli flip discrete binomial geometric poisson continue-special))
-    (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
   (define activation (activation-key))
   (define ctag (car activation))
-  (define memo-key (cdr activation))
+  (define memo-key (cadr activation))
+  (define spconds (cddr activation))
   (define memo-table (unbox (memo-key)))
-  (define-values (vals probs tail-prob+tag)
-    (dist->vals+probs tag dist))
-  (call-with-composable-continuation
-   (lambda (k)
-     (abort-current-continuation
-      ctag
-      (lambda ()
-        (split
-         (cons/f (and tail-prob+tag
-                      (let ([tail-prob (car tail-prob+tag)]
-                            [tail-tag (cdr tail-prob+tag)])
-                        (cons tail-prob
-                              (lambda ()
-                                (call-with-enum-context ctag memo-key memo-table
-                                  (lambda () (k (enum-ERP tail-tag dist))))))))
-                 (for/list ([val (in-list vals)]
-                            [prob (in-list probs)])
-                   (cons prob
-                         (lambda ()
-                           (call-with-enum-context ctag memo-key memo-table
-                             (lambda () (k val)))))))))))
-   ctag))
+  (cond [(assq (current-label) spconds)
+         => (lambda (e)
+              (match (cdr e)
+                [(spcond:equal value)
+                 (define l (dist-pdf dist value))
+                 (cond [(positive? l)
+                        (call-with-composable-continuation
+                         (lambda (k)
+                           (abort-current-continuation
+                            ctag
+                            (lambda ()
+                              ;; Note: create split w/ prob sum 1 so that explore
+                              ;; gets prob-explored right.
+                              (split
+                               (list (cons l (lambda ()
+                                               (call-with-enum-context ctag memo-key memo-table spconds
+                                                 (lambda () (k value)))))
+                                     (cons (- 1 l) (lambda () (failed #f))))))))
+                         ctag)]
+                       [else
+                        (abort-current-continuation ctag
+                          (lambda () (failed 'condition)))])]))]
+        [else
+         (unless (memq (car tag)
+                       '(bernoulli flip discrete binomial geometric poisson continue-special))
+           (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
+         (define-values (vals probs tail-prob+tag)
+           (dist->vals+probs tag dist))
+         (call-with-composable-continuation
+          (lambda (k)
+            (abort-current-continuation
+             ctag
+             (lambda ()
+               (split
+                (cons/f (and tail-prob+tag
+                             (let ([tail-prob (car tail-prob+tag)]
+                                   [tail-tag (cdr tail-prob+tag)])
+                               (cons tail-prob
+                                     (lambda ()
+                                       (call-with-enum-context ctag memo-key memo-table spconds
+                                         (lambda () (k (enum-ERP tail-tag dist))))))))
+                        (for/list ([val (in-list vals)]
+                                   [prob (in-list probs)])
+                          (cons prob
+                                (lambda ()
+                                  (call-with-enum-context ctag memo-key memo-table spconds
+                                    (lambda () (k val)))))))))))
+          ctag)]))
 
 (define (dist->vals+probs tag dist)
   (let ([enum (dist-enum dist)])
@@ -364,7 +389,7 @@ How to make enumeration nest?
 (define (enum-mem f)
   (define activation (activation-key))
   (define ctag (car activation))
-  (define memo-key (cdr activation))
+  (define memo-key (cadr activation))
   (define f-key (gensym))
   (define (memoized-function . args)
     (let ([b (memo-key)]
@@ -378,7 +403,7 @@ How to make enumeration nest?
             [else
              ;; Call with saved activation; may be outer enumeration!
              (define v
-               (mark-parameterize ((activation-key (cons ctag memo-key)))
+               (mark-parameterize ((activation-key activation))
                  (apply f args)))
              ;; NOTE: outer b might be stale, if f called ERP!
              (define b (memo-key))

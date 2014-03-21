@@ -60,12 +60,14 @@
   (syntax-parse stx
     [(enumerate def:expr ... result:expr
                 (~or (~optional (~seq #:when condition:expr))
+                     (~seq #:cond sp:special-condition)
                      (~optional (~seq #:limit limit:expr))
                      (~optional (~seq #:normalize? normalize?)))
                 ...)
      (template
       (enumerate*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (list sp.e ...)
        (?? (?@ #:limit limit))
        (?? (?@ #:normalize? normalize?))))]))
 
