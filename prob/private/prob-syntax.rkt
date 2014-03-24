@@ -6,6 +6,7 @@
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/parse/experimental/template)
+         racket/contract/base
          "prob-hooks.rkt"
          "prob-util.rkt"
          "prob-mh.rkt"
@@ -14,7 +15,11 @@
          mh-sampler
          enumerate
          importance-sampler
-         label)
+         label
+         ppromise?
+         pdelay
+         (contract-out
+          [pforce (-> ppromise? any)]))
 
 (define-syntax (rejection-sampler stx)
   (syntax-parse stx
@@ -80,6 +85,16 @@
       (importance-sampler*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
        (list sp.e ...)))]))
+
+;; ----
+
+(struct ppromise (thunk))
+
+(define-syntax-rule (pdelay e ...)
+  (ppromise (mem (lambda () e ...))))
+
+(define (pforce pp)
+  ((ppromise-thunk pp)))
 
 ;; ----
 

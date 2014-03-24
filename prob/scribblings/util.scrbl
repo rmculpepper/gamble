@@ -122,6 +122,44 @@ values accepted by the predicate @racket[pred], respectively.
 }
 
 
+@section[#:tag "lazy"]{Laziness via Memoization}
+
+@defform[(pdelay body ...+)]{
+
+Delays the @racket[body] computation, producing a promise
+(@racket[ppromise?]) that can be forced with @racket[pforce].
+The @racket[pdelay] form uses @racket[mem] internally, the promises
+cooperate with the enclosing solver/sampler context.
+
+Use @racket[pdelay] to make a random choice lazy when it may not be
+relevant to all execution paths.
+
+@examples[#:eval the-eval
+(time (code:comment "eager, explores 2^10 possibilities")
+ (enumerate
+  (define flips (for/list ([i 10]) (flip)))
+  (andmap (lambda (x) x) flips)))
+(time (code:comment "lazy, explores 11 possibilities")
+ (enumerate
+  (define flips (for/list ([i 10]) (pdelay (flip))))
+  (andmap pforce flips)))
+]
+}
+
+@defproc[(ppromise? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a promise produced by
+@racket[pdelay], @racket[#f] otherwise.
+}
+
+
+@defproc[(pforce [p ppromise?]) any]{
+
+Evaluates @racket[p]'s body and caches the result, if @racket[p] has
+not been previously forced, or returns the cached result otherwise.
+}
+
+
 @section[#:tag "viz"]{Visualization Utilities}
 
 @defmodule[prob/viz]
