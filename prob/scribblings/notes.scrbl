@@ -6,7 +6,6 @@
 @(require scribble/manual
           scribble/basic
           scribble/eval
-          racket/list
           (for-label racket/contract
                      (only-in racket/base map)
                      (except-in prob map)

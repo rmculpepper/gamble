@@ -3,8 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base
-                     racket/stxparam))
+(require (for-syntax racket/base))
 (provide the-context
          app/call-site
          app/call-site*

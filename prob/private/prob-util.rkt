@@ -3,8 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/flonum
-         racket/contract/base
+(require racket/contract/base
          data/order
          "prob-hooks.rkt"
          "util.rkt")

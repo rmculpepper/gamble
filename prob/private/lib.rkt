@@ -8,12 +8,7 @@
 #lang racket/base
 (require "util.rkt"
          "prob-util.rkt"
-         "prob-syntax.rkt"
-         "prob-enum.rkt"
-         "prob-mh.rkt"
-         "context.rkt")
+         "prob-syntax.rkt")
 (provide (all-from-out "util.rkt")
          (all-from-out "prob-util.rkt")
-         (all-from-out "prob-syntax.rkt")
-         ;; from context.rkt:
-         apply/delimit)
+         (all-from-out "prob-syntax.rkt"))

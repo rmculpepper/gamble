@@ -6,7 +6,6 @@
 @(require scribble/manual
           scribble/basic
           scribble/eval
-          racket/list
           (for-label racket/contract
                      prob
                      prob/viz))

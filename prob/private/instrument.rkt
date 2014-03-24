@@ -4,9 +4,7 @@
 
 #lang racket/base
 (require (for-syntax racket/base
-                     syntax/parse
-                     syntax/stx)
-         racket/list
+                     syntax/parse)
          racket/match
          "context.rkt")
 (provide describe-all-call-sites
