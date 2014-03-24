@@ -274,20 +274,6 @@ depending on only choices reused w/ different params.
                      (when (verbose?)
                        (eprintf "- COLLISION ~s: ~s\n" tag context))
                      (entry-value e)]))]
-        [(assq (current-label) spconds)
-         => (lambda (e)
-              (match (cdr e)
-                [(spcond:equal value)
-                 ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
-                 (cond [(positive? (dist-pdf dist value))
-                        (when (verbose?)
-                          (eprintf "- CONDITIONED ~s, ~s: ~s\n" (current-label) tag context))
-                        (hash-set! current-db context (entry/special tag dist value))
-                        value]
-                       [else
-                        (fail 'condition)])]
-                [(spcond:drawn alt-dist)
-                 (error "unimplemented")]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
               (cond [(equal? (entry-tag e) tag)
@@ -305,6 +291,20 @@ depending on only choices reused w/ different params.
                      (when (verbose?)
                        (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
                      (new!)]))]
+        [(assoc (current-label) spconds)
+         => (lambda (e)
+              (match (cdr e)
+                [(spcond:equal value)
+                 ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
+                 (cond [(positive? (dist-pdf dist value))
+                        (when (verbose?)
+                          (eprintf "- CONDITIONED ~s, ~s: ~s\n" (current-label) tag context))
+                        (hash-set! current-db context (entry/special tag dist value))
+                        value]
+                       [else
+                        (fail 'condition)])]
+                [(spcond:drawn alt-dist)
+                 (error "unimplemented")]))]
         [else
          (when (verbose?)
            (eprintf "- NEW ~s: ~s\n" tag context))

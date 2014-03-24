@@ -302,7 +302,7 @@ How to make enumeration nest?
   (define memo-key (cadr activation))
   (define spconds (cddr activation))
   (define memo-table (unbox (memo-key)))
-  (cond [(assq (current-label) spconds)
+  (cond [(assoc (current-label) spconds)
          => (lambda (e)
               (match (cdr e)
                 [(spcond:equal value)
