@@ -12,87 +12,101 @@
 (provide enumerate*
          importance-sampler*)
 
-#|
-Enumeration based on delimited continuations (only for discrete ERPs)
+;; == Overview ==
+;;
+;; Enumeration using lazy tree of probability-labeled possibilities,
+;; based on delimited continuations (only for discrete ERPs).
+;;
+;; For enumeration to work:
+;;
+;;  - All paths must either terminate or evaluate infinitely many ERPS.
+;;    (and every ERP must generate at least two values with nonzero prob.)
+;;
+;;  - The predicate must accept a nonempty set of paths.
+;;
+;; Without knowing structure of paths and conditioning predicate, can't
+;; make smart distinctions between incomplete paths.
+;;
+;; Would be nice if we could tell whether a path was viable or not wrt
+;; condition. Seems like it would require drastic changes to model of
+;; computation (eg, like symbolic execution) to support non-trivial
+;; conditions. Would that be a profitable place to spend effort?
 
-For enumeration to work:
-
- - All paths must either terminate or evaluate infinitely many ERPS.
-   (and every ERP must generate at least two values with nonzero prob.)
-
- - The predicate must accept a nonempty set of paths.
-
-Without knowing structure of paths and conditioning predicate, can't
-make smart distinctions between incomplete paths.
-
-Would be nice if we could tell whether a path was viable or not wrt
-condition. Seems like it would require drastic changes to model of
-computation (eg, like symbolic execution) to support non-trivial
-conditions. Would that be a profitable place to spend effort?
-|#
-
-#|
-For mem, have an activation-specific store that gets rewound after
-each ERP choice exploration.
-
-Use markparam to store the memotable. (Racket parameters don't
-work well with delimited continuations.) Since prompts also delimit
-CCM, need a separate prompt tag (sigh... it's complicated).
-
-What should it mean for a memoized function to escape the enumeration
-in which it was created? Should probably be forbidden.
-|#
+;; == mem ==
+;;
+;; For mem, have an activation-specific store that gets rewound after
+;; each ERP choice exploration. (cf logic continuations, or store
+;; continuations?)
+;;
+;; Use mark-parameter to store the memotable. (See notes on parameters
+;; below.)  Since prompts also delimit CCM, need a separate prompt tag
+;; (sigh... it's complicated).
+;;
+;; What should it mean for a memoized function to escape the enumeration
+;; in which it was created? Should probably be forbidden.
 
 
-#|
+;; == Nesting enumerations ==
+;;
+;; How to make enumeration nest?
+;;
+;; (enum ;; outer
+;;  ...
+;;  (enum ;; inner
+;;   ...))
+;;
+;; - Straightforward except for mem:
+;;
+;;   - An outer-created memoized function that is invoked in the inner
+;;     enum should fork its possibilities to the *outer* prompt.
+;;   - Except... what if the outer-mem-fun calls its argument, which is an
+;;     inner-mem-fun? Then that "should" fork its possibilities to inner
+;;     prompt.
+;;   - Bleh, mem probably only makes sense on first-order functions.
+;;   - Alternatively, in that case we say the inner-mem-fun has escaped
+;;     its context, error. (In general, mem-fun that escapes its context
+;;     is problematical, except for direct-style mem.)
+;;   - What if outer-mem-fun is (lambda (n) (lambda () (flip (/ n))))?
+;;     Then if applied, gets thunk, then applied in inner, inner explores
+;;     branches. That seems reasonable.
+;;
+;;   - Anyway... when an outer-mem-fun is invoked, it needs to restore
+;;     the outer ERP (and mem) impls.
+;;     - That means nested enum can't use parameterize ... :/
+;;       ??? Doesn't work without parameterize ... investigate?
+;;     - A memoized function must close over the activation support (ctag,
+;;       markparam) for the mem that created it.
+;;   - Each enumeration activation needs a separate prompt tag and
+;;     memo-table key.
+;;   - explore must be rewritten in pure code: find functional priority
+;;     queue (PFDS from planet?), use immutable hash, etc
 
-How to make enumeration nest?
 
-(enum ;; outer
- ...
- (enum ;; inner
-  ...))
+;; == Notes on Parameters and Delimited Continuations ==
 
-- Straightforward except for mem:
+;; In the general case, Racket's parameters do not work interact
+;; "correctly" with delimited continuations, in the sense that a
+;; parameter P's value is not determined by the nearest (parameterize
+;; ((P _)) []) in the context. (Parameters are grouped together into a
+;; parameterization, and the nearest parameterization is fetched. This
+;; is a known Racket WONTFIX.)
+;;
+;; However, the way 'enumerate' uses parameters is safe, since
+;; captured continuations are invoked in dynamic contexts that are
+;; mostly "compatible" with the ones they were captured in. But note:
+;;
+;;  - The invocation context needs a different memo-table, so the
+;;    memo-table must be stored using a mark-parameter rather than an
+;;    ordinary parameter.
+;;  - The 'explore' function cannot use parameterize to affect the execution
+;;    of the code that produces the lazy tree. The parameterization is
+;;    essentially captured by the call to 'reify-tree'.
 
-  - An outer-created memoized function that is invoked in the inner
-    enum should fork its possibilities to the *outer* prompt.
-  - Except... what if the outer-mem-fun calls its argument, which is an
-    inner-mem-fun? Then that "should" fork its possibilities to inner
-    prompt.
-  - Bleh, mem probably only makes sense on first-order functions.
-  - Alternatively, in that case we say the inner-mem-fun has escaped
-    its context, error. (In general, mem-fun that escapes its context
-    is problematical, except for direct-style mem.)
-  - What if outer-mem-fun is (lambda (n) (lambda () (flip (/ n))))?
-    Then if applied, gets thunk, then applied in inner, inner explores
-    branches. That seems reasonable.
 
-  - Anyway... when an outer-mem-fun is invoked, it needs to restore
-    the outer ERP (and mem) impls.
-    - That means nested enum can't use parameterize ... :/
-      ??? Doesn't work without parameterize ... investigate?
-    - A memoized function must close over the activation support (ctag,
-      markparam) for the mem that created it.
-  - Each enumeration activation needs a separate prompt tag and
-    memo-table key.
-  - explore must be rewritten in pure code: find functional priority
-    queue (PFDS from planet?), use immutable hash, etc
-|#
-
-;; BUG/LIMITATION:
-;; - delimited continuations captured by ERP *must not* use include
-;;   uses of parameterize, because Racket's parameterize is not correct
-;;   wrt delimited control (this is a known Racket WONTFIX bug)
-;;   (ok to use parameterize, just not in captured part of continuation)
-;;   FIXME: possible to detect and issue error??
+;; ----
 
 ;; Each enumeration activation has a prompt-tag and memo-table key.
 ;; The current prompt-tag is stored by ctag-key.
-
-(define ctag-table (make-weak-hasheq))
-(define (ctag-name ctag)
-  (hash-ref! ctag-table ctag (lambda () (gensym 'CTAG_))))
 
 ;; CCM(activation-key) : (list* PromptTag MarkParameter (Listof Condition))
 (define activation-key (mark-parameter))
@@ -411,13 +425,6 @@ How to make enumeration nest?
   memoized-function)
 
 #|
-TODO: reify-reflect
-
-For example, flip-based defn of geometric dist is more precise than
-flonum-based, but would like to avoid running whole series of flips
-whenever geometric is used. Better to have lazy geom tree,
-explore (memoized) when needed.
-
 Maybe new abstraction, alternative to sampler: enumerator. Produces
 stream (finite or infinite) of weighted partitions of
 distribution. (Note: values may may repeat, just add probs.) Can't
