@@ -77,7 +77,7 @@
       (new message%
            (parent top-bar)
            (label (make-string 10 #\space))
-           (auto-resize #f)))
+           (auto-resize #t)))
 
     (define start
       (new button%
