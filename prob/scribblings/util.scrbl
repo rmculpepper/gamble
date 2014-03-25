@@ -7,6 +7,7 @@
           scribble/basic
           scribble/eval
           (for-label racket/contract
+                     racket/class
                      math/distributions
                      prob
                      prob/viz))
@@ -158,23 +159,5 @@ Evaluates @racket[p]'s body and caches the result, if @racket[p] has
 not been previously forced, or returns the cached result otherwise.
 }
 
-
-@section[#:tag "viz"]{Visualization Utilities}
-
-@defmodule[prob/viz]
-
-This module provides very basic utilities for visualizing data. For a
-much more flexible and comprehensive visualization support, see the
-@racketmodname[plot] library.
-
-@defproc[(hist [vals (listof any/c)])
-         @#,elem{display}]{
-
-Plots a histogram of @racket[vals].
-
-@examples[#:eval the-eval
-(hist (list 1 2 3 1 1))
-]
-}
 
 @(close-eval the-eval)
