@@ -15,7 +15,9 @@ Read the documentation online here: http://rmculpepper.github.io/prob/prob/
 2. Install this repository as a Racket package.
   * command line: `raco pkg install github://github.com/rmculpepper/prob/master/`
   * or DrRacket: File menu, Install Package, and enter `github://github.com/rmculpepper/prob/master/`.
-
+3. Periodically update to the most recent version of the package.
+  * command line: `raco pkg update prob`
+  * or DrRacket: File menu, Package Mangager, Currently Installed, Update.
 
 ## Development
 
@@ -26,3 +28,4 @@ Read the documentation online here: http://rmculpepper.github.io/prob/prob/
   * If you do not: `git clone https://github.com/rmculpepper/prob.git`
 3. Install the checked-out repo as a Racket package.
   * `raco pkg install --link <path-to-prob-checkout>`
+4. Periodically update to the the most recent version of the package by running `git pull`.
