@@ -13,7 +13,8 @@
          (struct-out split)
          (struct-out failed)
          reify-tree
-         split->subtrees)
+         split->subtrees
+         cond->subtrees)
 
 ;; == mem ==
 ;;
@@ -178,19 +179,20 @@
   (match s
     [(split label tag dist k)
      (cond [(assoc label spconds)
-            => (lambda (e)
-                 (match (cdr e)
-                   [(spcond:equal value)
-                    (define l (dist-pdf dist value))
-                    (cond [(positive? l)
-                           ;; Note: create split w/ prob sum 1 so that explore
-                           ;; gets prob-explored right.
-                           (list (cons l (lambda () (k value)))
-                                 (cons (- 1 l) (lambda () (failed #f))))]
-                          [else
-                           (list (cons 1 (lambda () (failed 'condition))))])]))]
+            => (lambda (e) (cond->subtrees dist k (cdr e)))]
            [else
             (split->subtrees* tag dist k)])]))
+
+(define (cond->subtrees dist k c)
+  (match c
+    [(spcond:equal value)
+     (define l (dist-pdf dist value))
+     (cond [(positive? l)
+            ;; Note: create split w/ prob sum 1 so that explore gets prob-explored right.
+            (list (cons l (lambda () (k value)))
+                  (cons (- 1 l) (lambda () (failed #f))))]
+           [else
+            (list (cons 1 (lambda () (failed 'condition))))])]))
 
 ;; split->subtrees : Any Dist (-> Value (EnumTree A)) -> (Listof (List Prob (-> (EnumTree A))))
 (define (split->subtrees* tag dist k)

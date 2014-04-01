@@ -156,30 +156,45 @@
     (match tree
       [(only a)
        (list (list a prob))]
-      [(? split? tree)
-       (define forced-subs 
-         (for/list ([sub (in-list (split->subtrees tree spconds))])
-           (match sub
-             [(cons sub-prob sub-thunk)
-              (cons sub-prob (sub-thunk))])))
-       (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
-       (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
-       (define unknowns (filter (lambda (s) (split? (cdr s))) forced-subs))
-       (append (for/list ([success (in-list successes)])
-                 (match success
-                   [(cons sub-prob (only value))
-                    (list value (* prob sub-prob))]))
-               (if (null? unknowns)
-                   null
-                   (let* ([unknown-probs (map car unknowns)]
-                          [unknown-prob-total (apply + unknown-probs)]
-                          [index (discrete-sample unknown-probs unknown-prob-total)]
-                          [unknown (list-ref unknowns index)])
-                     (match unknown
-                       [(cons sub-prob sub-tree)
-                        (get-samples sub-tree (* prob (/ sub-prob unknown-prob-total)))]))))]
+      [(split label tag dist k)
+       (cond [(assoc label spconds)
+              => (lambda (e)
+                   (define forced-subs (force-subtrees (cond->subtrees dist k (cdr e))))
+                   (get-samples/paths forced-subs prob))]
+             [(eq? (dist-enum dist) #f)
+              ;; Just sample.
+              ;; FIXME: check: don't weight by pdf; implicit in sampling frequency, right?
+              ;; FIXME: generate multiple samples, "while we're here"???
+              (define forced-subs (list (cons 1 (k (dist-sample dist)))))
+              (get-samples/paths forced-subs prob)]
+             [else
+              (define forced-subs (force-subtrees (split->subtrees tree null)))
+              (get-samples/paths forced-subs prob)])]
       [(failed _)
        null]))
+  (define (force-subtrees subs)
+    (for/list ([sub (in-list subs)])
+      (match sub
+        [(cons sub-prob sub-thunk)
+         (cons sub-prob (sub-thunk))])))
+  ;; get-samples/paths : (Listof (Cons Real (EnumTree A))) -> (Listof (List A Positive-Real))
+  (define (get-samples/paths forced-subs prob)
+    (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
+    (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
+    (define unknowns (filter (lambda (s) (split? (cdr s))) forced-subs))
+    (append (for/list ([success (in-list successes)])
+              (match success
+                [(cons sub-prob (only value))
+                 (list value (* prob sub-prob))]))
+            (if (null? unknowns)
+                null
+                (let* ([unknown-probs (map car unknowns)]
+                       [unknown-prob-total (apply + unknown-probs)]
+                       [index (discrete-sample unknown-probs unknown-prob-total)]
+                       [unknown (list-ref unknowns index)])
+                  (match unknown
+                    [(cons sub-prob sub-tree)
+                     (get-samples sub-tree (* prob (/ sub-prob unknown-prob-total)))])))))
   ;; discrete-sample : (listof Positive-Real) Positive-Real -> Nat
   (define (discrete-sample weights weight-total)
     (let loop ([weights weights] [p (* (random) weight-total)] [i 0])
