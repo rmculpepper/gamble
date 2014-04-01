@@ -281,6 +281,12 @@ depending on only choices reused w/ different params.
            (define result (dist-sample dist))
            (hash-set! current-db context (entry tag dist result #f))
            result]))
+  (define (collision-error context)
+    (error 'ERP
+           (string-append "collision in random choice database"
+                          ";\n check that the sampler module uses `#lang prob'"
+                          "\n  address: ~e")
+           context))
   (cond [(hash-ref current-db context #f)
          => (lambda (e)
               (cond [(not (equal? (entry-tag e) tag))
@@ -288,6 +294,7 @@ depending on only choices reused w/ different params.
                        (eprintf "- MISMATCH ~a ~s / ~s: ~s\n"
                                 (if (mem-context?) "MEMOIZED" "COLLISION")
                                 (entry-tag e) tag context))
+                     (unless (mem-context?) (collision-error context))
                      (new!)]
                     [(mem-context?)
                      (when (verbose?)
@@ -296,6 +303,7 @@ depending on only choices reused w/ different params.
                     [else
                      (when (verbose?)
                        (eprintf "- COLLISION ~s: ~s\n" tag context))
+                     (collision-error context)
                      (entry-value e)]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
