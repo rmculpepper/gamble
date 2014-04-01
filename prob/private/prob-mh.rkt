@@ -164,6 +164,10 @@ depending on only choices reused w/ different params.
         [(stale/fresh)
          (define stale (db-ll/difference (or prev-db '#hash()) current-db))
          (define fresh (db-ll/difference current-db (or prev-db '#hash())))
+
+         ;; Copy stale to current-db
+         (db-copy-stale (or prev-db '#hash()) current-db)
+
          (+ R-F (- current-ll prev-ll) (- stale fresh))]))
 
     (define/public (info)
@@ -242,6 +246,11 @@ depending on only choices reused w/ different params.
                  0]
                 [else (dist-pdf dist value #t)])]
          [#f (dist-pdf dist value #t)])])))
+
+(define (db-copy-stale old-db new-db)
+  (for ([(k v) (in-hash old-db)])
+    (unless (hash-has-key? new-db k)
+      (hash-set! new-db k v))))
 
 ;; ----
 
