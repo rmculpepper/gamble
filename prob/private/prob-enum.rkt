@@ -40,9 +40,9 @@
 (define (enumerate* thunk spconds
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
-  (define tree (reify-tree thunk spconds))
+  (define tree (reify-tree thunk))
   (define-values (table prob-unexplored prob-accepted)
-    (explore tree limit))
+    (explore tree limit spconds))
   (when (verbose?)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
@@ -53,67 +53,19 @@
     (error 'enumerate "probability of accepted paths underflowed to 0"))
   (tabulate table prob-accepted #:normalize? normalize?))
 
-
-;; importance-sampler* : (-> A) -> (List A Positive-Real)
-;; FIXME: can get stuck on infinitely deep path (eg, geometric)
-(define (importance-sampler* thunk spconds)
-  (define tree (reify-tree thunk spconds))
-  ;; cache : (listof (List A Positive-Real))
-  (define cache null)
-  ;; get-samples : (EnumTree A) Prob -> (listof (List A Positive-Real))
-  (define (get-samples tree prob)
-    (match tree
-      [(only a)
-       (list (list a prob))]
-      [(split subs)
-       (define forced-subs 
-         (for/list ([sub (in-list subs)])
-           (match sub
-             [(cons sub-prob sub-thunk)
-              (cons sub-prob (sub-thunk))])))
-       (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
-       (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
-       (define unknowns (filter (lambda (s) (split? (cdr s))) forced-subs))
-       (append (for/list ([success (in-list successes)])
-                 (match success
-                   [(cons sub-prob (only value))
-                    (list value (* prob sub-prob))]))
-               (if (null? unknowns)
-                   null
-                   (let* ([unknown-probs (map car unknowns)]
-                          [unknown-prob-total (apply + unknown-probs)]
-                          [index (discrete-sample unknown-probs unknown-prob-total)]
-                          [unknown (list-ref unknowns index)])
-                     (match unknown
-                       [(cons sub-prob sub-tree)
-                        (get-samples sub-tree (* prob (/ sub-prob unknown-prob-total)))]))))]
-      [(failed _)
-       null]))
-  ;; discrete-sample : (listof Positive-Real) Positive-Real -> Nat
-  (define (discrete-sample weights weight-total)
-    (let loop ([weights weights] [p (* (random) weight-total)] [i 0])
-      (cond [(null? weights)
-             (error 'importance-sampler "internal error: out of weights")]
-            [(< p (car weights))
-             i]
-            [else (loop (cdr weights) (- p (car weights)) (add1 i))])))
-  ;; get-one-sample : -> (List A Prob)
-  (define (get-one-sample)
-    (cond [(pair? cache)
-           (begin0 (car cache)
-             (set! cache (cdr cache)))]
-          [else
-           (set! cache (get-samples tree 1.0))
-           (get-one-sample)]))
-  get-one-sample)
+(define (tabulate table prob-accepted #:normalize? [normalize? #t])
+  (define entries
+    (for/list ([(val prob) (in-hash table)])
+      (list val (if normalize? (/ prob prob-accepted) prob))))
+  (sort entries (order-<? datum-order)))
 
 ;; ----------------------------------------
 
-;; explore : (EnumTree A)
+;; explore : (EnumTree A) ...
 ;;        -> hash[A => Prob] Prob Prob
 ;; Limit means: explore until potential accepted dist is < limit unaccounted for,
 ;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
-(define (explore tree limit)
+(define (explore tree limit spconds)
   (define prob-unexplored 1) ;; prob of all unexplored paths
   (define prob-accepted 0) ;; prob of all accepted paths
   (define table (hash)) ;; hash[A => Prob], probs are not normalized
@@ -145,7 +97,8 @@
        (let-values ([(table prob-unexplored prob-accepted)
                      (add a prob-of-tree table prob-unexplored prob-accepted)])
          (values h table prob-unexplored prob-accepted))]
-      [(split subs)
+      [(? split? et)
+       (define subs (split->subtrees et spconds))
        (for/fold ([h h] [table table] [prob-unexplored prob-unexplored] [prob-accepted prob-accepted])
            ([sub (in-list subs)])
          (match sub
@@ -190,13 +143,60 @@
                 (traverse-tree tree 1 h table prob-unexplored prob-accepted)])
     (heap-loop h table prob-unexplored prob-accepted)))
 
-(define (tabulate table prob-accepted #:normalize? [normalize? #t])
-  (define entries
-    (for/list ([(val prob) (in-hash table)])
-      (list val (if normalize? (/ prob prob-accepted) prob))))
-  (sort entries (order-<? datum-order)))
+;; ============================================================
 
-;; ----
+;; importance-sampler* : (-> A) -> (List A Positive-Real)
+;; FIXME: can get stuck on infinitely deep path (eg, geometric)
+(define (importance-sampler* thunk spconds)
+  (define tree (reify-tree thunk))
+  ;; cache : (listof (List A Positive-Real))
+  (define cache null)
+  ;; get-samples : (EnumTree A) Prob -> (listof (List A Positive-Real))
+  (define (get-samples tree prob)
+    (match tree
+      [(only a)
+       (list (list a prob))]
+      [(? split? tree)
+       (define forced-subs 
+         (for/list ([sub (in-list (split->subtrees tree spconds))])
+           (match sub
+             [(cons sub-prob sub-thunk)
+              (cons sub-prob (sub-thunk))])))
+       (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
+       (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
+       (define unknowns (filter (lambda (s) (split? (cdr s))) forced-subs))
+       (append (for/list ([success (in-list successes)])
+                 (match success
+                   [(cons sub-prob (only value))
+                    (list value (* prob sub-prob))]))
+               (if (null? unknowns)
+                   null
+                   (let* ([unknown-probs (map car unknowns)]
+                          [unknown-prob-total (apply + unknown-probs)]
+                          [index (discrete-sample unknown-probs unknown-prob-total)]
+                          [unknown (list-ref unknowns index)])
+                     (match unknown
+                       [(cons sub-prob sub-tree)
+                        (get-samples sub-tree (* prob (/ sub-prob unknown-prob-total)))]))))]
+      [(failed _)
+       null]))
+  ;; discrete-sample : (listof Positive-Real) Positive-Real -> Nat
+  (define (discrete-sample weights weight-total)
+    (let loop ([weights weights] [p (* (random) weight-total)] [i 0])
+      (cond [(null? weights)
+             (error 'importance-sampler "internal error: out of weights")]
+            [(< p (car weights))
+             i]
+            [else (loop (cdr weights) (- p (car weights)) (add1 i))])))
+  ;; get-one-sample : -> (List A Prob)
+  (define (get-one-sample)
+    (cond [(pair? cache)
+           (begin0 (car cache)
+             (set! cache (cdr cache)))]
+          [else
+           (set! cache (get-samples tree 1.0))
+           (get-one-sample)]))
+  get-one-sample)
 
 #|
 Maybe new abstraction, alternative to sampler: enumerator. Produces

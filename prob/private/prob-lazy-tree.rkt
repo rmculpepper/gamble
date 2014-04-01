@@ -9,7 +9,11 @@
          "prob-hooks.rkt"
          "pairingheap.rkt"
          "util.rkt")
-(provide (all-defined-out))
+(provide (struct-out only)
+         (struct-out split)
+         (struct-out failed)
+         reify-tree
+         split->subtrees)
 
 ;; == mem ==
 ;;
@@ -85,112 +89,124 @@
 ;; Each enumeration activation has a prompt-tag and memo-table key.
 ;; The current prompt-tag is stored by ctag-key.
 
-;; CCM(activation-key) : (list* PromptTag MarkParameter (Listof Condition))
-(define activation-key (mark-parameter))
+;; An Activation is (activation PromptTag MarkParam)
+;; where (memo-key) : (Boxof (Hashof ArgList => Result))
+(struct activation (prompt memo-table-key))
 
-;; CCM(memo-key) : (Boxof (Hash[ArgList => Result]))
+;; (current-activation) : Activation
+(define current-activation (make-parameter #f))
 
 ;; A (EnumTree A) is one of
 ;; - (only A)
-;; - (split (listof (cons Prob (-> (EnumTree A)))))
+;; - (split Any Tag Dist (-> Value (EnumTree A)))
 ;; - (failed Any)
 (struct only (answer))
-(struct split (subs))
+(struct split (label tag dist k))
 (struct failed (reason))
 
 ;; ----------------------------------------
 
 ;; reify-tree : (-> A) (Listof Condition) -> (EnumTree A)
-(define (reify-tree thunk spconds)
+(define (reify-tree thunk)
   (define memo-key (mark-parameter))
   (define memo-table (hash))
   (define ctag (make-continuation-prompt-tag))
-  (call-with-enum-context ctag memo-key memo-table spconds (lambda () (only (thunk)))))
-
+  (define act (activation ctag memo-key))
+  (call-with-enum-context act memo-table (lambda () (only (thunk)))))
 
 ;; calls thunk with memo-table in fresh box, parameters set up
-(define (call-with-enum-context ctag memo-key memo-table spconds thunk)
+(define (call-with-enum-context act memo-table thunk)
+  (define ctag (activation-prompt act))
+  (define memo-key (activation-memo-table-key act))
   (parameterize ((current-ERP enum-ERP)
                  (current-mem enum-mem)
-                 (current-fail enum-fail))
-    (mark-parameterize ((memo-key (box memo-table))
-                        (activation-key (list* ctag memo-key spconds)))
-      (call-with-continuation-prompt thunk ctag))))
+                 (current-fail enum-fail)
+                 (current-activation (activation ctag memo-key)))
+    (mark-parameterize ((memo-key (box memo-table)))
+      (call-with-continuation-prompt thunk (activation-prompt act)))))
 
 ;; ----
 
 (define (enum-fail reason)
-  (define activation (activation-key))
-  (define ctag (car activation))
-  (abort-current-continuation ctag
+  (abort-current-continuation (activation-prompt (current-activation))
    (lambda () (failed reason))))
 
 (define (enum-ERP tag dist)
-  (define activation (activation-key))
-  (define ctag (car activation))
-  (define memo-key (cadr activation))
-  (define spconds (cddr activation))
+  (define act (current-activation))
+  (define ctag (activation-prompt act))
+  (define memo-key (activation-memo-table-key act))
   (define memo-table (unbox (memo-key)))
-  (cond [(assoc (current-label) spconds)
-         => (lambda (e)
-              (match (cdr e)
-                [(spcond:equal value)
-                 (define l (dist-pdf dist value))
-                 (cond [(positive? l)
-                        (call-with-composable-continuation
-                         (lambda (k)
-                           (abort-current-continuation
-                            ctag
-                            (lambda ()
-                              ;; Note: create split w/ prob sum 1 so that explore
-                              ;; gets prob-explored right.
-                              (split
-                               (list (cons l (lambda ()
-                                               (call-with-enum-context ctag memo-key memo-table spconds
-                                                 (lambda () (k value)))))
-                                     (cons (- 1 l) (lambda () (failed #f))))))))
-                         ctag)]
-                       [else
-                        (abort-current-continuation ctag
-                          (lambda () (failed 'condition)))])]))]
-        [else
-         (unless (memq (car tag)
-                       '(bernoulli flip discrete binomial geometric poisson continue-special))
-           (error 'ERP "cannot enumerate non-discrete distribution: ~s" tag))
-         (define-values (vals probs tail-prob+tag)
-           (dist->vals+probs tag dist))
-         (call-with-composable-continuation
-          (lambda (k)
-            (abort-current-continuation
-             ctag
-             (lambda ()
-               (split
-                (cons/f (and tail-prob+tag
-                             (let ([tail-prob (car tail-prob+tag)]
-                                   [tail-tag (cdr tail-prob+tag)])
-                               (cons tail-prob
-                                     (lambda ()
-                                       (call-with-enum-context ctag memo-key memo-table spconds
-                                         (lambda () (k (enum-ERP tail-tag dist))))))))
-                        (for/list ([val (in-list vals)]
-                                   [prob (in-list probs)])
-                          (cons prob
-                                (lambda ()
-                                  (call-with-enum-context ctag memo-key memo-table spconds
-                                    (lambda () (k val)))))))))))
-          ctag)]))
+  (define label (current-label))
+  (call-with-composable-continuation
+   (lambda (k)
+     (abort-current-continuation
+      ctag
+      (lambda ()
+        (split label tag dist
+               (lambda (v)
+                 (call-with-enum-context act memo-table
+                   (lambda () (k v))))))))
+   ctag))
 
-(define (dist->vals+probs tag dist)
-  (let ([enum (dist-enum dist)])
-    (cond [(eq? enum 'lazy)
-           (lazy-dist->vals+probs tag dist 0)]
-          [(eq? enum #f)
-           (error 'ERP "cannot enumerate non-integer distribution: ~s" tag)]
-          [else ;; positive integer
-           (define-values (vals probs)
-             (for/lists (vals probs) ([i (in-range enum)])
-               (values i (dist-pdf dist i))))
-           (values vals probs #f)])))
+(define (enum-mem f)
+  (define act (current-activation))
+  (define ctag (activation-prompt act))
+  (define memo-key (activation-memo-table-key act))
+  (define f-key (gensym))
+  (define (memoized-function . args)
+    (unless (continuation-prompt-available? ctag)
+      (error 'mem
+             "memoized function escaped its creating context\n  function: ~e\n  arguments: ~e\n"
+             f args))
+    (let ([b (memo-key)]
+          [key (cons f-key args)])
+      (cond [(hash-has-key? (unbox b) key)
+             (hash-ref (unbox b) key)]
+            [else
+             ;; Call with saved activation; may be outer enumeration!
+             (define v (mark-parameterize ((current-activation act)) (apply f args)))
+             ;; NOTE: outer b might be stale, if f called ERP!
+             (define b (memo-key))
+             (set-box! b (hash-set (unbox b) key v))
+             v])))
+  memoized-function)
+
+;; ----
+
+;; split->subtrees : split Condition -> (Listof (List Prob (-> (EnumTree A))))
+(define (split->subtrees s spconds)
+  (match s
+    [(split label tag dist k)
+     (cond [(assoc label spconds)
+            => (lambda (e)
+                 (match (cdr e)
+                   [(spcond:equal value)
+                    (define l (dist-pdf dist value))
+                    (cond [(positive? l)
+                           ;; Note: create split w/ prob sum 1 so that explore
+                           ;; gets prob-explored right.
+                           (list (cons l (lambda () (k value)))
+                                 (cons (- 1 l) (lambda () (failed #f))))]
+                          [else
+                           (list (cons 1 (lambda () (failed 'condition))))])]))]
+           [else
+            (split->subtrees* tag dist k)])]))
+
+;; split->subtrees : Any Dist (-> Value (EnumTree A)) -> (Listof (List Prob (-> (EnumTree A))))
+(define (split->subtrees* tag dist k)
+  (define enum (dist-enum dist))
+  (cond [(eq? enum 'lazy)
+         (define-values (vals probs tail-prob tail-tag)
+           (lazy-dist->vals+probs tag dist 0))
+         (cons (cons tail-prob (lambda () (k (enum-ERP tail-tag dist))))
+               (for/list ([val (in-list vals)]
+                          [prob (in-list probs)])
+                 (cons prob (lambda () (k val)))))]
+        [(eq? enum #f)
+         (error 'ERP "cannot enumerate non-integer distribution: ~s" tag)]
+        [else ;; positive integer
+         (for/list ([i (in-range enum)])
+           (cons (dist-pdf dist i) (lambda () (k i))))]))
 
 (define TAKE 10)
 
@@ -206,35 +222,7 @@
      (define-values (vals probs)
        (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
          (values i (/ (dist-pdf dist i) scale))))
-     (values vals probs
-             (cons (/ (- 1 (dist-cdf dist (+ start TAKE -1))) scale)
-                   `(continue-special ,(+ start TAKE) . ,tag)))]))
-
-(define (cons/f x xs) (if x (cons x xs) xs))
-
-;; ----
-
-(define (enum-mem f)
-  (define activation (activation-key))
-  (define ctag (car activation))
-  (define memo-key (cadr activation))
-  (define f-key (gensym))
-  (define (memoized-function . args)
-    (let ([b (memo-key)]
-          [key (cons f-key args)])
-      (unless (continuation-prompt-available? ctag)
-        (error 'mem
-               "memoized function escaped its creating context\n  function: ~e\n  arguments: ~e\n"
-               f args))
-      (cond [(hash-has-key? (unbox b) key)
-             (hash-ref (unbox b) key)]
-            [else
-             ;; Call with saved activation; may be outer enumeration!
-             (define v
-               (mark-parameterize ((activation-key activation))
-                 (apply f args)))
-             ;; NOTE: outer b might be stale, if f called ERP!
-             (define b (memo-key))
-             (set-box! b (hash-set (unbox b) key v))
-             v])))
-  memoized-function)
+     (values vals
+             probs
+             (/ (- 1 (dist-cdf dist (+ start TAKE -1))) scale)
+             `(continue-special ,(+ start TAKE) . ,tag))]))
