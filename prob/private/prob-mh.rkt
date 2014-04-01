@@ -21,8 +21,7 @@
 
 ;; An Entry is (entry ERPTag Dist Any)
 ;; where the value is appropriate for the ERP denoted by the tag.
-(struct entry (tag dist value) #:prefab)
-(struct entry/special entry () #:prefab)
+(struct entry (tag dist value pinned?) #:prefab)
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -181,16 +180,16 @@ depending on only choices reused w/ different params.
     ))
 
 ;; pick-a-key : DB -> (U Address #f)
-;; Returns a key s.t. the value is not an entry/special.
+;; Returns a key s.t. the value is not pinned.
 ;; FIXME: bleh
 (define (pick-a-key db)
   (let ([n (for/sum ([(k v) (in-hash db)]
-                     #:when (not (entry/special? v)))
+                     #:when (not (entry-pinned? v)))
              1)])
     (and (positive? n)
          (let ([index (random n)])
            (let loop ([iter (hash-iterate-first db)] [i index])
-             (cond [(entry/special? (hash-iterate-value db iter))
+             (cond [(entry-pinned? (hash-iterate-value db iter))
                     (loop (hash-iterate-next db iter) i)]
                    [(zero? i)
                     (hash-iterate-key db iter)]
@@ -200,13 +199,13 @@ depending on only choices reused w/ different params.
 ;; perturb! : DB Address (BoxOf Real) -> Real
 (define (perturb! db key-to-change)
   (match (hash-ref db key-to-change)
-    [(entry tag dist value)
+    [(entry tag dist value #f)
      ;; update! : ... -> Real
      (define (update! R F value*)
        (when (verbose?)
          (eprintf "  from ~e to ~e\n" value value*)
          (eprintf "  R = ~s, F = ~s\n" R F))
-       (hash-set! db key-to-change (entry tag dist value*))
+       (hash-set! db key-to-change (entry tag dist value* #f))
        (- R F))
      (match tag
        [`(normal ,mean ,stddev)
@@ -228,15 +227,15 @@ depending on only choices reused w/ different params.
 (define (db-ll db)
   (for/sum ([(k v) (in-hash db)])
     (match v
-      [(entry tag dist value)
+      [(entry tag dist value _)
        (dist-pdf dist value #t)])))
 
 (define (db-ll/difference db exclude)
   (for/sum ([(k v) (in-hash db)])
     (match v
-      [(entry tag dist value)
+      [(entry tag dist value _)
        (match (hash-ref exclude k #f)
-         [(entry ex-tag ex-dist ex-value)
+         [(entry ex-tag ex-dist ex-value _)
           (cond [(and (tags-compatible? tag ex-tag)
                       (equal? value ex-value))
                  ;; kept value and rescored; don't count as fresh/stale
@@ -255,9 +254,24 @@ depending on only choices reused w/ different params.
          (let ([frame (last context)])
            (and (list? frame) (memq 'mem frame)))))
   (define (new!)
-    (define result (dist-sample dist))
-    (hash-set! current-db context (entry tag dist result))
-    result)
+    (cond [(assoc (current-label) spconds)
+           => (lambda (e)
+                (match (cdr e)
+                  [(spcond:equal value)
+                   ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
+                   (cond [(positive? (dist-pdf dist value))
+                          (when (verbose?)
+                            (eprintf "  CONDITIONED ~s = ~e\n" (current-label) value))
+                          (hash-set! current-db context (entry tag dist value #t))
+                          value]
+                         [else
+                          (fail 'condition)])]
+                  [(spcond:drawn alt-dist)
+                   (error "unimplemented")]))]
+          [else
+           (define result (dist-sample dist))
+           (hash-set! current-db context (entry tag dist result #f))
+           result]))
   (cond [(hash-ref current-db context #f)
          => (lambda (e)
               (cond [(not (equal? (entry-tag e) tag))
@@ -277,34 +291,22 @@ depending on only choices reused w/ different params.
         [(hash-ref last-db context #f)
          => (lambda (e)
               (cond [(equal? (entry-tag e) tag)
+                     ;; Note: equal tags implies equal dists
                      (when (verbose?)
-                       (eprintf "- REUSED ~s: ~s\n" tag context))
-                     (define result (entry-value e))
-                     (hash-set! current-db context (entry tag dist result))
-                     result]
+                       (eprintf "- REUSED ~s: ~s = ~s\n" tag context (entry-value e)))
+                     (hash-set! current-db context e)
+                     (entry-value e)]
                     [(and (tags-compatible? (entry-tag e) tag)
                           (positive? (dist-pdf dist (entry-value e))))
+                     (when (verbose?)
+                       (eprintf "- RESCORE ~s: ~s\n" tag context))
                      (define value (entry-value e))
-                     (hash-set! current-db context (entry tag dist value))
+                     (hash-set! current-db context (entry tag dist value (entry-pinned? e)))
                      value]
                     [(not (equal? (entry-tag e) tag))
                      (when (verbose?)
                        (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
                      (new!)]))]
-        [(assoc (current-label) spconds)
-         => (lambda (e)
-              (match (cdr e)
-                [(spcond:equal value)
-                 ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
-                 (cond [(positive? (dist-pdf dist value))
-                        (when (verbose?)
-                          (eprintf "- CONDITIONED ~s, ~s: ~s\n" (current-label) tag context))
-                        (hash-set! current-db context (entry/special tag dist value))
-                        value]
-                       [else
-                        (fail 'condition)])]
-                [(spcond:drawn alt-dist)
-                 (error "unimplemented")]))]
         [else
          (when (verbose?)
            (eprintf "- NEW ~s: ~s\n" tag context))
