@@ -37,8 +37,9 @@
 
 (define (base-mem f)
   (let ([memo-table (make-hash)])
-    (lambda args
-      (hash-ref! memo-table args (lambda () (apply f args))))))
+    (define (memoized-function . args)
+      (hash-ref! memo-table args (lambda () (apply f args))))
+    memoized-function))
 
 (define (base-ERP tag dist)
   (dist-sample dist))

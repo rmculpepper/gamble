@@ -5,7 +5,8 @@
 #lang racket/base
 (require (for-syntax racket/base
                      syntax/parse
-                     syntax/parse/experimental/template)
+                     syntax/parse/experimental/template
+                     syntax/name)
          racket/contract/base
          "prob-hooks.rkt"
          "prob-util.rkt"
@@ -19,7 +20,9 @@
          ppromise?
          pdelay
          (contract-out
-          [pforce (-> ppromise? any)]))
+          [pforce (-> ppromise? any)])
+         (rename-out [table* table])
+         table?)
 
 (define-syntax (rejection-sampler stx)
   (syntax-parse stx
@@ -100,3 +103,62 @@
 
 (define-syntax-rule (label l e)
   (parameterize ((current-label l)) e))
+
+;; ----
+
+(begin-for-syntax
+ (define-splicing-syntax-class maybe-lazy
+   (pattern (~seq #:lazy)
+            #:with wrap-body #'pdelay
+            #:with lazy? #'#t)
+   (pattern (~seq)
+            #:with wrap-body #'begin
+            #:with lazy? #'#f)))
+
+(define table-none (gensym 'none))
+
+(define-syntax (table* stx)
+  (syntax-parse stx
+    [(table ([x:id seq:expr] ...) l:maybe-lazy body:expr ...+)
+     (with-syntax ([inferred-name (syntax-local-infer-name stx)])
+       #'(let* ([h (for*/hash ([x seq] ...)
+                     (values (vector x ...)
+                             (l.wrap-body (let () body ...))))])
+           (make-table h 'inferred-name (length '(x ...)) l.lazy?)))]
+    [(table (x:id ...) body:expr ...+)
+     (with-syntax ([inferred-name (syntax-local-infer-name stx)])
+       #'(let ([inferred-name (lambda (x ...) body ...)])
+           (make-memo-table (mem inferred-name) 'inferred-name)))]))
+
+(define-struct table (h name arity lazy?)
+  #:property prop:procedure
+  (lambda (t . args)
+    (let ([key (list->vector args)]
+          [h (table-h t)])
+      (let ([v (hash-ref h key table-none)])
+        (cond [(eq? v table-none)
+               (table-error t key)]
+              [(table-lazy? t)
+               (pforce v)]
+              [else v]))))
+  #:property prop:custom-write
+  (lambda (t port mode)
+    (write-string (format "#<table:~s>" (table-name t)) port)))
+
+(define (table-error t key)
+  (cond [(= (vector-length key) (table-arity t))
+         (error (table-name t)
+                "table has no value for given arguments\n  arguments: ~e"
+                (vector->list key))]
+        [else
+         (apply raise-arity-error (table-name t) (table-arity t) (vector->list key))]))
+
+;; FIXME: add operations on table, eg enumerate keys?
+
+;; FIXME: recognize array cases, use more compact representation?
+
+(define-struct memo-table (f name)
+  #:property prop:procedure (struct-field-index f)
+  #:property prop:custom-write
+  (lambda (t port mode)
+    (write-string (format "#<table:~s>" (memo-table-name t)) port)))
