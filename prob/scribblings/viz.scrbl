@@ -9,7 +9,7 @@
           (for-label racket/contract
                      racket/class
                      math/distributions
-                     pict
+                     (except-in pict table)
                      (only-in plot/pict plot)
                      (except-in plot plot)
                      prob

@@ -175,6 +175,46 @@ least one of them is known to be heads (@racket[#t]):
 }
 
 
+@section[#:tag "table"]{Indexed Tables}
+
+@defform*[[(table ([var-id sequence-expr] ...+) maybe-lazy body ...+)
+           (table (var-id ...+) body ...+)]
+          #:grammar ([maybe-lazy (code:line)
+                                 (code:line #:lazy)])
+          #:contracts ([sequence-expr sequence?])]{
+
+Creates an indexed collection that acts like a function; the function
+takes as many arguments as there are @racket[var-id]s.
+
+In the first form, the table is finite, and it is eagerly populated
+with an entry for every combination of elements from each
+@racket[sequence-expr]. (Each @racket[sequence-expr] must be finite.)
+If a finite table is addressed with indexes that
+do not occur in @racket[sequence-expr], an error is raised.
+
+@examples[#:eval the-eval
+(define F (table ([i 10] [j 20]) (flip)))
+(F 0 0)
+(F 2 3)
+(F 7 13)
+]
+
+If the @racket[#:lazy] keyword appears after the variable binding
+sequence, then the table's entries are not evaluated until they are
+looked up (see also @racket[pdelay]).
+
+@examples[#:eval the-eval
+(define LF (table ([i 10] [j 20]) #:lazy (printf "flipping!\n") (flip)))
+(LF 0 0)
+(LF 0 0)
+]
+
+In the second form, the table is conceptually infinite, and it is
+lazily populated as entries are requested. This form is equivalent to
+@racket[(mem (lambda (var-id ...) body ...))].
+}
+
+
 @section[#:tag "mem"]{Memoization}
 
 @defproc[(mem [f procedure?])
