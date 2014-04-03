@@ -78,13 +78,13 @@ So, need to accumulate
 depending on only choices reused w/ different params.
 |#
 
-;; default-reject-mode : (U 'top 'same-choice)
+;; default-reject-mode : one of the following
 ;; - 'retry-from-top : re-pick db key to change on rejection
 ;; - 'retry/same-choice : keep same db key to change on rejection
 ;; - 'last : replay last state (ie, produce same sample as prev)
 (define default-reject-mode 'retry-from-top)
 
-;; default-threshold-mode : (U 'simple 'stale/fresh)
+;; default-threshold-mode : one of the following
 ;; - 'simple : R - F + ll_new - ll_old
 ;; - 'stale/fresh : R - F + ll_new - ll_old + ll_stale - ll_fresh
 (define default-threshold-mode 'simple)
@@ -103,7 +103,8 @@ depending on only choices reused w/ different params.
            [cond-rejects 0]
            [mh-rejects 0]
            [reject-mode default-reject-mode]
-           [threshold-mode default-threshold-mode])
+           [threshold-mode default-threshold-mode]
+           [last-sample #f])
     (super-new)
 
     (define/public (sample)
@@ -114,7 +115,7 @@ depending on only choices reused w/ different params.
         (case reject-mode
           [(retry-from-top) (sample)]
           [(retry/same-choice) (sample/picked-key key-to-change)]
-          [(last) (sample/picked-key #f)]))
+          [(last) last-sample]))
       ;; FIXME: avoid so many hash-copies
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
@@ -141,6 +142,7 @@ depending on only choices reused w/ different params.
                   (eprintf "# Accepted MH step with ~s\n" u))
                 (set! last-db current-db)
                 (set! accepts (add1 accepts))
+                (set! last-sample sample-value)
                 (when (verbose?)
                   (eprintf "# Accepted condition\n"))
                 sample-value]
