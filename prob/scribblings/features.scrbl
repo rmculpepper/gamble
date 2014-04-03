@@ -43,7 +43,7 @@ Returns @racket[#t] with probability @racket[p], @racket[#f] with
 probability @racket[(- 1 p)].
 }
 
-@defproc[(d2 [p probability? 1/2])
+@defproc[(bernoulli [p probability? 1/2])
          (or/c 1 0)]{
 
 Returns @racket[1] with probability @racket[p], @racket[0] with
@@ -227,7 +227,7 @@ dynamic extent of the sampler/solver context in which it was
 created. See @seclink["nesting"] for more discussion.
 
 @examples[#:eval the-eval
-(define f (mem (lambda (n) (d2))))
+(define f (mem (lambda (n) (bernoulli))))
 (f 1)
 
 (code:line (f 1) (code:comment "calling (f 1) again will get the same value"))

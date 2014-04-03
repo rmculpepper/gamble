@@ -26,7 +26,7 @@
  (contract-out
   [flip
    (->* [] [probability?] boolean?)]
-  [d2
+  [bernoulli
    (->* [] [probability?] (or/c 1 0))]
   [discrete-from-enumeration
    (-> (non-empty-listof (list/c any/c (>/c 0)))
@@ -38,10 +38,6 @@
   (positive?
    (ERP `(flip ,prob)
         (make-bernoulli-dist prob))))
-
-;; d2 : Prob -> (U 1 0)
-(define (d2 [prob 1/2])
-  (bernoulli prob))
 
 (define (bernoulli [prob 1/2])
   (inexact->exact

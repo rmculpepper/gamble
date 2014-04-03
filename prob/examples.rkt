@@ -9,7 +9,7 @@
 (define (sum-n-flips n)
   (if (zero? n)
       0
-      (+ (d2) (sum-n-flips (sub1 n)))))
+      (+ (bernoulli) (sum-n-flips (sub1 n)))))
 
 (define s-mh (mh-sampler (sum-n-flips 10)))
 
@@ -37,7 +37,7 @@
   (let loop ([n n] [acc 0])
     (if (zero? n)
         acc
-        (loop (sub1 n) (+ acc (d2))))))
+        (loop (sub1 n) (+ acc (bernoulli))))))
 
 (define s-mh* (mh-sampler (sum-n-flips* 10)))
 
@@ -51,7 +51,7 @@
 
 ;; map is now okay; comes from private/ho-functions.rkt w/ instrumented call sites
 (define (ok-map n)
-  (apply + (map (lambda (n) (d2)) (for/list ([i n]) i))))
+  (apply + (map (lambda (n) (bernoulli)) (for/list ([i n]) i))))
 #|
 (parameterize ((verbose? #t))
     ((mh-sampler (ok-map 10))))
@@ -60,7 +60,7 @@
 ;; racket's map is bad; causes context collisions
 (require (only-in racket/base [map racket:map]))
 (define (bad-map n)
-  (apply + (racket:map (lambda (n) (d2)) (for/list ([i n]) i))))
+  (apply + (racket:map (lambda (n) (bernoulli)) (for/list ([i n]) i))))
 #|
 (parameterize ((verbose? #t))
     ((mh-sampler (bad-map 10))))
@@ -68,7 +68,7 @@
 
 ;; BUT for/* is now okay; annotator rewrites its applications
 (define (ok-for n)
-  (apply + (for/list ([i n]) (d2))))
+  (apply + (for/list ([i n]) (bernoulli))))
 #|
 (parameterize ((verbose? #t))
     ((mh-sampler (ok-for 10))))
@@ -81,8 +81,8 @@
 (define (make-mem-mh n)
   (mh-sampler
    ;; Note: need to call mem within mh-sampler, not outside
-   (define get-the-d2 (mem (lambda (n) (d2))))
-   (for/sum ([i n]) (get-the-d2 (modulo i 5)))))
+   (define get-the-flip (mem (lambda (n) (bernoulli))))
+   (for/sum ([i n]) (get-the-flip (modulo i 5)))))
 #|
 (parameterize ((verbose? #t))
   ((make-mem-mh 10)))
@@ -101,7 +101,7 @@
 #|
 ;; enumeration and mem
 (enumerate
- (define f (mem (lambda (n) (d2))))
+ (define f (mem (lambda (n) (bernoulli))))
  (list (f 1) (f 2) (f 1) (f 2)))
 ;; Should produce 4 values, each with prob 0.25.
 
