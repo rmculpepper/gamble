@@ -86,8 +86,9 @@ depending on only choices reused w/ different params.
 
 ;; default-threshold-mode : one of the following
 ;; - 'simple : R - F + ll_new - ll_old
-;; - 'stale/fresh : R - F + ll_new - ll_old + ll_stale - ll_fresh
-(define default-threshold-mode 'simple)
+;; - 'stale/fresh/retain : R - F + ll_new - ll_old + ll_stale - ll_fresh
+;; - 'stale/fresh/purge : same, but purge unused entries from db
+(define default-threshold-mode 'stale/fresh/retain)
 
 ;; ----
 
@@ -106,6 +107,11 @@ depending on only choices reused w/ different params.
            [threshold-mode default-threshold-mode]
            [last-sample #f])
     (super-new)
+
+    (define/public (get-modes) (values reject-mode threshold-mode))
+    (define/public (set-modes! reject-mode* threshold-mode*)
+      (when reject-mode* (set! reject-mode reject-mode*))
+      (when threshold-mode* (set! threshold-mode threshold-mode*)))
 
     (define/public (sample)
       (sample/picked-key (and last-db (pick-a-key last-db))))
@@ -163,12 +169,13 @@ depending on only choices reused w/ different params.
       (case threshold-mode
         [(simple)
          (+ R-F (- current-ll prev-ll))]
-        [(stale/fresh)
+        [(stale/fresh/retain stale/fresh/purge)
          (define stale (db-ll/difference (or prev-db '#hash()) current-db))
          (define fresh (db-ll/difference current-db (or prev-db '#hash())))
 
-         ;; Copy stale to current-db
-         (db-copy-stale (or prev-db '#hash()) current-db)
+         (when (eq? threshold-mode 'stale/fresh/retain)
+           ;; Copy stale to current-db
+           (db-copy-stale (or prev-db '#hash()) current-db))
 
          (+ R-F (- current-ll prev-ll) (- stale fresh))]))
 

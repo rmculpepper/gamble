@@ -3,7 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang prob
-(require prob/viz)
+(require racket/class prob/viz)
 
 ;; Unlike pl1, doesn't print instrumented applications.
 (define (sum-n-flips n)
@@ -259,3 +259,26 @@
  A
  #:cond (= B 10))
 |#
+
+;; ----
+
+;; Testing MH modes
+
+(define (make-sb) (mh-sampler (flip 0.1)))
+(define (make-sg) (mh-sampler (geom 1/2)))
+
+(define (test-mh-modes make-sampler)
+  (for* ([rmode '(retry-from-top last)]
+         [tmode '(simple stale/fresh/purge stale/fresh/retain)])
+    (define s (make-sampler))
+    (send s set-modes! rmode tmode)
+    (printf "~s, ~s\n => ~e\n" 
+            rmode tmode
+            (sampler->discrete-dist s 1000))))
+
+;;  (test-mh-modes make-sb) shows that
+;;    simple is BAD
+;;    stale/fresh/* is OK
+;;  (test-mh-modes make-sg) shows that
+;;    stale/fresh/purge is BAD
+;;    simple and stale/fresh/retain are OK
