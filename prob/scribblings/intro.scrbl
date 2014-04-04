@@ -16,59 +16,144 @@
 @title[#:tag "intro"]{Introduction}
 
 The @racketmodname[prob] language implements two techniques for
-probabilistic programming. One is an ``MH'' sampler based on the
-log-replay technique of @cite{Bher}. The other is a tree exploration
-based on @cite{EPP}, using delimited continuations.
+probabilistic programming. One is a Metropolis-Hastings MCMC sampler
+based on the log-replay technique of @cite{Bher}. The other is a tree
+exploration based on @cite{EPP}, using delimited continuations to
+reify the program as a lazy probability-labeled tree of execution
+paths.
 
+@section{Probabilistic Models}
 
-@section{Log-replay sampler}
+A probabilistic model is a sequence of definitions, expressions, and
+conditions. A model should only use the pure subset of Racket plus the
+elementary random primitives (ERPs) provided by this library.
 
-Here is a simple function that uses @racket[flip]:
+Here is one of the simplest probabilistic models:
 
 @interaction[#:eval the-eval
-(define (sum-n-flips n)
+(flip)
+]
+
+The @racket[flip] function is an ERP that flips a coin (optionally
+biased) and returns a boolean result.
+
+ERPs can be mixed with ordinary Racket code:
+
+@interaction[#:eval the-eval
+(repeat (lambda () (flip 0.3)) 10)
+]
+
+Conditions can be expressed using the ERP @racket[fail]:
+
+@interaction[#:eval the-eval
+(unless (for/and ([i 10]) (flip 0.3))
+  (fail))
+]
+
+Models are typically executed in the context of a sampler or solver
+designed to explore their probabilistic properties. The general form is
+
+@racketblock[
+(_sampler/solver-form
+  _def/expr @#,(racketidfont "...")
+  _sample-result-expr 
+  #:when _condition-expr)
+]
+
+For example, @racket[rejection-sampler] creates a sampler that simply
+runs a model until it generates a sample satisfying the given
+condition.
+
+@interaction[#:eval the-eval
+(define s-2flips
+  (rejection-sampler
+    (define A (flip))
+    (define B (flip))
+    A
+    #:when (or A B)))
+(s-2flips)
+(s-2flips)
+]
+
+Samplers can be run multiple times to estimate properties of the
+probability distributions they represent or to finitely approximate
+the distribution.
+
+@interaction[#:eval the-eval
+(sampler->mean+variance s-2flips 100 (indicator/value #t))
+(sampler->discrete-dist s-2flips 100)
+]
+
+Probability distributions can be visualized with the simple
+@racket[hist] function. More comprehensive visualization support is
+available through the @racketmodname[plot] library.
+
+@interaction[#:eval the-eval
+(hist (repeat s-2flips 100))
+]
+
+Other sampler and solver forms use more sophisticated techniques to
+explore the probability distribution represented by a probabilistic
+model.
+
+
+@section{Metropolis-Hastings Sampler}
+
+The @racket[mh-sampler] form implements Metropolis-Hastings sampling.
+
+Here is a simple function that calls @racket[flip] @racket[n] times
+and counts the number of true results:
+
+@interaction[#:eval the-eval
+(define (count-true-flips n)
   (if (zero? n)
       0
       (+ (if (flip) 1 0)
-         (sum-n-flips (sub1 n)))))
+         (count-true-flips (sub1 n)))))
 ]
 
-We can define a sampler for a program that uses @racket[sum-n-flips]
-thus:
+We can define a MH sampler for @racket[count-true-flips] thus:
 
 @interaction[#:eval the-eval
-(define s-flips (mh-sampler (sum-n-flips 10)))
+(define s-flips (mh-sampler (count-true-flips 10)))
 ]
 
 Calling the sampler produces a sample, but it also records its
 choices, so that subsequent calls can explore similar sequences of
 choices. We can use @racket[verbose?] to see the choices as they're
-made. (Each line ends with a series of numbers that identifies the
-``address'' of the call to @racket[flip]; see @cite{Bher} for
-details.)
+made. 
 
 @interaction[#:eval the-eval
 (parameterize ((verbose? #t))
   (s-flips))
 ]
+
+Each line ends with a series of numbers that identifies the
+``address'' of the call to @racket[flip]; see @cite{Bher} for
+details. (Note: if you get a ``collision'' error, check to make sure
+your module is using @litchar{#lang prob}---the language performs
+call-site instrumentation needed by @racket[mh-sampler].)
 
 If we run the sampler again, we see that one of the choices is
-deleted, and the rest are reused.
+resampled, and the rest are reused.
 
 @interaction[#:eval the-eval
 (parameterize ((verbose? #t))
   (s-flips))
 ]
 
-We can use @racket[repeat] and @racket[hist] to visualize the sampler
-results:
+As before, we can use various summarization and visualization
+functions on the sampler:
 
 @interaction[#:eval the-eval
+(sampler->mean+variance s-flips 1000)
+(sampler->discrete-dist s-flips 1000)
 (hist (repeat s-flips 1000))
-;; (hist (repeat (lambda () (sum-n-flips 10)) 100))
+;; (hist (repeat (lambda () (count-true-flips 10)) 100))
 ]
 
-Here's a program that uses @racket[mem] to memoize a flip:
+ERP results can be memoized using the @racket[mem] higher-order
+function:
 
 @interaction[#:eval the-eval
 (define s-mem
@@ -77,7 +162,7 @@ Here's a program that uses @racket[mem] to memoize a flip:
     (for/sum ([i 10]) (mflip (modulo i 5)))))
 ]
 
-When we apply this sampler, it makes fresh choices for the first five
+When we run this sampler, it makes fresh choices for the first five
 flips, then reuses the memoized choices for the second five flips.
 
 @interaction[#:eval the-eval
@@ -86,22 +171,25 @@ flips, then reuses the memoized choices for the second five flips.
 ]
 
 Note: the call to @racket[mem] must happen in the dynamic extent of
-the @racket[mh-sampler]; otherwise, the wrong kind of memoization will
-be used.
+the @racket[mh-sampler]; otherwise, naive memoization will be used
+instead.
 
 
 @section{Enumeration via Delimited Continuations}
 
 The second technique uses delimited continuations to make a
-probability-weighted tree of possibilities.
+probability-weighted tree of possibile execution paths.
+
+Exhaustive (or nearly exhaustive) exploration of the tree is done with
+the @racket[enumerate] solver form.
 
 @interaction[#:eval the-eval
 (enumerate
-  (sum-n-flips 10))
+  (count-true-flips 10))
 ]
 
-This agrees with the results produced by the @racket[binomial]
-distribution:
+The results above agree with the results produced by the
+@racket[binomial] distribution:
 
 @interaction[#:eval the-eval
 (enumerate
@@ -110,8 +198,7 @@ distribution:
 
 The @racket[enumerate] form can be used to approximate countable
 distributions by using a limit parameter; the tree search stops when
-the distribution is correct to within the given limit. (FIXME: is this
-description quite right?)
+the distribution is correct to within the given limit.
 
 @interaction[#:eval the-eval
 (define (geom)
@@ -122,8 +209,8 @@ description quite right?)
 ]
 
 Note that the probabilities are not quite the negative powers of 2,
-because they are normalized after the search stops at
-@racket[19]. There is an option to skip normalization, however:
+because they are normalized after the search stops at @racket[19]. Use
+@racket[#:normalize? #f] to skip normalization:
 
 @interaction[#:eval the-eval
 (enumerate
@@ -141,7 +228,8 @@ The @racket[enumerate] form supports memoization through
   (list (f 1) (f 2) (f 1) (f 2)))
 ]
 
-The @racket[enumerate] form also supports conditioning:
+The @racket[enumerate] form supports conditioning through a final
+@racket[#:when] clause:
 
 @interaction[#:eval the-eval
 (enumerate
