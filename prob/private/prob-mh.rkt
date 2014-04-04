@@ -271,7 +271,7 @@ depending on only choices reused w/ different params.
     (and (pair? context)
          (let ([frame (last context)])
            (and (list? frame) (memq 'mem frame)))))
-  (define (new!)
+  (define (new! print?)
     (cond [(assoc (current-label) spconds)
            => (lambda (e)
                 (match (cdr e)
@@ -279,6 +279,8 @@ depending on only choices reused w/ different params.
                    ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
                    (cond [(positive? (dist-pdf dist value))
                           (when (verbose?)
+                            (when print?
+                              (eprintf "- NEW ~s: ~s = ~e\n" tag context value))
                             (eprintf "  CONDITIONED ~s = ~e\n" (current-label) value))
                           (hash-set! current-db context (entry tag dist value #t))
                           value]
@@ -287,9 +289,11 @@ depending on only choices reused w/ different params.
                   [(spcond:drawn alt-dist)
                    (error "unimplemented")]))]
           [else
-           (define result (dist-sample dist))
-           (hash-set! current-db context (entry tag dist result #f))
-           result]))
+           (define value (dist-sample dist))
+           (when (and print? (verbose?))
+             (eprintf "- NEW ~s: ~s = ~e\n" tag context value))
+           (hash-set! current-db context (entry tag dist value #f))
+           value]))
   (define (collision-error context)
     (error 'ERP
            (string-append "collision in random choice database"
@@ -304,10 +308,10 @@ depending on only choices reused w/ different params.
                                 (if (mem-context?) "MEMOIZED" "COLLISION")
                                 (entry-tag e) tag context))
                      (unless (mem-context?) (collision-error context))
-                     (new!)]
+                     (new! #f)]
                     [(mem-context?)
                      (when (verbose?)
-                       (eprintf "- MEMOIZED ~s: ~s\n" tag context))
+                       (eprintf "- MEMOIZED ~s: ~s = ~e\n" tag context (entry-value e)))
                      (entry-value e)]
                     [else
                      (when (verbose?)
@@ -319,24 +323,21 @@ depending on only choices reused w/ different params.
               (cond [(equal? (entry-tag e) tag)
                      ;; Note: equal tags implies equal dists
                      (when (verbose?)
-                       (eprintf "- REUSED ~s: ~s = ~s\n" tag context (entry-value e)))
+                       (eprintf "- REUSED ~s: ~s = ~e\n" tag context (entry-value e)))
                      (hash-set! current-db context e)
                      (entry-value e)]
                     [(and (tags-compatible? (entry-tag e) tag)
                           (positive? (dist-pdf dist (entry-value e))))
-                     (when (verbose?)
-                       (eprintf "- RESCORE ~s: ~s\n" tag context))
                      (define value (entry-value e))
+                     (when (verbose?)
+                       (eprintf "- RESCORE ~s: ~s = ~e\n" tag context value))
                      (hash-set! current-db context (entry tag dist value (entry-pinned? e)))
                      value]
                     [(not (equal? (entry-tag e) tag))
                      (when (verbose?)
                        (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
-                     (new!)]))]
-        [else
-         (when (verbose?)
-           (eprintf "- NEW ~s: ~s\n" tag context))
-         (new!)]))
+                     (new! #f)]))]
+        [else (new! #t)]))
 
 (define (tags-compatible? old-tag new-tag)
   (and (eq? (car old-tag) (car new-tag))))
