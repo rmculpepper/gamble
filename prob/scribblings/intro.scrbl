@@ -174,6 +174,25 @@ Note: the call to @racket[mem] must happen in the dynamic extent of
 the @racket[mh-sampler]; otherwise, naive memoization will be used
 instead.
 
+Certain kinds of conditions can be enforced directly, rather than
+sampling forward and rejecting if the condition is
+unsatisfied. Indeed, for conditions on continuous random variables,
+direct enforcement is the only feasible option.
+
+(Note: the syntax below, @racket[label] and @racket[#:cond], is still
+in flux and subject to change.)
+
+@interaction[#:eval the-eval
+(define (make-s-cd stddev_R)
+  (mh-sampler
+   (define R (normal 10 stddev_R))
+   (define S (label 'S (normal R 1)))
+   R
+   #:cond (= S 9)))
+(sampler->mean+variance (make-s-cd 3) 1000)
+(sampler->mean+variance (make-s-cd .5) 1000)
+]
+
 
 @section{Enumeration via Delimited Continuations}
 
@@ -347,5 +366,22 @@ flip when it is actually relevant.
     (andmap (lambda (f) (f)) LFlips)))
 (time (flips-all-true* 12))
 ]
+
+The @racket[enumerate] solver cannot handle continuous random
+variables, but a related sampler called @racket[importance-sampler]
+can explore trees, even those involving continuous random variables,
+and produce weighted samples.
+
+@interaction[#:eval the-eval
+(define (make-ws-cd stddev_R)
+  (importance-sampler
+   (define R (normal 10 stddev_R))
+   (define S (label 'S (normal R 1)))
+   R
+   #:cond (= S 9)))
+(weighted-sampler->mean+variance (make-ws-cd 3) 1000)
+(weighted-sampler->mean+variance (make-ws-cd .5) 1000)
+]
+
 
 @(close-eval the-eval)
