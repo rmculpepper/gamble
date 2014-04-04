@@ -221,15 +221,17 @@ depending on only choices reused w/ different params.
        (hash-set! db key-to-change (entry tag dist value* #f))
        (- R F))
      (match tag
+       #|
        [`(normal ,mean ,stddev)
         (define forward-dist
-          (make-normal-dist value (/ stddev 2.0)))
+          (make-normal-dist value (/ stddev 4.0)))
         (define value* (dist-sample forward-dist))
         (define backward-dist
-          (make-normal-dist value* (/ stddev 2.0)))
+          (make-normal-dist value* (/ stddev 4.0)))
         (define R (dist-pdf backward-dist value #t))
         (define F (dist-pdf forward-dist value* #t))
         (update! R F value*)]
+       |#
        ;; FIXME: insert specialized proposal distributions here
        [_ ;; Fallback: Just resample from same dist.
         ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
