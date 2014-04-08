@@ -46,10 +46,7 @@
 (begin-for-syntax
  (define-syntax-class special-condition
    (pattern ((~datum =) label value:expr)
-            #:with e #'(cons `label (spcond:equal value)))
-   (pattern ((~datum ~) label dist:expr)
-            ;; FIXME: contract on dist
-            #:with e #'(cons `label (spcond:drawn dist)))))
+            #:with e #'(cons `label (spcond:equal value)))))
 
 (define-syntax (mh-sampler stx)
   (syntax-parse stx

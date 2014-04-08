@@ -19,8 +19,10 @@
 
 ;; Unlike bher, use two databases---better for detecting collisions (debugging).
 
-;; An Entry is (entry ERPTag Dist Any)
-;; where the value is appropriate for the ERP denoted by the tag.
+;; An Entry is (entry ERPTag Dist Any Boolean)
+;; where the value is appropriate for the ERP denoted by the tag,
+;; and pinned? indicates whether the value originated from a special condition
+;; (and thus cannot be perturbed).
 (struct entry (tag dist value pinned?) #:prefab)
 
 (define (print-db db)
@@ -209,7 +211,7 @@ depending on only choices reused w/ different params.
                    [else
                     (loop (hash-iterate-next db iter) (sub1 i))]))))))
 
-;; perturb! : DB Address (BoxOf Real) -> Real
+;; perturb! : DB Address -> Real
 (define (perturb! db key-to-change)
   (match (hash-ref db key-to-change)
     [(entry tag dist value #f)
@@ -221,7 +223,6 @@ depending on only choices reused w/ different params.
        (hash-set! db key-to-change (entry tag dist value* #f))
        (- R F))
      (match tag
-       #|
        [`(normal ,mean ,stddev)
         (define forward-dist
           (make-normal-dist value (/ stddev 4.0)))
@@ -230,8 +231,8 @@ depending on only choices reused w/ different params.
           (make-normal-dist value* (/ stddev 4.0)))
         (define R (dist-pdf backward-dist value #t))
         (define F (dist-pdf forward-dist value* #t))
-        (update! R F value*)]
-       |#
+        ;; (update! R F value*)
+        (update! 0 0 value*)]
        ;; FIXME: insert specialized proposal distributions here
        [_ ;; Fallback: Just resample from same dist.
         ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
