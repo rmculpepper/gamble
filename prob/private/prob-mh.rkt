@@ -12,10 +12,7 @@
          "sampler.rkt"
          "prob-hooks.rkt"
          "prob-util.rkt")
-(provide mh-sampler*
-         print-db
-         make-db-ERP
-         db-mem)
+(provide mh-sampler*)
 
 ;; Unlike bher, use two databases---better for detecting collisions (debugging).
 
