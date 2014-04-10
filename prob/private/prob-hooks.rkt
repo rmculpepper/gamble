@@ -161,7 +161,8 @@
 
 ;; Discrete weighted dist functions
 (define (fldiscrete-pdf probs prob-sum k log?)
-  (/ (list-ref probs (inexact->exact k)) prob-sum))
+  (define l (/ (list-ref probs (inexact->exact k)) prob-sum))
+  (if log? (log l) l))
 (define (fldiscrete-cdf probs prob-sum k log? 1-p?)
   (when (or log? 1-p?) (error 'fldiscrete-cdf "unimplemented"))
   (let ([k (inexact->exact k)])
@@ -173,7 +174,7 @@
     (cond [(null? probs)
            (error 'fldiscrete-inv-cdf "out of values")]
           [(< p (car probs))
-           i]
+           (exact->inexact i)]
           [else
            (loop (cdr probs) (- p (car probs)) (add1 i))])))
 (define (fldiscrete-sample probs prob-sum n)
