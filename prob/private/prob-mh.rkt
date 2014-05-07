@@ -81,7 +81,7 @@ depending on only choices reused w/ different params.
 ;; - 'retry-from-top : re-pick db key to change on rejection
 ;; - 'retry/same-choice : keep same db key to change on rejection
 ;; - 'last : replay last state (ie, produce same sample as prev)
-(define default-reject-mode 'retry-from-top)
+(define default-reject-mode 'last)
 
 ;; default-threshold-mode : one of the following
 ;; - 'simple : R - F + ll_new - ll_old
@@ -220,6 +220,7 @@ depending on only choices reused w/ different params.
        (hash-set! db key-to-change (entry tag dist value* #f))
        (- R F))
      (match tag
+       #|
        [`(normal ,mean ,stddev)
         (define forward-dist
           (make-normal-dist value (/ stddev 4.0)))
@@ -230,6 +231,7 @@ depending on only choices reused w/ different params.
         (define F (dist-pdf forward-dist value* #t))
         ;; (update! R F value*)
         (update! 0 0 value*)]
+       |#
        ;; FIXME: insert specialized proposal distributions here
        [_ ;; Fallback: Just resample from same dist.
         ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
