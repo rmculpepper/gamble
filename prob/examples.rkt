@@ -126,7 +126,7 @@
  (define (drunk-flip)
    (if (flip 0.9)
        (fail) ;; dropped the coin
-       (flip .05)))
+       (flip .5)))
  (define (drunk-andflips n)
    (cond [(zero? n)
           #t]
