@@ -62,9 +62,12 @@
 (define (compute-initial-means K dim points initial-means on-empty)
   (cond [(vector? initial-means)
          initial-means]
-        [(eq? initial-means 'sample)
+        [(or (eq? initial-means 'sample)
+             (eq? initial-means 'kmeans++))
          (cond [(> (vector-length points) K)
-                (sample-initial-means K (vector-copy points))]
+                (case initial-means
+                  [(sample) (sample-initial-means K (vector-copy points))]
+                  [(kmeans++) (kmeans++-initial-means K (vector-copy points))])]
                [(= (vector-length points) K)
                 points]
                [(eq? on-empty 'drop)
@@ -79,6 +82,38 @@
   (for ([index (in-range K)])
     (define pick (+ index (random (- (vector-length points) index))))
     (vector-swap! points index pick))
+  (vector-copy points 0 K))
+
+;; kmeans++-initial-means : PosNat (Vectorof Point) -> (Vectorof Point)
+;; Note: mutates points (call with copy).
+(define (kmeans++-initial-means K points)
+  (define N (vector-length points))
+  (define weights (make-vector N))
+  (define (reweight! means-so-far)  ;; set weights[i] = min_{j <= means-so-far} (sqrdist i j)
+    (for ([w-index (in-range means-so-far)])
+      (vector-set! weights w-index 0))
+    (for ([w-index (in-range means-so-far N)])
+      (define w-sqrdist
+        (for/fold ([acc-sqrdist +inf.0]) ([new-index (in-range means-so-far)])
+          (define new-sqrdist (sqrdist (vector-ref points new-index) (vector-ref points w-index)))
+          (min new-sqrdist acc-sqrdist)))
+      (vector-set! weights w-index w-sqrdist)))
+  ;; Pick first mean uniformly
+  (define pick0-index (random N))
+  (vector-swap! points 0 pick0-index)
+  ;; Pick each subsequent point with prob. proportional to sqrdist to existing means.
+  (for ([index (in-range 1 K)])
+    (reweight! index)
+    (define weightsum (for/sum ([w (in-vector weights)]) w))
+    (define pick-index
+      ;; FIXME: floating-point arith might let pick-index go out of bounds
+      (let loop ([pick-index index] [fuel (* weightsum (random))])
+        (define fuel* (- fuel (vector-ref weights pick-index)))
+        (if (> fuel* 0)
+            (loop (add1 pick-index) fuel*)
+            pick-index)))
+    (vector-swap! points index pick-index))
+  ;; Return the picked initial means.
   (vector-copy points 0 K))
 
 ;; compute-new-means : PosNat PosNat (Vectorof Point) (Vectorof Nat) -> (Vectorof Point)
