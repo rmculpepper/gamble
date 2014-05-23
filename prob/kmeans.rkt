@@ -33,7 +33,7 @@
           (values acc-means acc-assignment acc-wcss))))
   (values means assignment wcss))
 
-;; kmeans : PositiveInteger (Vectorof Point) -> ???
+;; kmeans* : PosNat PosNat (Vectorof Point) (Vectorof Point) ... -> ???
 (define (kmeans* K dim points means0 on-empty)
   (define assignment0 (compute-assignment points means0))
   ;; loop until fixed point:
@@ -119,7 +119,7 @@
 ;; compute-new-means : PosNat PosNat (Vectorof Point) (Vectorof Nat) -> (Vectorof Point)
 (define (compute-new-means K dim points assignment on-empty)
   (define sums (for/vector #:length K ([i (in-range K)]) (make-vector dim 0)))
-  (define counts (for/vector #:length K ([i (in-range K)]) 0))
+  (define counts (make-vector K 0))
   (for ([p (in-vector points)]
         [a (in-vector assignment)])
     (vector-add! (vector-ref sums a) p)
