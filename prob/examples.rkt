@@ -277,10 +277,3 @@
     (printf "~s, ~s\n => ~e\n" 
             rmode tmode
             (sampler->discrete-dist s iterations))))
-
-;;  (test-mh-modes run-sb) shows that
-;;    simple is BAD
-;;    stale/fresh/* is OK
-;;  (test-mh-modes run-sg) shows that
-;;    stale/fresh/purge is BAD
-;;    simple and stale/fresh/retain are OK
