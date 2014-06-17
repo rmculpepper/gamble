@@ -162,21 +162,37 @@ depending on only choices reused w/ different params.
            (eprintf "# Rejected condition (~s)" fail-reason))
          (reject)]))
 
-    (define/private (accept-threshold R-F current-db prev-db)
-      (define prev-ll (if prev-db (db-ll prev-db) -inf.0))
+    (define/private (accept-threshold R-F current-db maybe-prev-db)
+      (if (and maybe-prev-db (positive? (hash-count current-db)))
+          (accept-threshold* R-F current-db maybe-prev-db)
+          +inf.0))
+
+    (define/private (accept-threshold* R-F current-db prev-db)
+      (define prev-ll (db-ll prev-db))
       (define current-ll (db-ll current-db))
       (case threshold-mode
         [(simple)
          (+ R-F (- current-ll prev-ll))]
         [(stale/fresh/retain stale/fresh/purge)
-         (define stale (db-ll/difference (or prev-db '#hash()) current-db))
-         (define fresh (db-ll/difference current-db (or prev-db '#hash())))
+         (define stale (db-ll/difference prev-db current-db))
+         (define fresh (db-ll/difference current-db prev-db))
+
+         (define R-F/pick
+           ;; Account for backward and forward likelihood of picking
+           ;; the random choice to perturb that we picked.
+           ;; Note: assumes we pick uniformly from all choices.
+           (case threshold-mode
+             [(stale/fresh/purge)
+              (define R (/ 1.0 (hash-count current-db)))
+              (define F (/ 1.0 (hash-count prev-db)))
+              (- (log R) (log F))]
+             [else 0]))
 
          (when (eq? threshold-mode 'stale/fresh/retain)
-           ;; Copy stale to current-db
+           ;; If retaining, copy stale choices to current-db.
            (db-copy-stale (or prev-db '#hash()) current-db))
 
-         (+ R-F (- current-ll prev-ll) (- stale fresh))]))
+         (+ R-F R-F/pick (- current-ll prev-ll) (- stale fresh))]))
 
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
@@ -244,6 +260,10 @@ depending on only choices reused w/ different params.
     (match v
       [(entry tag dist value _)
        (dist-pdf dist value #t)])))
+
+(define (db-count/difference db exclude)
+  (for/sum ([(k v) (in-hash db)])
+    (if (hash-ref exclude k #f) 0 1)))
 
 (define (db-ll/difference db exclude)
   (for/sum ([(k v) (in-hash db)])
