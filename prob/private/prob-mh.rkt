@@ -84,10 +84,9 @@ depending on only choices reused w/ different params.
 (define default-reject-mode 'last)
 
 ;; default-threshold-mode : one of the following
-;; - 'simple : R - F + ll_new - ll_old
-;; - 'stale/fresh/retain : R - F + ll_new - ll_old + ll_stale - ll_fresh
-;; - 'stale/fresh/purge : same, but purge unused entries from db
-(define default-threshold-mode 'stale/fresh/retain)
+;; - 'retain : R - F + ll_new - ll_old + ll_stale - ll_fresh
+;; - 'purge : same, but purge unused entries from db
+(define default-threshold-mode 'retain)
 
 ;; ----
 
@@ -170,29 +169,26 @@ depending on only choices reused w/ different params.
     (define/private (accept-threshold* R-F current-db prev-db)
       (define prev-ll (db-ll prev-db))
       (define current-ll (db-ll current-db))
-      (case threshold-mode
-        [(simple)
-         (+ R-F (- current-ll prev-ll))]
-        [(stale/fresh/retain stale/fresh/purge)
-         (define stale (db-ll/difference prev-db current-db))
-         (define fresh (db-ll/difference current-db prev-db))
 
-         (define R-F/pick
-           ;; Account for backward and forward likelihood of picking
-           ;; the random choice to perturb that we picked.
-           ;; Note: assumes we pick uniformly from all choices.
-           (case threshold-mode
-             [(stale/fresh/purge)
-              (define R (/ 1.0 (hash-count current-db)))
-              (define F (/ 1.0 (hash-count prev-db)))
-              (- (log R) (log F))]
-             [else 0]))
+      (define stale (db-ll/difference prev-db current-db))
+      (define fresh (db-ll/difference current-db prev-db))
 
-         (when (eq? threshold-mode 'stale/fresh/retain)
-           ;; If retaining, copy stale choices to current-db.
-           (db-copy-stale (or prev-db '#hash()) current-db))
+      (define R-F/pick
+        ;; Account for backward and forward likelihood of picking
+        ;; the random choice to perturb that we picked.
+        ;; Note: assumes we pick uniformly from all choices.
+        (case threshold-mode
+          [(purge)
+           (define R (/ 1.0 (hash-count current-db)))
+           (define F (/ 1.0 (hash-count prev-db)))
+           (- (log R) (log F))]
+          [else 0]))
 
-         (+ R-F R-F/pick (- current-ll prev-ll) (- stale fresh))]))
+      (when (eq? threshold-mode 'retain)
+        ;; If retaining, copy stale choices to current-db.
+        (db-copy-stale (or prev-db '#hash()) current-db))
+
+      (+ R-F R-F/pick (- current-ll prev-ll) (- stale fresh)))
 
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))

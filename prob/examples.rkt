@@ -271,7 +271,7 @@
   (printf "expected\n => ~e\n"
           (enumerate (run) #:limit 0.01 #:normalize? #f))
   (for* ([rmode '(retry-from-top last)]
-         [tmode '(simple stale/fresh/purge stale/fresh/retain)])
+         [tmode '(purge retain)])
     (define s (mh-sampler (run)))
     (send s set-modes! rmode tmode)
     (printf "~s, ~s\n => ~e\n" 
