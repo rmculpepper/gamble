@@ -193,13 +193,13 @@ depending on only choices reused w/ different params.
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
       (cond [(zero? total)
-             (printf "No samples taken.\n")]
+             (printf "No traces taken.\n")]
             [else
-             (printf "Accepted samples: ~s, ~a%\n"
+             (printf "Accepted traces: ~s, ~a%\n"
                      accepts (* 100.0 (/ accepts total)))
-             (printf "Samples rejected by condition: ~s, ~a%\n"
+             (printf "Traces rejected by condition: ~s, ~a%\n"
                      cond-rejects (* 100.0 (/ cond-rejects total)))
-             (printf "Samples rejected by MH threshold: ~s, ~a%\n"
+             (printf "Traces rejected by MH threshold: ~s, ~a%\n"
                      mh-rejects (* 100.0 (/ mh-rejects total)))]))
     ))
 
