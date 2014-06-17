@@ -264,21 +264,23 @@
 
 ;; Testing MH modes
 
-(define (make-sb) (mh-sampler (flip 0.1)))
-(define (make-sg) (mh-sampler (geom 1/2)))
+(define (run-sb) (flip 0.1))
+(define (run-sg) (geom 1/2))
 
-(define (test-mh-modes make-sampler)
+(define (test-mh-modes run #:iterations [iterations 1000])
+  (printf "expected\n => ~e\n"
+          (enumerate (run) #:limit 0.01 #:normalize? #f))
   (for* ([rmode '(retry-from-top last)]
          [tmode '(simple stale/fresh/purge stale/fresh/retain)])
-    (define s (make-sampler))
+    (define s (mh-sampler (run)))
     (send s set-modes! rmode tmode)
     (printf "~s, ~s\n => ~e\n" 
             rmode tmode
-            (sampler->discrete-dist s 1000))))
+            (sampler->discrete-dist s iterations))))
 
-;;  (test-mh-modes make-sb) shows that
+;;  (test-mh-modes run-sb) shows that
 ;;    simple is BAD
 ;;    stale/fresh/* is OK
-;;  (test-mh-modes make-sg) shows that
+;;  (test-mh-modes run-sg) shows that
 ;;    stale/fresh/purge is BAD
 ;;    simple and stale/fresh/retain are OK
