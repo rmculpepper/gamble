@@ -137,13 +137,13 @@ depending on only choices reused w/ different params.
       ;; FIXME: check condition or MH step first?
       (match result
         [(cons 'okay sample-value)
-         (define threshold (accept-threshold R-F current-db last-db))
+         (define threshold (accept-threshold R-F current-db last-db key-to-change))
          (when (verbose?)
-           (eprintf "# accept threshold = ~s\n" threshold))
+           (eprintf "# accept threshold = ~s\n" (exp threshold)))
          (define u (log (random)))
          (cond [(< u threshold)
                 (when (verbose?)
-                  (eprintf "# Accepted MH step with ~s\n" u))
+                  (eprintf "# Accepted MH step with ~s\n" (exp u)))
                 (set! last-db current-db)
                 (set! accepts (add1 accepts))
                 (set! last-sample sample-value)
@@ -153,7 +153,7 @@ depending on only choices reused w/ different params.
                [else
                 (set! mh-rejects (add1 mh-rejects))
                 (when (verbose?)
-                  (eprintf "# Rejected MH step with ~s\n" u))
+                  (eprintf "# Rejected MH step with ~s\n" (exp u)))
                 (reject)])]
         [(cons 'fail fail-reason)
          (set! cond-rejects (add1 cond-rejects))
@@ -161,17 +161,17 @@ depending on only choices reused w/ different params.
            (eprintf "# Rejected condition (~s)" fail-reason))
          (reject)]))
 
-    (define/private (accept-threshold R-F current-db maybe-prev-db)
+    (define/private (accept-threshold R-F current-db maybe-prev-db key-to-change)
       (if (and maybe-prev-db (positive? (hash-count current-db)))
-          (accept-threshold* R-F current-db maybe-prev-db)
+          (accept-threshold* R-F current-db maybe-prev-db key-to-change)
           +inf.0))
 
-    (define/private (accept-threshold* R-F current-db prev-db)
+    (define/private (accept-threshold* R-F current-db prev-db key-to-change)
       (define prev-ll (db-ll prev-db))
       (define current-ll (db-ll current-db))
 
-      (define stale (db-ll/difference prev-db current-db))
-      (define fresh (db-ll/difference current-db prev-db))
+      (define stale (db-ll/difference prev-db current-db key-to-change))
+      (define fresh (db-ll/difference current-db prev-db key-to-change))
 
       (define R-F/pick
         ;; Account for backward and forward likelihood of picking
@@ -228,11 +228,10 @@ depending on only choices reused w/ different params.
      (define (update! R F value*)
        (when (verbose?)
          (eprintf "  from ~e to ~e\n" value value*)
-         (eprintf "  R = ~s, F = ~s\n" R F))
+         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
        (hash-set! db key-to-change (entry tag dist value* #f))
        (- R F))
      (match tag
-       #|
        [`(normal ,mean ,stddev)
         (define forward-dist
           (make-normal-dist value (/ stddev 4.0)))
@@ -241,9 +240,7 @@ depending on only choices reused w/ different params.
           (make-normal-dist value* (/ stddev 4.0)))
         (define R (dist-pdf backward-dist value #t))
         (define F (dist-pdf forward-dist value* #t))
-        ;; (update! R F value*)
-        (update! 0 0 value*)]
-       |#
+        (update! R F value*)]
        ;; FIXME: insert specialized proposal distributions here
        [_ ;; Fallback: Just resample from same dist.
         ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
@@ -255,24 +252,28 @@ depending on only choices reused w/ different params.
   (for/sum ([(k v) (in-hash db)])
     (match v
       [(entry tag dist value _)
+       (when (verbose?)
+         (eprintf "  - ~s => ~e @ ~s\n" tag value (dist-pdf dist value)))
        (dist-pdf dist value #t)])))
 
 (define (db-count/difference db exclude)
   (for/sum ([(k v) (in-hash db)])
     (if (hash-ref exclude k #f) 0 1)))
 
-(define (db-ll/difference db exclude)
+(define (db-ll/difference db exclude exclude-key)
   (for/sum ([(k v) (in-hash db)])
-    (match v
-      [(entry tag dist value _)
-       (match (hash-ref exclude k #f)
-         [(entry ex-tag ex-dist ex-value _)
-          (cond [(and (tags-compatible? tag ex-tag)
-                      (equal? value ex-value))
-                 ;; kept value and rescored; don't count as fresh/stale
-                 0]
-                [else (dist-pdf dist value #t)])]
-         [#f (dist-pdf dist value #t)])])))
+    (if (equal? k exclude-key)
+        0
+        (match v
+          [(entry tag dist value _)
+           (match (hash-ref exclude k #f)
+             [(entry ex-tag ex-dist ex-value _)
+              (cond [(and (tags-compatible? tag ex-tag)
+                          (equal? value ex-value))
+                     ;; kept value and rescored; don't count as fresh/stale
+                     0]
+                    [else (dist-pdf dist value #t)])]
+             [#f (dist-pdf dist value #t)])]))))
 
 (define (db-copy-stale old-db new-db)
   (for ([(k v) (in-hash old-db)])
