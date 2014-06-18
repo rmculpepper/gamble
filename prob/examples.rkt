@@ -3,7 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang prob
-(require racket/class prob/viz)
+(require racket/format racket/class prob/viz)
 
 ;; Unlike pl1, doesn't print instrumented applications.
 (define (sum-n-flips n)
@@ -268,12 +268,49 @@
 (define (run-sg) (geom 1/2))
 
 (define (test-mh-modes run #:iterations [iterations 1000])
-  (printf "expected\n => ~e\n"
-          (enumerate (run) #:limit 0.01 #:normalize? #f))
+  (define expected (enumerate (run) #:limit 0.01 #:normalize? #f))
+  (when #f
+    (printf "expected\n  => ~e\n" expected))
   (for* ([rmode '(retry-from-top last)]
          [tmode '(purge retain)])
     (define s (mh-sampler (run)))
     (send s set-modes! rmode tmode)
-    (printf "~s, ~s\n => ~e\n" 
-            rmode tmode
-            (sampler->discrete-dist s iterations))))
+    (define actual (sampler->discrete-dist s iterations))
+    (printf "~s, ~s\n  |error| = ~a%\n"
+                        rmode tmode
+                        (~r (* 100 (discrete-dist-cmp actual expected)) #:precision 4))
+    (when #f
+      (printf "  => ~e\n" actual))))
+
+;; ----
+
+;; discrete-dist-cmp : (Listof (List A Real))^2 -> Real
+(define (discrete-dist-cmp a b)
+  (define (dd-ref dist key default)
+    (cond [(assoc key dist) => cadr]
+          [else default]))
+  ;; Why 1/2? Because every error is counted twice: 
+  ;; once for being present where it shouldn't be, 
+  ;; and again for being absent from where it should be.
+  (* 1/2
+     (+ (for/sum ([aentry (in-list a)])
+          (define aval (car aentry))
+          (define aweight (cadr aentry))
+          (define bweight (dd-ref b aval 0))
+          (abs (- aweight bweight)))
+        (for/sum ([bentry (in-list b)])
+          (define bval (car bentry))
+          (define bweight (cadr bentry))
+          (define aweight (dd-ref a bval #f))
+          (if aweight
+              0 ;; Already counted in first sum.
+              (abs bweight))))))
+
+(define (cmp prog [iters 1000])
+  (values
+   (discrete-dist-cmp
+    (sampler->discrete-dist (mh-sampler (prog)) iters)
+    (enumerate (prog)))
+   (discrete-dist-cmp
+    (sampler->discrete-dist (rejection-sampler (prog)) iters)
+    (enumerate (prog)))))
