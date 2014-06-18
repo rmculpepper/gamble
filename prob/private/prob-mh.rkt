@@ -173,15 +173,21 @@ depending on only choices reused w/ different params.
       (match (hash-ref db key-to-change)
         [(entry tag dist value #f)
          (or (perturb!/proposal db key-to-change tag dist value)
-             ;; Fallback: Just resample from same dist.
-             ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
-             ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
-             ;; All cancel, so just 0 for R-F.
-             (let ([value* (dist-sample dist)])
-               (when (verbose?)
-                 (eprintf "  RESAMPLED from ~e to ~e\n" value value*))
-               (hash-set! db key-to-change (entry tag dist value* #f))
-               0))]))
+             (perturb!/resample db key-to-change tag dist value))]))
+
+    ;; perturb!/resample : DB Address Tag Dist Any -> Real
+    (define/private (perturb!/resample db key-to-change tag dist value)
+      ;; Fallback: Just resample from same dist.
+      ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
+      ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
+      (define value* (dist-sample dist))
+      (define R (dist-pdf dist value #t))
+      (define F (dist-pdf dist value* #t))
+      (when (verbose?)
+        (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
+        (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+      (hash-set! db key-to-change (entry tag dist value* #f))
+      (- R F))
 
     ;; perturb!/proposal : DB Address Tag Dist Any -> (U Real #f)
     ;; If applicable proposal dist avail, updates db and returns (log) R-F,
