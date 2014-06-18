@@ -1,4 +1,12 @@
-# Needs recent racket (ca 6.0)
+#!/bin/bash
+
+# This script is used to build the docs hosted at
+#   http://rmculpepper.github.io/prob/prob/
+
+# Users of prob do not need to run this script. The prob documentation
+# is automatically built and installed when the prob package is
+# installed. To rebuild the documentation (eg after updating the
+# code), run "raco setup prob".
 
 raco scribble --htmls \
   --dest doc-build \
