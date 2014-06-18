@@ -317,9 +317,8 @@ creates it, otherwise an error is raised:
 The technique of reification and reflection discussed in @cite{EPP}
 can reduce the complexity of enumerating probabilities. Reification is
 done using @racket[enumerate] and reflection with
-@racket[discrete-from-enumeration]. The following pair of programs
-shows an exponential search tree reduced to a linear one using
-reification and reflection.
+@racket[discrete]. The following pair of programs shows an exponential
+search tree reduced to a linear one using reification and reflection.
 
 @interaction[#:eval the-eval
 (define (xor a b) (and (or a b) (not (and a b))))
@@ -334,8 +333,7 @@ reification and reflection.
 (define (xor-flips* n)
   (if (zero? n)
       #t
-      (let ([r (discrete-from-enumeration
-                (enumerate (xor-flips* (sub1 n))))])
+      (let ([r (discrete (enumerate (xor-flips* (sub1 n))))])
         (xor (flip) r))))
 (time (enumerate (xor-flips* 12)))
 (time (enumerate (xor-flips* 120)))

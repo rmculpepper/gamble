@@ -194,7 +194,7 @@
            [else
             (list (cons 1 (lambda () (failed 'condition))))])]))
 
-;; split->subtrees : Any Dist (-> Value (EnumTree A)) -> (Listof (List Prob (-> (EnumTree A))))
+;; split->subtrees : Any Dist (-> Value (EnumTree A)) -> (Listof (Cons Prob (-> (EnumTree A))))
 (define (split->subtrees* tag dist k)
   (define enum (dist-enum dist))
   (cond [(eq? enum 'lazy)

@@ -56,7 +56,7 @@
 (define (tabulate table prob-accepted #:normalize? [normalize? #t])
   (define entries
     (for/list ([(val prob) (in-hash table)])
-      (list val (if normalize? (/ prob prob-accepted) prob))))
+      (cons val (if normalize? (/ prob prob-accepted) prob))))
   (sort entries (order-<? datum-order)))
 
 ;; ----------------------------------------
@@ -145,17 +145,17 @@
 
 ;; ============================================================
 
-;; importance-sampler* : (-> A) -> (List A Positive-Real)
+;; importance-sampler* : (-> A) -> (Cons A Positive-Real)
 ;; FIXME: can get stuck on infinitely deep path (eg, geometric)
 (define (importance-sampler* thunk spconds)
   (define tree (reify-tree thunk))
-  ;; cache : (listof (List A Positive-Real))
+  ;; cache : (listof (Cons A Positive-Real))
   (define cache null)
-  ;; get-samples : (EnumTree A) Prob -> (listof (List A Positive-Real))
+  ;; get-samples : (EnumTree A) Prob -> (listof (Cons A Positive-Real))
   (define (get-samples tree prob)
     (match tree
       [(only a)
-       (list (list a prob))]
+       (list (cons a prob))]
       [(split label tag dist k)
        (cond [(assoc label spconds)
               => (lambda (e)
@@ -177,7 +177,7 @@
       (match sub
         [(cons sub-prob sub-thunk)
          (cons sub-prob (sub-thunk))])))
-  ;; get-samples/paths : (Listof (Cons Real (EnumTree A))) -> (Listof (List A Positive-Real))
+  ;; get-samples/paths : (Listof (Cons Real (EnumTree A))) -> (Listof (Cons A Positive-Real))
   (define (get-samples/paths forced-subs prob)
     (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
     (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
@@ -185,7 +185,7 @@
     (append (for/list ([success (in-list successes)])
               (match success
                 [(cons sub-prob (only value))
-                 (list value (* prob sub-prob))]))
+                 (cons value (* prob sub-prob))]))
             (if (null? unknowns)
                 null
                 (let* ([unknown-probs (map car unknowns)]
@@ -203,7 +203,7 @@
             [(< p (car weights))
              i]
             [else (loop (cdr weights) (- p (car weights)) (add1 i))])))
-  ;; get-one-sample : -> (List A Prob)
+  ;; get-one-sample : -> (Cons A Prob)
   (define (get-one-sample)
     (cond [(pair? cache)
            (begin0 (car cache)

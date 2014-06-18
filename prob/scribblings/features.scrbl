@@ -52,26 +52,28 @@ probability @racket[(- 1 p)].
 
 @defproc*[([(discrete [n exact-positive-integer?])
             exact-nonnegative-integer?]
-           [(discrete [vals (non-empty-listof any/c)])
-            any/c]
-           [(discrete [vals (non-empty-listof any/c)]
-                      [weights (non-empty-listof (>/c 0))])
+           [(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
             any/c])]{
 
 In the first form, returns an integer drawn uniformly from [0, @racket[n]).
 
-In the second and third, returns a value drawn from @racket[vals],
-with the probability of each element in @racket[vals] weighted by the
-corresponding element in @racket[weights], if present.
+In the second form, @racket[(discrete (list (cons _val _weight) ...))]
+returns a value drawn from the @racket[_val]s with probability
+proportional to the corresponding @racket[_weight].
 
 See also @racket[discrete-dist].
 }
 
-@defproc[(discrete-from-enumeration [dist (listof (list/c any/c (>/c 0)))])
+
+@defproc[(discrete* [vals (non-empty-listof any/c)]
+                    [weights (non-empty-listof (>/c 0))])
          any/c]{
 
-Given @racket[(list (list _val _weight) ...)], equivalent to
-@racket[(discrete (list _val ...) (list _weight ...))].
+Returns a value drawn from @racket[vals], with the probability of each
+element in @racket[vals] weighted by the corresponding element in
+@racket[weights], if present.
+
+Equivalent to @racket[(discrete (map cons vals weights))].
 }
 
 

@@ -28,10 +28,13 @@
    (->* [] [probability?] boolean?)]
   [bernoulli
    (->* [] [probability?] (or/c 1 0))]
-  [discrete-from-enumeration
-   (-> (non-empty-listof (list/c any/c (>/c 0)))
-       any)])
- discrete)
+  [discrete
+   (-> (or/c exact-positive-integer?
+             (listof (cons/c any/c (>=/c 0))))
+       any)]
+  [discrete*
+   (-> list? (listof (>=/c 0))
+       any)]))
 
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
@@ -44,41 +47,37 @@
    (ERP `(bernoulli ,prob) (make-bernoulli-dist prob))))
 
 ;; discrete : Nat -> Nat
-;; discrete : (listof (list A Prob))) -> A
-(define discrete
-  (case-lambda
-    [(n/vals)
-     (cond [(and (list? n/vals) (pair? n/vals))
-            (let ([n (length n/vals)])
-              (list-ref n/vals
-                        (inexact->exact
-                         (floor
-                          (ERP `(discrete ,n/vals)
-                               (make-uniform-dist 0 n))))))]
-           [(exact-positive-integer? n/vals)
-            (let ([n n/vals])
-              (inexact->exact
-               (floor
-                (ERP `(discrete ,n)
-                     (make-uniform-dist 0 n)))))]
-           [else
-            (raise-argument-error 'discrete
-              "(or/c exact-positive-integer? (and/c list? pair?))" 0 n/vals)])]
-    [(vals probs)
-     (unless (and (list? vals) (pair? vals))
-       (raise-argument-error 'discrete "(and/c list? pair?)" 0 vals probs))
-     (unless (and (list? probs) (pair? probs) (andmap real? probs) (andmap positive? probs))
-       (raise-argument-error 'discrete "(non-empty-listof (>/c 0))" 1 vals probs))
-     (unless (= (length vals) (length probs))
-       (error 'discrete
-              "values and probability weights have different lengths\n  values: ~e\n  weights: ~e"
-              vals probs))
-     (list-ref vals (inexact->exact
-                     (ERP `(discrete ,vals ,probs)
-                          (make-discrete-dist probs))))]))
+;; discrete : (Listof (Cons A Prob)) -> A
+(define (discrete n/dist)
+  (cond [(list? n/dist)
+         (discrete/weights 'discrete (map car n/dist) (map cdr n/dist))]
+        [else
+         (discrete-uniform n/dist)]))
 
-(define (discrete-from-enumeration e)
-  (discrete (map car e) (map cadr e)))
+;; discrete* : (Listof A) (Listof Prob) -> A
+(define (discrete* vals [weights #f])
+  (cond [(eq? weights #f)
+         (unless (pair? vals)
+           (error 'discrete* "empty values list"))
+         (list-ref vals (discrete-uniform (length vals)))]
+        [else
+         (unless (= (length vals) (length weights))
+           (error 'discrete*
+                  "values list and weights list have unequal lengths\n  values: ~e\n  weights: ~e"
+                  vals weights))
+         (discrete/weights 'discrete* vals weights)]))
+
+;; discrete-uniform : Nat -> Nat
+(define (discrete-uniform n)
+  (inexact->exact (floor (ERP `(discrete-uniform ,n)) (make-uniform-dist 0 n))))
+
+;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
+(define (discrete/weights who vals probs)
+  (unless (positive? (apply + probs))
+    (error who "weights list sum is not positive\n  weights: ~e" probs))
+  (list-ref vals (inexact->exact
+                  (ERP `(discrete ,vals ,probs)
+                       (make-discrete-dist probs)))))
 
 ;; == Countable distributions ==
 
@@ -212,7 +211,7 @@
     (for/sum ([(a w) (in-hash h)]) w))
   (define entries
     (for/list ([(a w) (in-hash h)])
-      (list a (exact->inexact (/ w total-w)))))
+      (cons a (exact->inexact (/ w total-w)))))
   (sort entries (order-<? datum-order)))
 
 (define (sampler->mean+variance s n [f values])
@@ -229,7 +228,7 @@
     (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
       (let* ([r (s)]
              [v (f (car r))]
-             [w (cadr r)])
+             [w (cdr r)])
         (values (+ sum-w w) (+ sum-f (* w v)) (+ sum-f^2 (* w v v))))))
   (define Ef (/ sum-f sum-w))
   (values Ef
