@@ -161,6 +161,34 @@ depending on only choices reused w/ different params.
            (eprintf "# Rejected condition (~s)" fail-reason))
          (reject)]))
 
+    ;; perturb! : DB Address -> Real
+    (define/private (perturb! db key-to-change)
+      (match (hash-ref db key-to-change)
+        [(entry tag dist value #f)
+         ;; update! : ... -> Real
+         (define (update! R F value*)
+           (when (verbose?)
+             (eprintf "  from ~e to ~e\n" value value*)
+             (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+           (hash-set! db key-to-change (entry tag dist value* #f))
+           (- R F))
+         (match tag
+           [`(normal ,mean ,stddev)
+            (define forward-dist
+              (make-normal-dist value (/ stddev 4.0)))
+            (define value* (dist-sample forward-dist))
+            (define backward-dist
+              (make-normal-dist value* (/ stddev 4.0)))
+            (define R (dist-pdf backward-dist value #t))
+            (define F (dist-pdf forward-dist value* #t))
+            (update! R F value*)]
+           ;; FIXME: insert specialized proposal distributions here
+           [_ ;; Fallback: Just resample from same dist.
+            ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
+            ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
+            ;; All cancel, so just pass 0 for all.
+            (update! 0 0 (dist-sample dist))])]))
+
     (define/private (accept-threshold R-F current-db maybe-prev-db key-to-change)
       (if (and maybe-prev-db (positive? (hash-count current-db)))
           (accept-threshold* R-F current-db maybe-prev-db key-to-change)
@@ -207,46 +235,19 @@ depending on only choices reused w/ different params.
 ;; Returns a key s.t. the value is not pinned.
 ;; FIXME: bleh
 (define (pick-a-key db)
-  (let ([n (for/sum ([(k v) (in-hash db)]
-                     #:when (not (entry-pinned? v)))
-             1)])
-    (and (positive? n)
-         (let ([index (random n)])
-           (let loop ([iter (hash-iterate-first db)] [i index])
-             (cond [(entry-pinned? (hash-iterate-value db iter))
-                    (loop (hash-iterate-next db iter) i)]
-                   [(zero? i)
-                    (hash-iterate-key db iter)]
-                   [else
-                    (loop (hash-iterate-next db iter) (sub1 i))]))))))
-
-;; perturb! : DB Address -> Real
-(define (perturb! db key-to-change)
-  (match (hash-ref db key-to-change)
-    [(entry tag dist value #f)
-     ;; update! : ... -> Real
-     (define (update! R F value*)
-       (when (verbose?)
-         (eprintf "  from ~e to ~e\n" value value*)
-         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-       (hash-set! db key-to-change (entry tag dist value* #f))
-       (- R F))
-     (match tag
-       [`(normal ,mean ,stddev)
-        (define forward-dist
-          (make-normal-dist value (/ stddev 4.0)))
-        (define value* (dist-sample forward-dist))
-        (define backward-dist
-          (make-normal-dist value* (/ stddev 4.0)))
-        (define R (dist-pdf backward-dist value #t))
-        (define F (dist-pdf forward-dist value* #t))
-        (update! R F value*)]
-       ;; FIXME: insert specialized proposal distributions here
-       [_ ;; Fallback: Just resample from same dist.
-        ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
-        ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
-        ;; All cancel, so just pass 0 for all.
-        (update! 0 0 (dist-sample dist))])]))
+  (define unpinned-entry-count
+    (for/sum ([(k v) (in-hash db)]
+              #:when (not (entry-pinned? v)))
+      1))
+  (and (positive? unpinned-entry-count)
+       (let ([index (random unpinned-entry-count)])
+         (let loop ([iter (hash-iterate-first db)] [i index])
+           (cond [(entry-pinned? (hash-iterate-value db iter))
+                  (loop (hash-iterate-next db iter) i)]
+                 [(zero? i)
+                  (hash-iterate-key db iter)]
+                 [else
+                  (loop (hash-iterate-next db iter) (sub1 i))])))))
 
 (define (db-ll db)
   (for/sum ([(k v) (in-hash db)])
