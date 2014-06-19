@@ -5,6 +5,7 @@
 #lang racket/base
 (require racket/contract/base
          data/order
+         racket/dict
          "prob-hooks.rkt"
          "util.rkt")
 (provide (contract-out
@@ -239,3 +240,24 @@
 
 (define ((indicator/predicate p?) x)
   (if (p? x) 1 0))
+
+(provide
+ (contract-out
+  [discrete-dist-error
+   (-> (listof (cons/c any/c (>=/c 0)))
+       (listof (cons/c any/c (>=/c 0)))
+       (>=/c 0))]))
+
+;; discrete-dist-error : (Dict A Real) (Dict A Real) -> Real
+(define (discrete-dist-error a b)
+  ;; Why 1/2? Because every error is counted twice: 
+  ;; once for being present where it shouldn't be, 
+  ;; and again for being absent from where it should be.
+  (* 1/2
+     ;; a U b = a U (b - a)
+     (+ (for/sum ([(aval aweight) (in-dict a)])
+          (define bweight (dict-ref b aval 0))
+          (abs (- aweight bweight)))
+        (for/sum ([(bval bweight) (in-dict b)]
+                  #:when (not (dict-ref a bval #f)))
+          (abs bweight)))))

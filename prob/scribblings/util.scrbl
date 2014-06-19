@@ -30,6 +30,25 @@ Parameter that controls whether informative messages are printed by
 solvers and ERPs.
 }
 
+@defproc[(discrete-dist-error [dist1 (listof (cons/c any/c (>=/c 0)))]
+                              [dist2 (listof (cons/c any/c (>=/c 0)))])
+         (>=/c 0)]{
+
+Returns a measure of the difference between two discrete
+distributions. The result is the probability mass that would need to
+be reassigned in order to transform @racket[dist1] into
+@racket[dist2].
+
+@examples[#:eval the-eval
+(discrete-dist-error '((A . 3/5) (B . 2/5))
+                     '((A . 1/2) (B . 1/2)))
+]
+
+In the example above, @racket[1/10] of the probability mass of
+@racket['A] in the first distribution would have to be shifted to
+@racket['B] to transform the first distribution into the second.
+}
+
 
 @section[#:tag "sample-utils"]{Sampler Utilities}
 

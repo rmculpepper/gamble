@@ -278,39 +278,17 @@
     (define actual (sampler->discrete-dist s iterations))
     (printf "~s, ~s\n  |error| = ~a%\n"
                         rmode tmode
-                        (~r (* 100 (discrete-dist-cmp actual expected)) #:precision 4))
+                        (~r (* 100 (discrete-dist-error actual expected)) #:precision 4))
     (when #f
       (printf "  => ~e\n" actual))))
 
 ;; ----
 
-;; discrete-dist-cmp : (Listof (Cons A Real))^2 -> Real
-(define (discrete-dist-cmp a b)
-  (define (dd-ref dist key default)
-    (cond [(assoc key dist) => cdr]
-          [else default]))
-  ;; Why 1/2? Because every error is counted twice: 
-  ;; once for being present where it shouldn't be, 
-  ;; and again for being absent from where it should be.
-  (* 1/2
-     (+ (for/sum ([aentry (in-list a)])
-          (define aval (car aentry))
-          (define aweight (cdr aentry))
-          (define bweight (dd-ref b aval 0))
-          (abs (- aweight bweight)))
-        (for/sum ([bentry (in-list b)])
-          (define bval (car bentry))
-          (define bweight (cdr bentry))
-          (define aweight (dd-ref a bval #f))
-          (if aweight
-              0 ;; Already counted in first sum.
-              (abs bweight))))))
-
 (define (cmp prog [iters 1000])
   (values
-   (discrete-dist-cmp
+   (discrete-dist-error
     (sampler->discrete-dist (mh-sampler (prog)) iters)
     (enumerate (prog)))
-   (discrete-dist-cmp
+   (discrete-dist-error
     (sampler->discrete-dist (rejection-sampler (prog)) iters)
     (enumerate (prog)))))
