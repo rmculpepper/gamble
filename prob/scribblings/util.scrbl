@@ -49,6 +49,29 @@ In the example above, @racket[1/10] of the probability mass of
 @racket['B] to transform the first distribution into the second.
 }
 
+@defproc[(sampler->KS [sampler (-> real?)]
+                      [iterations exact-positive-integer?]
+                      [dist dist?])
+         (>=/c 0)]{
+
+Gets @racket[iterations] samples from @racket[sampler] and calculates
+the @hyperlink["http://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov
+statistic} with @racket[dist]. The result is a measure of the goodness
+of fit of the samples to the distribution.
+
+@examples[#:eval the-eval
+(sampler->KS (lambda () (uniform 0 1))
+             1000
+             (make-uniform-dist 0 1))
+(sampler->KS (lambda () (normal 0 1))
+             1000
+             (make-uniform-dist 0 1))
+(sampler->KS (lambda () (for/sum ([i 3]) (uniform -1 1)))
+             100
+             (make-normal-dist 0 1))
+]
+}
+
 
 @section[#:tag "sample-utils"]{Sampler Utilities}
 
