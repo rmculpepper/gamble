@@ -280,8 +280,9 @@ depending on only choices reused w/ different params.
   (for/sum ([(k v) (in-hash db)])
     (match v
       [(entry tag dist value _)
-       (when (verbose?)
-         (eprintf "  - ~s => ~e @ ~s\n" tag value (dist-pdf dist value)))
+       (when #f
+         (when (verbose?)
+           (eprintf "  - ~s => ~e @ ~s\n" tag value (dist-pdf dist value))))
        (dist-pdf dist value #t)])))
 
 (define (db-count/difference db exclude)
