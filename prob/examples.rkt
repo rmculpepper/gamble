@@ -5,7 +5,6 @@
 #lang prob
 (require racket/format racket/class prob/viz)
 
-;; Unlike pl1, doesn't print instrumented applications.
 (define (sum-n-flips n)
   (if (zero? n)
       0
