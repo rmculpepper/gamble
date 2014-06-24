@@ -1,3 +1,7 @@
+;; Copyright (c) 2014 Ryan Culpepper
+;; Released under the terms of the 2-clause BSD license.
+;; See the file COPYRIGHT for details.
+
 ;; Adapted from (planet krhari/pfds:1:5/pairingheap)
 ;; http://planet.racket-lang.org/package-source/krhari/pfds.plt/1/5/
 
