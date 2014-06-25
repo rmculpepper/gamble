@@ -17,7 +17,7 @@ Racket version 6.0 or later is required.
 
 ## Installation
 
-The following instructions assume you want to write programs using `prob` but not develop `prob` itself. The install and update commands automatically fetch the latest version of `prob` from github.
+The following instructions assume you want to write programs using the latest version of `prob` but not develop `prob` itself. The install and update commands automatically fetch the latest version of `prob` from github.
 
 1. Install this repository as a Racket package.
   * command line: `raco pkg install github://github.com/rmculpepper/prob/master/`
@@ -26,17 +26,26 @@ The following instructions assume you want to write programs using `prob` but no
   * command line: `raco pkg update prob`
   * or DrRacket: File menu, Package Mangager, Currently Installed, Update.
 
+## Installing from a snapshot
+
+The following instructions assume you want to write programs using a specific snapshot of `prob` without updating to the latest available github version.
+
+1. If you had already installed `prob` using the instructions above, remove it.
+  * command line: `raco pkg remove prob`
+2. Extract the snapshot into a directory like 'prob-snapshot-vvvvvv" (where vvvvvv is the snapshot version).
+  * command line: `tar xzf prob-snapshot-vvvvvvv.tar.gz`
+3. Install the snapshot version of `prob` as a Racket package.
+  * `raco pkg install --link prob-snapshot-vvvv`
 
 ## Development
 
-The following instructions assume you want to develop `prob` or you want to use a snapshot of the source code.
+The following instructions assume you want to develop `prob`
 
 1. If you had already installed `prob` using the instructions above, remove it.
   * command line: `raco pkg remove prob`
 2. Clone this repository (http://github.com/rmculpepper/prob)
   * If you have a github account, `git clone git@github.com:rmculpepper/prob.git`
   * If you do not: `git clone https://github.com/rmculpepper/prob.git`
-  * If you are using a snapshot, skip this step and use the snapshot directory as the "repository" for the next instruction.
 3. Install the checked-out repository as a Racket package.
   * `raco pkg install --link <path-to-prob-checkout>`
 4. Periodically update to the the most recent version of `prob`.
