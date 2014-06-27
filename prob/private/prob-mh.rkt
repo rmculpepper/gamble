@@ -86,7 +86,7 @@ depending on only choices reused w/ different params.
 ;; default-threshold-mode : one of the following
 ;; - 'retain : R - F + ll_new - ll_old + ll_stale - ll_fresh
 ;; - 'purge : same, but purge unused entries from db
-(define default-threshold-mode 'retain)
+(define default-threshold-mode 'purge)
 
 ;; default-perturb-mode : list containing some subset of the following
 ;; - 'normal : use specialized proposal distribution for normal dist
