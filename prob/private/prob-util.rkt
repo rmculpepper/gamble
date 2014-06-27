@@ -191,18 +191,18 @@
          indicator/value
          indicator/predicate)
 
-(define (sampler->discrete-dist s n)
+(define (sampler->discrete-dist s n [f values])
   (define h (make-hash))
   (for ([i (in-range n)])
-    (let ([a (s)])
+    (let ([a (f (s))])
       (hash-set! h a (add1 (hash-ref h a 0)))))
   (table->discrete-dist h))
 
-(define (weighted-sampler->discrete-dist s n)
+(define (weighted-sampler->discrete-dist s n [f values])
   (define h (make-hash))
   (for ([i (in-range n)])
     (let* ([r (s)]
-           [a (car r)]
+           [a (f (car r))]
            [p (cadr r)])
       (hash-set! h a (+ p (hash-ref h a 0)))))
   (table->discrete-dist h))
