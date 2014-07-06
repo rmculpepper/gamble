@@ -35,6 +35,7 @@
 ;; - discrete has arbitrary support
 ;;   - print nicely (sort)
 ;;   - enumerate etc should return discrete dist instead of list
+;;   - cdf ? -- could, using datum-order, but expensive to check, precludes eg HO dist
 ;; - ??? normalized vs unnormalized?
 
 ;; FIXME: contracts
@@ -52,9 +53,10 @@
 ;; - inv-cdf : Probability -> Flonum
 ;; - sample : Nat -> FlVector
 ;; - enum : PosInt    -- {0 ... n-1}
-;;        | 'lazy     -- {0 ... }
+;;        | 'lazy     -- {0 ...}
+;;        | list      -- the list elements
 ;;        | #f        -- not enumerable
-(struct pdist ())
+(struct pdist () #:transparent)
 
 (define-generics dist
   (*pdf dist x log?)
@@ -80,8 +82,18 @@
 
 (define-syntax (define-dist-type stx)
 
+  ;; FIXME: contracts?
   (define-syntax-class param-spec
     (pattern param:id))
+
+  ;; A Dist-Kind is one of
+  ;; - #:nat   -- exact domain/support, inexact pdf/cdf
+  ;; - #:real  -- inexact domain/support, inexact pdf/cdf
+  ;; - #:any   -- unrestricted domain/support, exact or inexact pdf/cdf
+  (define-syntax-class dist-kind
+    (pattern #:nat)
+    (pattern #:real)
+    (pattern #:any))
 
   (syntax-parse stx
     [(define-dist-type name (p:param-spec ...)
@@ -140,7 +152,8 @@
 
 ;; ----
 
-(define-dist-type bernoulli   (prob)        #:nat #:enum 2)
+;;(define-dist-type bernoulli   (prob)        #:nat #:enum 2)
+(define-dist-type bernoulli   (prob)        #:any #:enum 2)
 (define-dist-type binomial    (n p)         #:nat #:enum (add1 n))
 (define-dist-type geometric   (p)           #:nat #:enum 'lazy)
 (define-dist-type poisson     (mean)        #:nat #:enum 'lazy)
@@ -186,6 +199,30 @@
     (make-dist discrete #:raw-params (probs prob-sum) #:enum n)))
 |#
 
+
+;; ============================================================
+;; Bernoulli dist functions
+;; -- math/dist version converts exact->inexact
+
+(define (rawbernoulli-pdf prob v log?)
+  (define p
+    (cond [(= v 0) (- 1 prob)]
+          [(= v 1) prob]
+          [else 0]))
+  (convert-p p log? #f))
+(define (rawbernoulli-cdf prob v log? 1-p?)
+  (define p
+    (cond [(< v 0) 0]
+          [(< v 1) (- 1 prob)]
+          [else 1]))
+  (convert-p p log? 1-p?))
+(define (rawbernoulli-inv-cdf prob p0 log? 1-p?)
+  (define p (unconvert-p p0 log? 1-p?))
+  (cond [(< p prob) 0]
+        [else 1]))
+(define (rawbernoulli-sample prob)
+  (if (< (random) prob) 0 1))
+
 ;; ============================================================
 ;; Categorical weighted dist functions
 ;; -- Assume weights are nonnegative, normalized.
@@ -199,8 +236,8 @@
 (define (rawcategorical-cdf probs k log? 1-p?)
   (define p (for/sum ([i (in-range (add1 k))] [prob (in-list probs)]) prob))
   (convert-p p log? 1-p?))
-(define (rawcategorical-inv-cdf probs p log? 1-p?)
-  (when (or log? 1-p?) (error 'rawcategorical-inv-cdf "unimplemented"))
+(define (rawcategorical-inv-cdf probs p0 log? 1-p?)
+  (define p (unconvert-p p0 log? 1-p?))
   (let loop ([probs probs] [p p] [i 0])
     (cond [(null? probs)
            (error 'rawcategorical-inv-cdf "out of values")]
@@ -210,6 +247,10 @@
            (loop (cdr probs) (- p (car probs)) (add1 i))])))
 (define (rawcategorical-sample probs)
   (rawcategorical-inv-cdf probs (random) #f #f))
+
+(define (unconvert-p p log? 1-p?)
+  (define p* (if log? (exp p) p))
+  (if 1-p? (- 1 p*) p*))
 
 (define (convert-p p log? 1-p?)
   (define p* (if 1-p? (- 1 p) p))
