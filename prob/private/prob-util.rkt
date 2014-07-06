@@ -70,7 +70,10 @@
 
 ;; discrete-uniform : Nat -> Nat
 (define (discrete-uniform n)
-  (inexact->exact (floor (ERP `(discrete-uniform ,n)) (make-uniform-dist 0 n))))
+  (inexact->exact
+   (floor
+    (ERP `(discrete-uniform ,n)
+         (make-categorical-dist (make-vector n (/ n)))))))
 
 ;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
 (define (discrete/weights who vals probs)
@@ -78,7 +81,7 @@
     (error who "weights list sum is not positive\n  weights: ~e" probs))
   (list-ref vals (inexact->exact
                   (ERP `(discrete ,vals ,probs)
-                       (make-discrete-dist probs)))))
+                       (make-categorical-dist probs)))))
 
 ;; == Countable distributions ==
 
