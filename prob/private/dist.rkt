@@ -17,7 +17,12 @@
          dist-cdf
          dist-inv-cdf
          dist-sample
-         dist-enum)
+         dist-enum
+         dist-support
+         dist-mean
+         dist-median
+         dist-mode
+         dist-variance)
 
 ;; FIXME: discrete dists
 ;; - categorical has support 1..N
@@ -27,9 +32,6 @@
 ;;   - cdf ? -- could, using datum-order, but expensive to check, precludes eg HO dist
 ;; - ??? normalized vs unnormalized?
 ;; - mode -> modes, return list?
-
-;; TODO:
-;; - support
 
 ;; Distributions from math/distributions have performance penalty in untyped code
 ;; (Also, no discrete-dist? predicate.)
@@ -70,26 +72,25 @@
 (define (dist-enum d)
   (*enum d))
 
-(define (dist-support d)
-  (*support d))
-(define (dist-mean d)
-  (*mean d))
-(define (dist-median d)
-  (*median d))
-(define (dist-mode d)
-  (*mode d))
-(define (dist-variance d)
-  (*variance d))
-
 ;; Support is one of
-;; - list  -- those elements
+;; - #f        -- unknown/unrestricted
+;; - list      -- those elements
 ;; - #s(integer-range Min Max)
 ;; - #s(real-range Min Max)
-;; - #f    -- unknown/unrestricted
 ;; - #s(product #(Support ...))
 (struct integer-range (min max) #:prefab)
 (struct real-range (min max) #:prefab)
 (struct product (ranges) #:prefab)
+
+;; dist-support : Dist -> Support
+(define (dist-support d)  (*support d))
+
+;; dist-<statistic> : Dist -> Real | #f | NaN
+;; #f means unknown; NaN means known to be undefined
+(define (dist-mean d)     (*mean d))
+(define (dist-median d)   (*median d))
+(define (dist-mode d)     (*mode d))
+(define (dist-variance d) (*variance d))
 
 ;; ----
 
@@ -175,71 +176,111 @@
 ;; ----
 
 ;;(define-dist-type bernoulli   ([prob (real-in 0 1)])        #:nat #:enum 2)
-(define-dist-type bernoulli   ([p (real-in 0 1)])
+
+(define-dist-type bernoulli
+  ([p (real-in 0 1)])
   #:any #:enum 2
   #:support '(0 1)
   #:mean p
   #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
   #:mode (cond [(> p 1/2) 1] [(= p 1/2) '(0 1)] [else 0])
   #:variance (* p (- 1 p)))
-(define-dist-type binomial    ([n exact-positive-integer?] [p (real-in 0 1)])
+
+(define-dist-type binomial
+  ([n exact-positive-integer?]
+   [p (real-in 0 1)])
   #:nat #:enum (add1 n)
   #:support (integer-range 0 n)
   #:mean (* n p)
   #:variance (* n p (- 1 p)))
-(define-dist-type geometric   ([p (real-in 0 1)])
+
+(define-dist-type geometric
+  ([p (real-in 0 1)])
   #:nat #:enum 'lazy
   #:support '#s(integer-range 0 +inf.0)
   #:mean (/ (- 1 p) p)
   #:mode 0
   #:variance (/ (- 1 p) (* p p)))
-(define-dist-type poisson     ([mean (>/c 0)])
+
+(define-dist-type poisson
+  ([mean (>/c 0)])
   #:nat #:enum 'lazy
   #:support '#s(integer-range 0 +inf.0)
   #:mean mean
   #:variance mean)
-(define-dist-type beta        ([a (>=/c 0)] [b (>=/c 0)])
+
+(define-dist-type beta
+  ([a (>=/c 0)]
+   [b (>=/c 0)])
   #:real
   #:support '#(real-range 0 1) ;; [0,1]
   #:mean (/ a (+ a b))
   #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
   #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
-(define-dist-type cauchy      ([mode real?] [scale (>/c 0)])
+
+(define-dist-type cauchy
+  ([mode real?]
+   [scale (>/c 0)])
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
   #:mode mode)
-(define-dist-type exponential ([mean (>/c 0)])
+
+(define-dist-type exponential
+  ([mean (>/c 0)])
   #:real
   #:support '#s(real-range 0 +inf.0) ;; [0, inf)
   #:mean mean
   #:mode 0
   #:variance (expt mean -2))
-(define-dist-type gamma       ([shape (>/c 0)] [scale (>/c 0)])
+
+(define-dist-type gamma
+  ([shape (>/c 0)]
+   [scale (>/c 0)])
   #:real
   #:support '#s(real-range 0 +inf.0) ;; (0,inf)
   #:mean (* shape scale)
   #:mode (and (> shape 1) (* (- shape 1) scale))
   #:variance (* shape scale scale))
-(define-dist-type logistic    ([mean real?] [scale (>/c 0)])
+
+(define-dist-type logistic
+  ([mean real?]
+   [scale (>/c 0)])
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
   #:mean mean
   #:median mean #:mode mean
   #:variance (* scale scale pi pi 1/3))
-(define-dist-type normal      ([mean real?] [stddev (>/c 0)])
+
+(define-dist-type normal
+  ([mean real?]
+   [stddev (>/c 0)])
   #:real
   #:support '#s(real-range (-inf.0 +inf.0))
   #:mean mean
   #:median mean
   #:mode mean
   #:variance (* stddev stddev))
-(define-dist-type uniform     ([min real?] [max real?])
+
+(define-dist-type uniform
+  ([min real?]
+   [max real?])
   #:real
   #:support (real-range min max)
   #:mean (/ (+ min max) 2))
 
-(define-dist-type categorical ([weights (vectorof (>/c 0))])
+(define-dist-type categorical
+  ([weights (vectorof (>=/c 0))])
   #:any #:enum (length weights)
+  #:mean (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w))
+  #:mode (let-values ([(best best-w)
+                       (for/fold ([best null] [best-w -inf.0])
+                           ([i (in-naturals)] [w (in-vector weights)])
+                         (cond [(> w best-w)
+                                (values (list i) w)]
+                               [(= w best-w)
+                                (values (cons i best) best-w)]
+                               [else (values best best-w)]))])
+           (reverse best))
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
 #|
@@ -253,18 +294,6 @@
             (define weights* (validate-weights 'discrete-dist weights))
             (values (vector->immutable-vector vals) weights*)))
 |#
-
-(define (validate/normalize-weights who weights)
-  (unless (and (vector? weights)
-               (for/and ([w (in-vector weights)])
-                 (and (rational? w) (>= w 0))))
-    (raise-argument-error 'categorical-dist "(vectorof (>=/c 0))" weights))
-  (define weight-sum (for/sum ([w (in-vector weights)]) w))
-  (unless (> weight-sum 0)
-    (error 'categorical-dist "weights sum to zero\n  weights: ~e" weights))
-  (if (= weight-sum 1)
-      (vector->immutable-vector weights)
-      (vector-map (lambda (w) (/ w weight-sum)) weights)))
 
 #|
 (define (make-discrete-dist probs)
@@ -297,6 +326,7 @@
 (define (rawbernoulli-sample prob)
   (if (<= (random) prob) 0 1))
 
+
 ;; ============================================================
 ;; Categorical weighted dist functions
 ;; -- Assume weights are nonnegative, normalized.
@@ -321,6 +351,22 @@
            (loop (cdr probs) (- p (car probs)) (add1 i))])))
 (define (rawcategorical-sample probs)
   (rawcategorical-inv-cdf probs (random) #f #f))
+
+
+;; ============================================================
+;; Utils
+
+(define (validate/normalize-weights who weights)
+  (unless (and (vector? weights)
+               (for/and ([w (in-vector weights)])
+                 (and (rational? w) (>= w 0))))
+    (raise-argument-error 'categorical-dist "(vectorof (>=/c 0))" weights))
+  (define weight-sum (for/sum ([w (in-vector weights)]) w))
+  (unless (> weight-sum 0)
+    (error 'categorical-dist "weights sum to zero\n  weights: ~e" weights))
+  (if (= weight-sum 1)
+      (vector->immutable-vector weights)
+      (vector-map (lambda (w) (/ w weight-sum)) weights)))
 
 (define (unconvert-p p log? 1-p?)
   (define p* (if log? (exp p) p))
