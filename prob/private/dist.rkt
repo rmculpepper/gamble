@@ -218,10 +218,10 @@
   (convert-p p log? 1-p?))
 (define (rawbernoulli-inv-cdf prob p0 log? 1-p?)
   (define p (unconvert-p p0 log? 1-p?))
-  (cond [(< p prob) 0]
+  (cond [(<= p (- 1 prob)) 0]
         [else 1]))
 (define (rawbernoulli-sample prob)
-  (if (< (random) prob) 0 1))
+  (if (<= (random) prob) 0 1))
 
 ;; ============================================================
 ;; Categorical weighted dist functions
