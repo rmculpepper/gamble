@@ -6,6 +6,8 @@
 (require (for-syntax racket/base
                      syntax/parse
                      racket/syntax)
+         racket/contract
+         racket/math
          racket/generic
          racket/flonum
          racket/vector
@@ -15,20 +17,7 @@
          dist-cdf
          dist-inv-cdf
          dist-sample
-         dist-enum
-         make-bernoulli-dist
-         make-binomial-dist
-         make-geometric-dist
-         make-poisson-dist 
-         make-beta-dist 
-         make-cauchy-dist
-         make-exponential-dist
-         make-gamma-dist
-         make-logistic-dist
-         make-normal-dist
-         make-uniform-dist
-         ;; make-discrete-dist
-         )
+         dist-enum)
 
 ;; FIXME: discrete dists
 ;; - categorical has support 1..N
@@ -37,12 +26,10 @@
 ;;   - enumerate etc should return discrete dist instead of list
 ;;   - cdf ? -- could, using datum-order, but expensive to check, precludes eg HO dist
 ;; - ??? normalized vs unnormalized?
-
-;; FIXME: contracts
+;; - mode -> modes, return list?
 
 ;; TODO:
 ;; - support
-;; - dist statistics: mean, median, variance, etc
 
 ;; Distributions from math/distributions have performance penalty in untyped code
 ;; (Also, no discrete-dist? predicate.)
@@ -65,7 +52,12 @@
   (*sample dist)
   (*type dist)
   (*params dist)
-  (*enum dist))
+  (*enum dist)
+  (*support dist)
+  (*mean dist)
+  (*median dist)
+  (*mode dist)
+  (*variance dist))
 
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))
@@ -78,13 +70,33 @@
 (define (dist-enum d)
   (*enum d))
 
+(define (dist-support d)
+  (*support d))
+(define (dist-mean d)
+  (*mean d))
+(define (dist-median d)
+  (*median d))
+(define (dist-mode d)
+  (*mode d))
+(define (dist-variance d)
+  (*variance d))
+
+;; Support is one of
+;; - list  -- those elements
+;; - #s(integer-range Min Max)
+;; - #s(real-range Min Max)
+;; - #f    -- unknown/unrestricted
+;; - #s(product #(Support ...))
+(struct integer-range (min max) #:prefab)
+(struct real-range (min max) #:prefab)
+(struct product (ranges) #:prefab)
+
 ;; ----
 
 (define-syntax (define-dist-type stx)
 
-  ;; FIXME: contracts?
   (define-syntax-class param-spec
-    (pattern param:id))
+    (pattern [param:id ctc:expr]))
 
   ;; A Dist-Kind is one of
   ;; - #:nat   -- exact domain/support, inexact pdf/cdf
@@ -99,7 +111,12 @@
     [(define-dist-type name (p:param-spec ...)
        (~and kind-kw (~or #:nat #:real #:any))
        (~or (~optional (~seq #:enum enum:expr) #:defaults ([enum #'#f]))
-            (~optional (~seq #:guard guard-fun:expr) #:defaults ([guard-fun #'#f])))
+            (~optional (~seq #:guard guard-fun:expr) #:defaults ([guard-fun #'#f]))
+            (~optional (~seq #:support support:expr) #:defaults ([support #'#f]))
+            (~optional (~seq #:mean mean:expr) #:defaults ([mean #'#f]))
+            (~optional (~seq #:median median:expr) #:defaults ([median #'#f]))
+            (~optional (~seq #:mode mode:expr) #:defaults ([mode #'#f]))
+            (~optional (~seq #:variance variance:expr) #:defaults ([variance #'#f])))
        ...
        extra-clause ...)
      (define kind
@@ -116,30 +133,35 @@
                    [fl-inv-cdf (format-id #'name "~a~a-inv-cdf" prefix #'name)]
                    [fl-sample (format-id #'name "~a~a-sample" prefix #'name)]
                    [kind kind])
-       #'(struct name-dist pdist (p.param ...)
-                 #:extra-constructor-name make-name-dist
-                 #:guard
-                 (or guard-fun
-                     (make-guard-fun (p.param ...) kind-kw))
-                 #:methods gen:dist
-                 [(define (*pdf d x log?)
-                    (fl-pdf (get-param d) ... (exact->inexact x) log?))
-                  (define (*cdf d x log? 1-p?)
-                    (fl-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
-                  (define (*inv-cdf d x log? 1-p?)
-                    (fl-inv-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
-                  (define (*sample d)
-                    (case 'kind
-                      [(nat) (inexact->exact (flvector-ref (fl-sample (get-param d) ... 1) 0))]
-                      [(real) (flvector-ref (fl-sample (get-param d) ... 1) 0)]
-                      [(any) (fl-sample (get-param d) ...)]))
-                  (define (*type d) 'name)
-                  (define (*params d) (vector (get-param d) ...))
-                  (define (*enum d)
-                    (let ([p.param (get-param d)] ...)
-                      enum))]
-                 extra-clause ...
-                 #:transparent))]))
+       #'(begin
+           (struct name-dist pdist (p.param ...)
+                   #:extra-constructor-name make-name-dist
+                   #:guard
+                   (or guard-fun
+                       (make-guard-fun (p.param ...) kind-kw))
+                   #:methods gen:dist
+                   [(define (*pdf d x log?)
+                      (fl-pdf (get-param d) ... (exact->inexact x) log?))
+                    (define (*cdf d x log? 1-p?)
+                      (fl-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
+                    (define (*inv-cdf d x log? 1-p?)
+                      (fl-inv-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
+                    (define (*sample d)
+                      (case 'kind
+                        [(nat) (inexact->exact (flvector-ref (fl-sample (get-param d) ... 1) 0))]
+                        [(real) (flvector-ref (fl-sample (get-param d) ... 1) 0)]
+                        [(any) (fl-sample (get-param d) ...)]))
+                    (define (*type d) 'name)
+                    (define (*params d) (vector (get-param d) ...))
+                    (define (*enum d) (let ([p.param (get-param d)] ...) enum))
+                    (define (*support d) (let ([p.param (get-param d)] ...) support))
+                    (define (*mean d) (let ([p.param (get-param d)] ...) mean))
+                    (define (*median d) (let ([p.param (get-param d)] ...) median))
+                    (define (*mode d) (let ([p.param (get-param d)] ...) mode))
+                    (define (*variance d) (let ([p.param (get-param d)] ...) variance))]
+                   extra-clause ...
+                   #:transparent)
+           (provide/contract [struct name-dist ([p.param p.ctc] ...)])))]))
 
 (define-syntax (make-guard-fun stx)
   (syntax-parse stx
@@ -152,20 +174,72 @@
 
 ;; ----
 
-;;(define-dist-type bernoulli   (prob)        #:nat #:enum 2)
-(define-dist-type bernoulli   (prob)        #:any #:enum 2)
-(define-dist-type binomial    (n p)         #:nat #:enum (add1 n))
-(define-dist-type geometric   (p)           #:nat #:enum 'lazy)
-(define-dist-type poisson     (mean)        #:nat #:enum 'lazy)
-(define-dist-type beta        (a b)         #:real)
-(define-dist-type cauchy      (mode scale)  #:real)
-(define-dist-type exponential (mean)        #:real)
-(define-dist-type gamma       (shape scale) #:real)
-(define-dist-type logistic    (mean scale)  #:real)
-(define-dist-type normal      (mean stddev) #:real)
-(define-dist-type uniform     (min max)     #:real)
+;;(define-dist-type bernoulli   ([prob (real-in 0 1)])        #:nat #:enum 2)
+(define-dist-type bernoulli   ([p (real-in 0 1)])
+  #:any #:enum 2
+  #:support '(0 1)
+  #:mean p
+  #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
+  #:mode (cond [(> p 1/2) 1] [(= p 1/2) '(0 1)] [else 0])
+  #:variance (* p (- 1 p)))
+(define-dist-type binomial    ([n exact-positive-integer?] [p (real-in 0 1)])
+  #:nat #:enum (add1 n)
+  #:support (integer-range 0 n)
+  #:mean (* n p)
+  #:variance (* n p (- 1 p)))
+(define-dist-type geometric   ([p (real-in 0 1)])
+  #:nat #:enum 'lazy
+  #:support '#s(integer-range 0 +inf.0)
+  #:mean (/ (- 1 p) p)
+  #:mode 0
+  #:variance (/ (- 1 p) (* p p)))
+(define-dist-type poisson     ([mean (>/c 0)])
+  #:nat #:enum 'lazy
+  #:support '#s(integer-range 0 +inf.0)
+  #:mean mean
+  #:variance mean)
+(define-dist-type beta        ([a (>=/c 0)] [b (>=/c 0)])
+  #:real
+  #:support '#(real-range 0 1) ;; [0,1]
+  #:mean (/ a (+ a b))
+  #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
+  #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
+(define-dist-type cauchy      ([mode real?] [scale (>/c 0)])
+  #:real
+  #:support '#s(real-range -inf.0 +inf.0)
+  #:mode mode)
+(define-dist-type exponential ([mean (>/c 0)])
+  #:real
+  #:support '#s(real-range 0 +inf.0) ;; [0, inf)
+  #:mean mean
+  #:mode 0
+  #:variance (expt mean -2))
+(define-dist-type gamma       ([shape (>/c 0)] [scale (>/c 0)])
+  #:real
+  #:support '#s(real-range 0 +inf.0) ;; (0,inf)
+  #:mean (* shape scale)
+  #:mode (and (> shape 1) (* (- shape 1) scale))
+  #:variance (* shape scale scale))
+(define-dist-type logistic    ([mean real?] [scale (>/c 0)])
+  #:real
+  #:support '#s(real-range -inf.0 +inf.0)
+  #:mean mean
+  #:median mean #:mode mean
+  #:variance (* scale scale pi pi 1/3))
+(define-dist-type normal      ([mean real?] [stddev (>/c 0)])
+  #:real
+  #:support '#s(real-range (-inf.0 +inf.0))
+  #:mean mean
+  #:median mean
+  #:mode mean
+  #:variance (* stddev stddev))
+(define-dist-type uniform     ([min real?] [max real?])
+  #:real
+  #:support (real-range min max)
+  #:mean (/ (+ min max) 2))
 
-(define-dist-type categorical (weights) #:any #:enum (length weights)
+(define-dist-type categorical ([weights (vectorof (>/c 0))])
+  #:any #:enum (length weights)
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
 #|
