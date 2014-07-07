@@ -8,9 +8,12 @@
                      racket/syntax)
          racket/contract
          racket/math
+         racket/pretty
+         racket/dict
          racket/generic
          racket/flonum
          racket/vector
+         data/order
          (prefix-in m: math/distributions))
 (provide dist?
          dist-pdf
@@ -74,16 +77,28 @@
 
 ;; Support is one of
 ;; - #f        -- unknown/unrestricted
-;; - list      -- those elements
-;; - #s(integer-range Min Max)
-;; - #s(real-range Min Max)
-;; - #s(product #(Support ...))
+;; - 'finite   -- unknown but finite
+;; - #s(integer-range Min Max)  -- inclusive
+;; - #s(real-range Min Max)     -- inclusive (may overapprox)
+;; - TODO: #s(product #(Support ...)), ...
 (struct integer-range (min max) #:prefab)
 (struct real-range (min max) #:prefab)
-(struct product (ranges) #:prefab)
 
 ;; dist-support : Dist -> Support
 (define (dist-support d)  (*support d))
+
+;; Returns #t if dist is necessarily {integer,real}-valued.
+;; Note: a discrete-dist that happens to have integer values is NOT integer-dist?.
+(define (integer-dist? d)
+  (integer-range? (dist-support d)))
+(define (real-dist? d)
+  (real-range? (dist-support d)))
+(define (finite-dist? d)
+  (define support (dist-support d))
+  (or (eq? support 'finite)
+      (and (integer-range? support)
+           (exact-integer? (integer-range-min support))
+           (exact-integer? (integer-range-max support)))))
 
 ;; dist-<statistic> : Dist -> Real | #f | NaN
 ;; #f means unknown; NaN means known to be undefined
@@ -180,7 +195,7 @@
 (define-dist-type bernoulli
   ([p (real-in 0 1)])
   #:any #:enum 2
-  #:support '(0 1)
+  #:support '#s(integer-range 0 1)
   #:mean p
   #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
   #:mode (cond [(> p 1/2) 1] [(= p 1/2) '(0 1)] [else 0])
@@ -213,7 +228,7 @@
   ([a (>=/c 0)]
    [b (>=/c 0)])
   #:real
-  #:support '#(real-range 0 1) ;; [0,1]
+  #:support '#s(real-range 0 1) ;; [0,1]
   #:mean (/ a (+ a b))
   #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
   #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
@@ -266,11 +281,18 @@
    [max real?])
   #:real
   #:support (real-range min max)
-  #:mean (/ (+ min max) 2))
+  #:mean (/ (+ min max) 2)
+  #:guard (lambda (a b _type)
+            (unless (< a b)
+              (error 'uniform-dist
+                     "lower bound is not less than upper bound\n  lower: ~e\n  upper: ~e"
+                     a b))
+            a b))
 
 (define-dist-type categorical
   ([weights (vectorof (>=/c 0))])
   #:any #:enum (length weights)
+  #:support (integer-range 0 (sub1 (vector-length weights)))
   #:mean (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w))
   #:mode (let-values ([(best best-w)
                        (for/fold ([best null] [best-w -inf.0])
@@ -283,24 +305,130 @@
            (reverse best))
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
-#|
-(define-dist-type discrete (vals weights) #:any #:enum vals
-  #:guard (lambda (vals weights _name)
-            (unless (and (vector? vals) (vector? weights)
-                         (= (vector-length vals) (vector-length weights)))
-              (raise-arguments-error 'discrete-dist
-                "values and weights have unequal lengths\n  values: ~e\n  weights: ~e"
-                vals weights))
-            (define weights* (validate-weights 'discrete-dist weights))
-            (values (vector->immutable-vector vals) weights*)))
-|#
+;; ----
 
-#|
-(define (make-discrete-dist probs)
-  (let ([n (length probs)]
-        [prob-sum (apply + probs)])
-    (make-dist discrete #:raw-params (probs prob-sum) #:enum n)))
-|#
+(provide
+ discrete-dist
+ (contract-out
+  [discrete-dist?
+   (-> any/c boolean?)]
+  [make-discrete-dist
+   (-> dict? discrete-dist?)]
+  [make-discrete-dist*
+   (-> vector?
+       (vectorof (>=/c 0))
+       any)]
+  [normalize-discrete-dist
+   (-> discrete-dist? discrete-dist?)]))
+
+(define-dist-type *discrete
+  ([vs vector?]
+   [ws vector?]
+   [wsum real?])
+  #:any #:enum (hash-keys hash)
+  #:property prop:custom-write
+  (lambda (obj port mode)
+    (print-discrete-dist (*discrete-dist-vs obj) (*discrete-dist-ws obj) port mode)))
+
+(define (discrete-dist? x) (*discrete-dist? x))
+
+(define-syntax (discrete-dist stx)
+  (define-syntax-class vwpair
+    #:description "pair of value and weight expressions"
+    (pattern [value:expr weight]
+             #:declare weight (expr/c #'(>=/c 0))))
+  (syntax-parse stx
+    [(discrete-dist p:vwpair ...)
+     #'(make-discrete-dist* (vector p.value ...) (vector p.weight ...))]))
+
+(define (make-discrete-dist dict)
+  (define len (dict-count dict))
+  (define vs (make-vector len #f))
+  (define ws (make-vector len #f))
+  (for ([(v w) (in-dict dict)]
+        [i (in-naturals)])
+    (vector-set! vs i v)
+    (vector-set! ws i w))
+  (for ([w (in-vector ws)])
+    (unless (and (rational? w) (>= w 0))
+      (raise-argument-error 'dict->discrete-dist "(dict/c any/c (>=/c 0))" dict)))
+  (make-discrete-dist* vs ws))
+
+(define (make-discrete-dist* vs ws)
+  (unless (= (vector-length vs) (vector-length ws))
+    (error 'make-discrete-dist
+           "values and weights vectors have different lengths\n  values: ~e\n  weights: ~e"
+           vs ws))
+  (define vs* (vector->immutable-vector vs))
+  (define ws* (vector->immutable-vector ws))
+  (*discrete-dist vs* ws* (for/sum ([w (in-vector ws*)]) w)))
+
+(define (normalize-discrete-dist d)
+  (define vs (*discrete-dist-vs d))
+  (define ws (*discrete-dist-ws d))
+  (define wsum (*discrete-dist-wsum d))
+  (*discrete-dist vs (vector-map (lambda (w) (/ w wsum)) ws) 1))
+
+(define (print-discrete-dist vs ws port mode)
+  (define (recur x p)
+    (case mode
+      ((#t) (write x p))
+      ((#f) (display x p))
+      ((0 1) (print x p mode))))
+
+  ;; Only two cases: 0 vs everything else
+  (define (print-prefix p)
+    (case mode
+      [(0) (write-string "(discrete-dist" p)]
+      [else (write-string "#<discrete-dist:" p)]))
+  (define (print-suffix p)
+    (case mode
+      [(0) (write-string ")" p)]
+      [else (write-string ">" p)]))
+
+  (define (print-contents p leading-space)
+    (let ([lead (if leading-space (make-string (add1 leading-space) #\space) " ")])
+      (for ([v+w (in-list (sort (for/list ([v (in-vector vs)] [w (in-vector ws)]) (cons v w))
+                                (order-<? datum-order)
+                                #:key car))])
+        (when leading-space
+          (pretty-print-newline p (pretty-print-columns)))
+        (write-string lead p)
+        (write-string "[" p)
+        (recur (car v+w) p)
+        (write-string " " p)
+        (recur (cdr v+w) p)
+        (write-string "]" p))))
+
+  (define (print/one-line p)
+    (print-prefix p)
+    (print-contents p #f)
+    (print-suffix p))
+
+  (define (print/multi-line p)
+    (let-values ([(line col pos) (port-next-location p)])
+      (print-prefix p)
+      (print-contents p col)
+      (print-suffix p)))
+
+  (cond [(and (pretty-printing)
+              (integer? (pretty-print-columns)))
+         ((let/ec esc
+            (letrec ([tport
+                      (make-tentative-pretty-print-output-port
+                       port
+                       (- (pretty-print-columns) 1)
+                       (lambda () 
+                         (esc
+                          (lambda ()
+                            (tentative-pretty-print-port-cancel tport)
+                            (print/multi-line port)))))])
+              (print/one-line tport)
+              (tentative-pretty-print-port-transfer tport port))
+            void))]
+        [else
+         (print/one-line port)])
+  (void))
 
 
 ;; ============================================================
@@ -338,19 +466,43 @@
   (define l (vector-ref probs k))
   (if log? (log l) l))
 (define (rawcategorical-cdf probs k log? 1-p?)
-  (define p (for/sum ([i (in-range (add1 k))] [prob (in-list probs)]) prob))
+  (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
   (convert-p p log? 1-p?))
 (define (rawcategorical-inv-cdf probs p0 log? 1-p?)
   (define p (unconvert-p p0 log? 1-p?))
-  (let loop ([probs probs] [p p] [i 0])
-    (cond [(null? probs)
-           (error 'rawcategorical-inv-cdf "out of values")]
-          [(< p (car probs))
+  (let loop ([i 0] [p p])
+    (cond [(>= i (vector-length probs))
+           (error 'categorical-dist:inv-cdf "out of values")]
+          [(< p (vector-ref probs i))
            i]
           [else
-           (loop (cdr probs) (- p (car probs)) (add1 i))])))
+           (loop (add1 i) (- p (vector-ref probs i)))])))
 (define (rawcategorical-sample probs)
   (rawcategorical-inv-cdf probs (random) #f #f))
+
+
+;; ============================================================
+;; Discrete dist support functions
+;; -- Weights are not normalized
+
+(define (raw*discrete-pdf vs ws wsum x log?)
+  (or (for/or ([v (in-vector vs)]
+               [w (in-vector ws)])
+        (and (equal? x v) (/ w wsum)))
+      0))
+(define (raw*discrete-cdf vs ws wsum x log? 1-p?)
+  (error 'discrete-dist:cdf "undefined"))
+(define (raw*discrete-inv-cdf vs ws wsum x log? 1-p?)
+  (error 'discrete-dist:inv-cdf "undefined"))
+(define (raw*discrete-sample vs ws wsum)
+  (define p (* (random) wsum))
+  (let loop ([i 0] [p p])
+    (unless (< i (vector-length ws))
+      (error 'discrete-dist:sample "out of values"))
+    (cond [(< p (vector-ref ws i))
+           (vector-ref vs i)]
+          [else
+           (loop (add1 i) (- p (vector-ref ws i)))])))
 
 
 ;; ============================================================
