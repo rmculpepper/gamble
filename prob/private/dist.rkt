@@ -148,6 +148,7 @@
                    [fl-cdf (format-id #'name "~a~a-cdf" prefix #'name)]
                    [fl-inv-cdf (format-id #'name "~a~a-inv-cdf" prefix #'name)]
                    [fl-sample (format-id #'name "~a~a-sample" prefix #'name)]
+                   [d (datum->syntax stx 'this-dist)] ;; !!! unhygienic capture
                    [kind kind])
        #'(begin
            (struct name-dist pdist (p.param ...)
@@ -207,6 +208,9 @@
   #:nat #:enum (add1 n)
   #:support (integer-range 0 n)
   #:mean (* n p)
+  #:mode (filter-modes this-dist
+                       (let ([m (inexact->exact (floor (* (+ n 1) p)))])
+                         (list m (sub1 m))))
   #:variance (* n p (- 1 p)))
 
 (define-dist-type geometric
@@ -222,6 +226,9 @@
   #:nat #:enum 'lazy
   #:support '#s(integer-range 0 +inf.0)
   #:mean mean
+  #:mode (if (integer? mean)
+             (list (inexact->exact mean) (sub1 (inexact->exact mean)))
+             (inexact->exact (floor mean)))
   #:variance mean)
 
 (define-dist-type beta
@@ -238,7 +245,9 @@
    [scale (>/c 0)])
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
-  #:mode mode)
+  #:mean +nan.0
+  #:mode mode
+  #:variance +nan.0)
 
 (define-dist-type exponential
   ([mean (>/c 0)])
@@ -254,7 +263,7 @@
   #:real
   #:support '#s(real-range 0 +inf.0) ;; (0,inf)
   #:mean (* shape scale)
-  #:mode (and (> shape 1) (* (- shape 1) scale))
+  #:mode (if (> shape 1) (* (- shape 1) scale) +nan.0)
   #:variance (* shape scale scale))
 
 (define-dist-type logistic
@@ -262,8 +271,7 @@
    [scale (>/c 0)])
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
-  #:mean mean
-  #:median mean #:mode mean
+  #:mean mean #:median mean #:mode mean
   #:variance (* scale scale pi pi 1/3))
 
 (define-dist-type normal
@@ -282,12 +290,14 @@
   #:real
   #:support (real-range min max)
   #:mean (/ (+ min max) 2)
-  #:guard (lambda (a b _type)
+  #:median (/ (+ min max) 2)
+  #:variance (* (- max min) (- max min) 1/12)
+  #:guard (lambda (a b _name)
             (unless (< a b)
               (error 'uniform-dist
                      "lower bound is not less than upper bound\n  lower: ~e\n  upper: ~e"
                      a b))
-            a b))
+            (values a b)))
 
 (define-dist-type categorical
   ([weights (vectorof (>=/c 0))])
@@ -527,3 +537,14 @@
 (define (convert-p p log? 1-p?)
   (define p* (if 1-p? (- 1 p) p))
   (if log? (log p*) p*))
+
+(define (filter-modes d ms)
+  (for/fold ([best null] [best-p -inf.0])
+      ([m (in-list ms)])
+    (define m-p (dist-pdf d m))
+    (cond [(> m-p best-p)
+           (values (list m) m-p)]
+          [(= m-p best-p)
+           (values (cons m best) best-p)]
+          [else
+           (values best best-p)])))
