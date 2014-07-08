@@ -4,7 +4,7 @@
 
 #lang racket/base
 (require (for-syntax racket/base racket/syntax)
-         "dist.rkt")
+         (only-in "dist.rkt" dist-sample))
 (provide current-mem
          current-ERP
          current-fail

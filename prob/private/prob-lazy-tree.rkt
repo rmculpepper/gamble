@@ -7,6 +7,7 @@
          data/order
          unstable/markparam
          "prob-hooks.rkt"
+         "dist.rkt"
          "pairingheap.rkt"
          "util.rkt")
 (provide (struct-out only)

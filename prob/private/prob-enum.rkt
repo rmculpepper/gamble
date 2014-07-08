@@ -6,6 +6,7 @@
 (require racket/match
          data/order
          unstable/markparam
+         "../dist.rkt"
          "prob-lazy-tree.rkt"
          "prob-hooks.rkt"
          "pairingheap.rkt"
@@ -57,7 +58,7 @@
   (define entries
     (for/list ([(val prob) (in-hash table)])
       (cons val (if normalize? (/ prob prob-accepted) prob))))
-  (sort entries (order-<? datum-order)))
+  (make-discrete-dist entries))
 
 ;; ----------------------------------------
 

@@ -7,6 +7,7 @@
          data/order
          racket/dict
          "prob-hooks.rkt"
+         "../dist.rkt"
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)])

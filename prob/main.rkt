@@ -7,7 +7,8 @@
 #lang racket/base
 (require "private/instrument.rkt"
          "private/lib.rkt"
-         "private/ho-functions.rkt")
+         "private/ho-functions.rkt"
+         "dist.rkt")
 (provide (except-out (all-from-out racket/base)
                      #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
@@ -15,7 +16,8 @@
          describe-all-call-sites
          describe-call-site
          (all-from-out "private/lib.rkt")
-         (all-from-out "private/ho-functions.rkt"))
+         (all-from-out "private/ho-functions.rkt")
+         (all-from-out "dist.rkt"))
 
 #|
 See private/context.rkt for discussion of Address representation.

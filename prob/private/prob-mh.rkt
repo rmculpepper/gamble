@@ -11,6 +11,7 @@
          "util.rkt"
          "sampler.rkt"
          "prob-hooks.rkt"
+         "../dist.rkt"
          "prob-util.rkt")
 (provide mh-sampler*)
 
