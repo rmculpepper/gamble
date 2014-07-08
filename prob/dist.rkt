@@ -7,6 +7,7 @@
                      syntax/parse
                      racket/syntax)
          racket/contract
+         racket/match
          racket/math
          racket/pretty
          racket/dict
@@ -40,7 +41,9 @@
           [dist-mode
            (-> dist? any)]
           [dist-variance
-           (-> dist? any)])
+           (-> dist? any)]
+          [dist-update-prior
+           (-> dist? any/c vector? (or/c dist? #f))])
 
          ;; Discrete dists
          discrete-dist
@@ -85,6 +88,7 @@
             (~optional (~seq #:median median:expr) #:defaults ([median #'#f]))
             (~optional (~seq #:mode mode:expr) #:defaults ([mode #'#f]))
             (~optional (~seq #:variance variance:expr) #:defaults ([variance #'#f]))
+            (~optional (~seq #:conjugate conj-fun:expr) #:defaults ([conj-fun #'#f]))
             (~optional (~and no-provide #:no-provide)))
        ...
        extra-clause ...)
@@ -128,7 +132,10 @@
                     (define (*mean d) (let ([p.param (get-param d)] ...) mean))
                     (define (*median d) (let ([p.param (get-param d)] ...) median))
                     (define (*mode d) (let ([p.param (get-param d)] ...) mode))
-                    (define (*variance d) (let ([p.param (get-param d)] ...) variance))]
+                    (define (*variance d) (let ([p.param (get-param d)] ...) variance))
+                    (define (*conj d data-d data)
+                      (let ([p.param (get-param d)] ...)
+                        (and conj-fun (conj-fun data-d data))))]
                    extra-clause ...
                    #:transparent)
            #,(if (attribute no-provide)
@@ -193,7 +200,19 @@
   #:support '#s(real-range 0 1) ;; [0,1]
   #:mean (/ a (+ a b))
   #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
-  #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
+  #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1)))
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(bernoulli-dist _)
+                   (beta-dist (+ a (for/sum ([x data] #:when (= x 1)) 1))
+                              (+ b (for/sum ([x data] #:when (= x 0)) 0)))]
+                  [`(binomial-dist ,n _)
+                   (beta-dist (+ a (vector-sum data))
+                              (+ b (for/sum ([x (in-vector data)]) (- n x))))]
+                  [`(geometric-dist _)
+                   (beta-dist (+ a (vector-length data))
+                              (+ b (vector-sum data)))]
+                  [_ #f])))
 
 (define-dist-type cauchy
   ([mode real?]
@@ -219,7 +238,42 @@
   #:support '#s(real-range 0 +inf.0) ;; (0,inf)
   #:mean (* shape scale)
   #:mode (if (> shape 1) (* (- shape 1) scale) +nan.0)
-  #:variance (* shape scale scale))
+  #:variance (* shape scale scale)
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(poisson-dist _)
+                   (gamma-dist (+ shape (vector-sum data))
+                               (/ scale (add1 (* (vector-length data) scale))))]
+                  [`(exponential-dist _)
+                   (gamma-dist (+ shape (vector-length data))
+                               (/ (+ (/ scale) (vector-sum data))))]
+                  [`(gamma-dist ,data-shape _)
+                   (gamma-dist (+ shape (* data-shape (vector-length data)))
+                               (/ (+ (/ scale) (vector-sum data))))]
+                  [`(inverse-gamma-dist ,data-shape _)
+                   (gamma-dist (+ shape (* (vector-length data) data-shape))
+                               (/ (+ (/ scale) (for/sum ([x (in-vector data)]) (/ x)))))]
+                  [`(normal-dist ,data-mean _)
+                   (gamma-dist (+ shape (/ (vector-length data) 2))
+                               (/ (+ (/ scale)
+                                     (* 1/2 (for/sum ([x (in-vector data)])
+                                              (sqr (- x data-mean)))))))]
+                  [_ #f])))
+
+(define-dist-type inverse-gamma
+  ([shape (>/c 0)]
+   [scale (>/c 0)])
+  #:real
+  #:support '#s(real-range 0 +inf.0) ;; (0,inf)
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(normal-dist ,data-mean _)
+                   (inverse-gamma-dist
+                    (+ shape (/ (vector-ref data) 2))
+                    (/ (+ (/ scale)
+                          (* 1/2 (for/sum ([x (in-vector data)])
+                                   (sqr (- x data-mean)))))))]
+                  [_ #f])))
 
 (define-dist-type logistic
   ([mean real?]
@@ -237,7 +291,20 @@
   #:mean mean
   #:median mean
   #:mode mean
-  #:variance (* stddev stddev))
+  #:variance (* stddev stddev)
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(normal-dist _ ,data-stddev)
+                   (normal-dist (/ (+ (/ mean (sqr stddev))
+                                      (/ (vector-sum data)
+                                         (sqr data-stddev)))
+                                   (+ (/ (sqr stddev))
+                                      (/ (vector-length data)
+                                         (sqr data-stddev))))
+                                (/ (+ (/ (sqr stddev))
+                                      (/ (vector-length data)
+                                         (sqr data-stddev)))))]
+                  [_ #f])))
 
 (define-dist-type uniform
   ([min real?]
@@ -467,6 +534,22 @@
 
 
 ;; ============================================================
+;; Inverse gamma distribution
+
+(define (m:flinverse-gamma-pdf shape scale x log?)
+  (m:flgamma-pdf shape scale (/ x) log?))
+(define (m:flinverse-gamma-cdf shape scale x log? 1-p?)
+  (m:flgamma-cdf shape scale (/ x) log? 1-p?))
+(define (m:flinverse-gamma-inv-cdf shape scale x log? 1-p?)
+  (/ (m:flgamma-inv-cdf shape scale x log? 1-p?)))
+(define (m:flinverse-gamma-sample shape scale n)
+  (define flv (m:flgamma-sample shape scale n))
+  (for ([i (in-range n)])
+    (flvector-set! flv i (/ (flvector-ref flv i))))
+  flv)
+
+
+;; ============================================================
 ;; Utils
 
 (define (validate/normalize-weights who weights)
@@ -501,3 +584,5 @@
             [else
              (values best best-p)])))
   (reverse best))
+
+(define (vector-sum v) (for/sum ([x (in-vector v)]) x))

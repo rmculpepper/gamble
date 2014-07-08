@@ -18,7 +18,8 @@
   (*mean dist)
   (*median dist)
   (*mode dist)
-  (*variance dist))
+  (*variance dist)
+  (*conj dist obs-dist data))
 
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))
@@ -62,3 +63,6 @@
 (define (dist-median d)   (*median d))
 (define (dist-mode d)     (*mode d))
 (define (dist-variance d) (*variance d))
+
+(define (dist-update-prior d data-d data)
+  (*conj d data-d data))
