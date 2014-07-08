@@ -16,24 +16,42 @@
          data/order
          (prefix-in m: math/distributions))
 (provide dist?
-         dist-pdf
-         dist-cdf
-         dist-inv-cdf
-         dist-sample
-         dist-enum
-         dist-support
-         dist-mean
-         dist-median
-         dist-mode
-         dist-variance)
+         (contract-out
+          [dist-pdf
+           (->* [dist? any/c] [any/c] real?)]
+          [dist-cdf
+           (->* [dist? any/c] [any/c any/c] real?)]
+          [dist-inv-cdf
+           (->* [dist? (real-in 0 1)] [any/c any/c] any)]
+          [dist-sample
+           (-> dist? any)]
+          [dist-enum
+           (-> dist? any)]
+          [dist-support
+           (-> dist? any)]
+          [dist-mean
+           (-> dist? any)]
+          [dist-median
+           (-> dist? any)]
+          [dist-mode
+           (-> dist? any)]
+          [dist-variance
+           (-> dist? any)])
 
-;; FIXME: discrete dists
-;; - categorical has support 1..N
-;; - discrete has arbitrary support
-;;   - print nicely (sort)
-;;   - enumerate etc should return discrete dist instead of list
-;;   - cdf ? -- could, using datum-order, but expensive to check, precludes eg HO dist
-;; - ??? normalized vs unnormalized?
+         ;; Discrete dists
+         discrete-dist
+         discrete-dist?
+         (contract-out
+          [make-discrete-dist
+           (-> dict? discrete-dist?)]
+          [make-discrete-dist*
+           (-> vector?
+               (vectorof (>=/c 0))
+               any)]
+          [normalize-discrete-dist
+           (-> discrete-dist? discrete-dist?)]))
+
+;; FIXME:
 ;; - mode -> modes, return list?
 
 ;; Distributions from math/distributions have performance penalty in untyped code
@@ -132,7 +150,8 @@
             (~optional (~seq #:mean mean:expr) #:defaults ([mean #'#f]))
             (~optional (~seq #:median median:expr) #:defaults ([median #'#f]))
             (~optional (~seq #:mode mode:expr) #:defaults ([mode #'#f]))
-            (~optional (~seq #:variance variance:expr) #:defaults ([variance #'#f])))
+            (~optional (~seq #:variance variance:expr) #:defaults ([variance #'#f]))
+            (~optional (~and no-provide #:no-provide)))
        ...
        extra-clause ...)
      (define kind
@@ -150,7 +169,7 @@
                    [fl-sample (format-id #'name "~a~a-sample" prefix #'name)]
                    [d (datum->syntax stx 'this-dist)] ;; !!! unhygienic capture
                    [kind kind])
-       #'(begin
+       #`(begin
            (struct name-dist pdist (p.param ...)
                    #:extra-constructor-name make-name-dist
                    #:guard
@@ -178,7 +197,9 @@
                     (define (*variance d) (let ([p.param (get-param d)] ...) variance))]
                    extra-clause ...
                    #:transparent)
-           (provide/contract [struct name-dist ([p.param p.ctc] ...)])))]))
+           #,(if (attribute no-provide)
+                 #'(begin)
+                 #'(provide/contract [struct name-dist ([p.param p.ctc] ...)]))))]))
 
 (define-syntax (make-guard-fun stx)
   (syntax-parse stx
@@ -315,27 +336,23 @@
            (reverse best))
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
-;; ----
 
-(provide
- discrete-dist
- (contract-out
-  [discrete-dist?
-   (-> any/c boolean?)]
-  [make-discrete-dist
-   (-> dict? discrete-dist?)]
-  [make-discrete-dist*
-   (-> vector?
-       (vectorof (>=/c 0))
-       any)]
-  [normalize-discrete-dist
-   (-> discrete-dist? discrete-dist?)]))
+;; ============================================================
+;; Discrete distribution
+
+;; Categorical dist has support 1..N; discrete has arbitrary values as support.
+;; Prints nicely (sort), but non-standard constructor, can't use as match pattern.
+
+;; Not automatically normalized.
+;; Uses equal? to distinguish elements of support.
+;; Does not detect duplicates! (FIXME?)
 
 (define-dist-type *discrete
   ([vs vector?]
    [ws vector?]
    [wsum real?])
   #:any #:enum (hash-keys hash)
+  #:no-provide
   #:property prop:custom-write
   (lambda (obj port mode)
     (print-discrete-dist (*discrete-dist-vs obj) (*discrete-dist-ws obj) port mode)))
