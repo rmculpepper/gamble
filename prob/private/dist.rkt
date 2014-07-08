@@ -16,6 +16,9 @@
          data/order
          (prefix-in m: math/distributions))
 (provide dist?
+         integer-dist?
+         real-dist?
+         finite-dist?
          (contract-out
           [dist-pdf
            (->* [dist? any/c] [any/c] real?)]
@@ -108,11 +111,11 @@
 ;; Returns #t if dist is necessarily {integer,real}-valued.
 ;; Note: a discrete-dist that happens to have integer values is NOT integer-dist?.
 (define (integer-dist? d)
-  (integer-range? (dist-support d)))
+  (and (dist? d) (integer-range? (dist-support d))))
 (define (real-dist? d)
-  (real-range? (dist-support d)))
+  (and (dist? d) (real-range? (dist-support d))))
 (define (finite-dist? d)
-  (define support (dist-support d))
+  (define support (and (dist? d) (dist-support d)))
   (or (eq? support 'finite)
       (and (integer-range? support)
            (exact-integer? (integer-range-min support))
@@ -556,12 +559,14 @@
   (if log? (log p*) p*))
 
 (define (filter-modes d ms)
-  (for/fold ([best null] [best-p -inf.0])
-      ([m (in-list ms)])
-    (define m-p (dist-pdf d m))
-    (cond [(> m-p best-p)
-           (values (list m) m-p)]
-          [(= m-p best-p)
-           (values (cons m best) best-p)]
-          [else
-           (values best best-p)])))
+  (define-values (best best-p)
+    (for/fold ([best null] [best-p -inf.0])
+        ([m (in-list ms)])
+      (define m-p (dist-pdf d m))
+      (cond [(> m-p best-p)
+             (values (list m) m-p)]
+            [(= m-p best-p)
+             (values (cons m best) best-p)]
+            [else
+             (values best best-p)])))
+  (reverse best))
