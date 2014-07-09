@@ -4,18 +4,30 @@
 
 #lang racket/base
 (require racket/class)
-(provide sampler<%>)
+(provide weighted-sampler<%>
+         sampler<%>
+         sampler-base%)
 
-;; Sampler interface:
+;; ============================================================
+;; Sampler interfaces
 
-;; A samplers is an applicable object taking zero arguments. When
+(define weighted-sampler<%>
+  (interface ()
+    sample/weight))
+
+;; A sampler is an applicable object taking zero arguments. When
 ;; applied, it produces a single sample.
 (define sampler<%>
-  (interface* ()
+  (interface* (weighted-sampler<%>)
               ([prop:procedure (lambda (this) (send this sample))])
     sample))
 
-;; TODO: interface for weighted samplers
+;; ============================================================
+;; Utility base classes
 
-;; TODO: conversion from weighted samplers to ordinary sampler, using
-;; uniform rejection test (need scale to be known, though)
+;; Automatic impl of weighted sampler from "ordinary" sampler.
+(define sampler-base%
+  (class* object% (sampler<%>)
+    (super-new)
+    (abstract sample)
+    (define/public (sample/weight) (cons (sample) 1))))

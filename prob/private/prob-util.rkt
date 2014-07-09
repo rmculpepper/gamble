@@ -4,10 +4,12 @@
 
 #lang racket/base
 (require racket/contract/base
+         racket/class
          data/order
          racket/dict
          "prob-hooks.rkt"
          "../dist.rkt"
+         "sampler.rkt"
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)])
@@ -189,26 +191,23 @@
 ;; ========================================
 
 (provide sampler->discrete-dist
-         weighted-sampler->discrete-dist
          sampler->mean+variance
-         weighted-sampler->mean+variance
          indicator/value
          indicator/predicate)
 
 (define (sampler->discrete-dist s n [f values])
   (define h (make-hash))
-  (for ([i (in-range n)])
-    (let ([a (f (s))])
-      (hash-set! h a (add1 (hash-ref h a 0)))))
-  (table->discrete-dist h))
-
-(define (weighted-sampler->discrete-dist s n [f values])
-  (define h (make-hash))
-  (for ([i (in-range n)])
-    (let* ([r (s)]
-           [a (f (car r))]
-           [p (cadr r)])
-      (hash-set! h a (+ p (hash-ref h a 0)))))
+  (cond [(is-a? s sampler<%>)
+         (for ([i (in-range n)])
+           (let ([a (f (send s sample))])
+             (hash-set! h a (add1 (hash-ref h a 0)))))]
+        [(is-a? s weighted-sampler<%>)
+         (for ([i (in-range n)])
+           (let* ([r (send s sample/weight)]
+                  [a (f (car r))]
+                  [p (cadr r)])
+             (hash-set! h a (+ p (hash-ref h a 0)))))]
+        [else (raise-argument-error 'sampler->discrete-dist "sampler" s)])
   (table->discrete-dist h))
 
 (define (table->discrete-dist h)
@@ -217,24 +216,23 @@
   (define entries
     (for/list ([(a w) (in-hash h)])
       (cons a (exact->inexact (/ w total-w)))))
-  (sort entries (order-<? datum-order)))
+  (make-discrete-dist entries))
 
 (define (sampler->mean+variance s n [f values])
-  (define-values (sum-f sum-f^2)
-    (for/fold ([sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
-      (let ([v (f (s))])
-        (values (+ sum-f v) (+ sum-f^2 (* v v))))))
-  (define Ef (/ sum-f n))
-  (values Ef
-          (- (/ sum-f^2 n) (* Ef Ef))))
-
-(define (weighted-sampler->mean+variance s n [f values])
   (define-values (sum-w sum-f sum-f^2)
-    (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
-      (let* ([r (s)]
-             [v (f (car r))]
-             [w (cdr r)])
-        (values (+ sum-w w) (+ sum-f (* w v)) (+ sum-f^2 (* w v v))))))
+    (cond [(is-a? s sampler<%>)
+           (define-values (sum-f sum-f^2)
+             (for/fold ([sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
+               (let ([v (f (send s sample))])
+                 (values (+ sum-f v) (+ sum-f^2 (* v v))))))
+           (values n sum-f sum-f^2)]
+          [(is-a? s weighted-sampler<%>)
+           (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
+             (let* ([r (send s sample)]
+                    [v (f (car r))]
+                    [w (cdr r)])
+               (values (+ sum-w w) (+ sum-f (* w v)) (+ sum-f^2 (* w v v)))))]
+          [else (raise-argument-error 'sampler->mean+variance "sampler" s)]))
   (define Ef (/ sum-f sum-w))
   (values Ef
           (- (/ sum-f^2 sum-w) (* Ef Ef))))

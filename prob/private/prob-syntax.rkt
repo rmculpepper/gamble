@@ -8,10 +8,12 @@
                      syntax/parse/experimental/template
                      syntax/name)
          racket/contract/base
+         racket/class
          "prob-hooks.rkt"
          "prob-util.rkt"
          "prob-mh.rkt"
-         "prob-enum.rkt")
+         "prob-enum.rkt"
+         "sampler.rkt")
 (provide rejection-sampler
          mh-sampler
          enumerate
@@ -29,17 +31,23 @@
     [(rejection-query def:expr ... result:expr
                       (~optional (~seq #:when condition:expr)))
      (template
-      (lambda ()
-        (rejection-sample
-         (lambda () def ... (begin0 result (unless (?? condition #t) (fail)))))))]))
+      (rejection-sampler*
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
 
-(define (rejection-sample thunk)
-  (let ([v (let/ec escape
-             (parameterize ((current-fail (lambda (r) (escape (cons 'fail r)))))
-               (cons 'succeed (thunk))))])
-    (case (car v)
-      [(succeed) (cdr v)]
-      [(fail) (rejection-sample thunk)])))
+(define (rejection-sampler* thunk)
+  (new rejection-sampler% (thunk thunk)))
+
+(define rejection-sampler%
+  (class sampler-base%
+    (init-field thunk)
+    (define/override (sample)
+      (let ([v (let/ec escape
+                 (parameterize ((current-fail (lambda (r) (escape (cons 'fail r)))))
+                   (cons 'succeed (thunk))))])
+        (case (car v)
+          [(succeed) (cdr v)]
+          [(fail) (sample thunk)])))
+    ))
 
 ;; ----
 
