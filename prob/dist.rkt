@@ -355,6 +355,15 @@
                     [denom (* a0 a0 (add1 a0))])
                (for/vector ([ai (in-vector alpha)])
                  (/ (* ai (- a0 ai)) denom)))
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(categorical-dist _)
+                   (define n (vector-length alpha))
+                   (define countv (make-vector n 0))
+                   (for ([x (in-vector data)] [i (in-range n)])
+                     (vector-set! countv i (add1 (vector-ref countv i))))
+                   (dirichlet-dist (vector-map + alpha countv))]
+                  [_ #f]))
   #:guard (lambda (alpha _name)
             (vector->immutable-vector (vector-map exact->inexact alpha))))
 
