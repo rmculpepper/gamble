@@ -19,7 +19,15 @@
   (*median dist)
   (*mode dist)
   (*variance dist)
-  (*conj dist obs-dist data))
+  (*conj dist obs-dist data)
+  #:fallbacks
+  [(define (*enum d) #f)
+   (define (*support d) #f)
+   (define (*mean d) #f)
+   (define (*median d) #f)
+   (define (*mode d) #f)
+   (define (*variance d) #f)
+   (define (*conj d data-d data) #f)])
 
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))

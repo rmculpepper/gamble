@@ -5,6 +5,7 @@
 #lang racket/base
 (require (for-syntax racket/base
                      syntax/parse
+                     syntax/parse/experimental/template
                      racket/syntax)
          racket/contract
          racket/match
@@ -80,15 +81,15 @@
 
   (syntax-parse stx
     [(define-dist-type name (p:param-spec ...)
-       (~and kind-kw (~or #:nat #:real #:any))
-       (~or (~optional (~seq #:enum enum:expr) #:defaults ([enum #'#f]))
-            (~optional (~seq #:guard guard-fun:expr) #:defaults ([guard-fun #'#f]))
-            (~optional (~seq #:support support:expr) #:defaults ([support #'#f]))
-            (~optional (~seq #:mean mean:expr) #:defaults ([mean #'#f]))
-            (~optional (~seq #:median median:expr) #:defaults ([median #'#f]))
-            (~optional (~seq #:mode mode:expr) #:defaults ([mode #'#f]))
-            (~optional (~seq #:variance variance:expr) #:defaults ([variance #'#f]))
-            (~optional (~seq #:conjugate conj-fun:expr) #:defaults ([conj-fun #'#f]))
+       kind-kw:dist-kind
+       (~or (~optional (~seq #:enum enum:expr))
+            (~optional (~seq #:guard guard-fun:expr))
+            (~optional (~seq #:support support:expr))
+            (~optional (~seq #:mean mean:expr))
+            (~optional (~seq #:median median:expr))
+            (~optional (~seq #:mode mode:expr))
+            (~optional (~seq #:variance variance:expr))
+            (~optional (~seq #:conjugate conj-fun:expr))
             (~optional (~and no-provide #:no-provide)))
        ...
        extra-clause ...)
@@ -107,40 +108,39 @@
                    [fl-sample (format-id #'name "~a~a-sample" prefix #'name)]
                    [d (datum->syntax stx 'this-dist)] ;; !!! unhygienic capture
                    [kind kind])
-       #`(begin
-           (struct name-dist (p.param ...)
-                   #:extra-constructor-name make-name-dist
-                   #:guard
-                   (or guard-fun
-                       (make-guard-fun (p.param ...) kind-kw))
-                   #:methods gen:dist
-                   [(define (*pdf d x log?)
-                      (fl-pdf (get-param d) ... (exact->inexact x) log?))
-                    (define (*cdf d x log? 1-p?)
-                      (fl-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
-                    (define (*inv-cdf d x log? 1-p?)
-                      (fl-inv-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
-                    (define (*sample d)
-                      (case 'kind
-                        [(nat) (inexact->exact (flvector-ref (fl-sample (get-param d) ... 1) 0))]
-                        [(real) (flvector-ref (fl-sample (get-param d) ... 1) 0)]
-                        [(any) (fl-sample (get-param d) ...)]))
-                    (define (*type d) 'name)
-                    (define (*params d) (vector (get-param d) ...))
-                    (define (*enum d) (let ([p.param (get-param d)] ...) enum))
-                    (define (*support d) (let ([p.param (get-param d)] ...) support))
-                    (define (*mean d) (let ([p.param (get-param d)] ...) mean))
-                    (define (*median d) (let ([p.param (get-param d)] ...) median))
-                    (define (*mode d) (let ([p.param (get-param d)] ...) mode))
-                    (define (*variance d) (let ([p.param (get-param d)] ...) variance))
-                    (define (*conj d data-d data)
-                      (let ([p.param (get-param d)] ...)
-                        (and conj-fun (conj-fun data-d data))))]
-                   extra-clause ...
-                   #:transparent)
-           #,(if (attribute no-provide)
-                 #'(begin)
-                 #'(provide/contract [struct name-dist ([p.param p.ctc] ...)]))))]))
+       (quasitemplate
+        (begin
+          (struct name-dist (p.param ...)
+                  #:extra-constructor-name make-name-dist
+                  #:guard (?? guard-fun (make-guard-fun (p.param ...) kind-kw))
+                  #:methods gen:dist
+                  [(define (*pdf d x log?)
+                     (fl-pdf (get-param d) ... (exact->inexact x) log?))
+                   (define (*cdf d x log? 1-p?)
+                     (fl-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
+                   (define (*inv-cdf d x log? 1-p?)
+                     (fl-inv-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
+                   (define (*sample d)
+                     (case 'kind
+                       [(nat) (inexact->exact (flvector-ref (fl-sample (get-param d) ... 1) 0))]
+                       [(real) (flvector-ref (fl-sample (get-param d) ... 1) 0)]
+                       [(any) (fl-sample (get-param d) ...)]))
+                   (define (*type d) 'name)
+                   (define (*params d) (vector (get-param d) ...))
+                   (?? (define (*enum d) (let ([p.param (get-param d)] ...) enum)))
+                   (?? (define (*support d) (let ([p.param (get-param d)] ...) support)))
+                   (?? (define (*mean d) (let ([p.param (get-param d)] ...) mean)))
+                   (?? (define (*median d) (let ([p.param (get-param d)] ...) median)))
+                   (?? (define (*mode d) (let ([p.param (get-param d)] ...) mode)))
+                   (?? (define (*variance d) (let ([p.param (get-param d)] ...) variance)))
+                   (?? (define (*conj d data-d data)
+                         (let ([p.param (get-param d)] ...)
+                           (and conj-fun (conj-fun data-d data)))))]
+                  extra-clause ...
+                  #:transparent)
+          #,(if (attribute no-provide)
+                #'(begin)
+                #'(provide (contract-out [struct name-dist ([p.param p.ctc] ...)]))))))]))
 
 (define-syntax (make-guard-fun stx)
   (syntax-parse stx
