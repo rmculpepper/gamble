@@ -17,6 +17,7 @@
          racket/vector
          data/order
          (prefix-in m: math/distributions)
+         (prefix-in m: math/special-functions)
          "private/dist.rkt")
 (provide dist?
          integer-dist?
@@ -337,6 +338,26 @@
            (reverse best))
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
+;; FIXME: cache computations of B(alpha) normalizing factor for pdf
+;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
+(define-dist-type dirichlet
+  ([alpha (vectorof (>/c 0))])
+  #:any #:enum #f
+  ;; #:support ;; [0,1]^n
+  ;; (product (make-vector (vector-length concentrations) '#s(real-range 0 1)))
+  #:mean (let ([alphasum (vector-sum alpha)])
+           (for/vector ([ai (in-vector alpha)]) (/ ai alphasum)))
+  #:mode (if (for/and ([ai (in-vector alpha)]) (> ai 1))
+             (let ([denom (for/sum ([ai (in-vector alpha)]) (sub1 ai))])
+               (for/vector ([ai (in-vector alpha)]) (/ (sub1 ai) denom)))
+             +nan.0)
+  #:variance (let* ([a0 (vector-sum alpha)]
+                    [denom (* a0 a0 (add1 a0))])
+               (for/vector ([ai (in-vector alpha)])
+                 (/ (* ai (- a0 ai)) denom)))
+  #:guard (lambda (alpha _name)
+            (vector->immutable-vector (vector-map exact->inexact alpha))))
+
 
 ;; ============================================================
 ;; Discrete distribution
@@ -547,6 +568,32 @@
   (for ([i (in-range n)])
     (flvector-set! flv i (/ (flvector-ref flv i))))
   flv)
+
+
+;; ============================================================
+;; Dirichlet distribution
+
+(define (rawdirichlet-pdf alpha x)
+  (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
+     ;; FIXME: cache multinomial-beta, since fixed!
+     (multinomial-beta alpha)))
+(define (multinomial-beta alpha)
+  (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
+     (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
+(define (rawdirichlet-cdf alpha x log? 1-p?)
+  (error 'dirichlet-dist:cdf "not implemented"))
+(define (rawdirichlet-inv-cdf alpha x log? 1-p?)
+  (error 'dirichlet-dist:inv-cdf "not implemented"))
+(define (rawdirichlet-sample alpha)
+  ;; TODO: batch gamma sampling when all alphas same?
+  (define n (vector-length alpha))
+  (define x (make-vector n))
+  (for ([a (in-vector alpha)] [i (in-range n)])
+    (vector-set! x i (flvector-ref (m:flgamma-sample a 1.0 1) 0)))
+  (define gsum (for/sum ([g (in-vector x)]) g))
+  (for ([i (in-range n)])
+    (vector-set! x i (/ (vector-ref x i) gsum)))
+  x)
 
 
 ;; ============================================================
