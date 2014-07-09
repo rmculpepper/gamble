@@ -100,7 +100,7 @@ depending on only choices reused w/ different params.
   (new mh-sampler% (thunk thunk) (spconds spconds)))
 
 (define mh-sampler%
-  (class* object% (sampler<%>)
+  (class sampler-base%
     (init-field thunk
                 spconds)
     (field [last-db #f]
@@ -118,7 +118,7 @@ depending on only choices reused w/ different params.
       (when reject-mode* (set! reject-mode reject-mode*))
       (when threshold-mode* (set! threshold-mode threshold-mode*)))
 
-    (define/public (sample)
+    (define/override (sample)
       (sample/picked-key (and last-db (pick-a-key last-db))))
 
     (define/private (sample/picked-key key-to-change)

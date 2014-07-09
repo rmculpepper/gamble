@@ -164,13 +164,13 @@
     (define cache null)
 
     ;; get-one-sample : -> (Cons A Prob)
-    (define/public (sample/weighted)
+    (define/public (sample/weight)
       (cond [(pair? cache)
              (begin0 (car cache)
                (set! cache (cdr cache)))]
             [else
              (set! cache (get-samples tree 1.0))
-             (sample/weighted)]))
+             (sample/weight)]))
 
     ;; get-samples : (EnumTree A) Prob -> (listof (Cons A Positive-Real))
     (define/private (get-samples tree prob)
