@@ -367,6 +367,27 @@
   #:guard (lambda (alpha _name)
             (vector->immutable-vector (vector-map exact->inexact alpha))))
 
+(define-dist-type pareto
+  ([scale (>/c 0)]  ;; x_m
+   [shape (>/c 0)]) ;; alpha
+  #:real
+  #:support (real-range scale +inf.0) ;; [scale,inf)
+  #:mean (if (<= shape 1)
+             +inf.0
+             (/ (* scale shape) (sub1 shape)))
+  #:mode scale
+  #:variance (if (<= shape 2)
+                 +inf.0
+                 (/ (* scale scale shape)
+                    (* (- shape 1) (- shape 1) (- shape 2))))
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(uniform-dist 0 _)
+                   (pareto-dist
+                    (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
+                    (+ shape (vector-length data)))]
+                  [_ #f])))
+
 
 ;; ============================================================
 ;; Discrete distribution
@@ -603,6 +624,29 @@
   (for ([i (in-range n)])
     (vector-set! x i (/ (vector-ref x i) gsum)))
   x)
+
+
+;; ============================================================
+;; Pareto distribution
+
+(define (m:flpareto-pdf scale shape x)
+  (if (>= x scale)
+      (/ (* shape (expt scale shape))
+         (expt x (add1 shape)))
+      0.0))
+(define (m:flpareto-cdf scale shape p log? 1-p?)
+  (define p* (unconvert-p p log? 1-p?))
+  (if (> p* scale)
+      (- 1 (expt (/ scale p*) shape))
+      0.0))
+(define (m:flpareto-inv-cdf scale shape p log? 1-p?)
+  (define p* (unconvert-p p log? 1-p?))
+  (* scale (expt p* (- (/ shape)))))
+(define (m:flpareto-sample scale shape n)
+  (define flv (make-flvector n))
+  (for ([i (in-range n)])
+    (flvector-set! flv i (m:flpareto-inv-cdf scale shape (random) #f #f)))
+  flv)
 
 
 ;; ============================================================
