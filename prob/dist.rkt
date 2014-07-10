@@ -152,8 +152,6 @@
 
 ;; ----
 
-;;(define-dist-type bernoulli   ([prob (real-in 0 1)])        #:nat #:enum 2)
-
 (define-dist-type bernoulli
   ([p (real-in 0 1)])
   #:any #:enum 2
