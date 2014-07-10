@@ -52,11 +52,9 @@
          discrete-dist?
          (contract-out
           [make-discrete-dist
-           (-> dict? discrete-dist?)]
+           (->* [dict?] [#:normalize? any/c] discrete-dist?)]
           [make-discrete-dist*
-           (-> vector?
-               (vectorof (>=/c 0))
-               any)]
+           (->* [vector? (vectorof (>=/c 0))] [#:normalize? any/c] discrete-dist?)]
           [normalize-discrete-dist
            (-> discrete-dist? discrete-dist?)]))
 
@@ -412,15 +410,19 @@
 (define (discrete-dist? x) (*discrete-dist? x))
 
 (define-syntax (discrete-dist stx)
+  (define-splicing-syntax-class maybe-normalize
+    (pattern (~seq #:normalize? normalize?:expr))
+    (pattern (~seq) #:with normalize? #'#t))
   (define-syntax-class vwpair
     #:description "pair of value and weight expressions"
     (pattern [value:expr weight]
              #:declare weight (expr/c #'(>=/c 0))))
   (syntax-parse stx
-    [(discrete-dist p:vwpair ...)
-     #'(make-discrete-dist* (vector p.value ...) (vector p.weight ...))]))
+    [(discrete-dist :maybe-normalize p:vwpair ...)
+     #'(make-discrete-dist* #:normalize? normalize?
+                            (vector p.value ...) (vector p.weight ...))]))
 
-(define (make-discrete-dist dict)
+(define (make-discrete-dist dict #:normalize? [normalize? #t])
   (define len (dict-count dict))
   (define vs (make-vector len #f))
   (define ws (make-vector len #f))
@@ -431,22 +433,24 @@
   (for ([w (in-vector ws)])
     (unless (and (rational? w) (>= w 0))
       (raise-argument-error 'dict->discrete-dist "(dict/c any/c (>=/c 0))" dict)))
-  (make-discrete-dist* vs ws))
+  (make-discrete-dist* vs ws #:normalize? #t))
 
-(define (make-discrete-dist* vs ws)
+(define (make-discrete-dist* vs ws #:normalize? [normalize? #t])
   (unless (= (vector-length vs) (vector-length ws))
     (error 'make-discrete-dist
            "values and weights vectors have different lengths\n  values: ~e\n  weights: ~e"
            vs ws))
   (define vs* (vector->immutable-vector vs))
-  (define ws* (vector->immutable-vector ws))
-  (*discrete-dist vs* ws* (for/sum ([w (in-vector ws*)]) w)))
+  (define-values (ws* wsum*)
+    (if normalize?
+        (let ([wsum (vector-sum ws)])
+          (values (vector-map (lambda (w) (/ w wsum)) ws) 1))
+        (values (vector->immutable-vector ws)
+                (vector-sum ws))))
+  (*discrete-dist vs* ws* wsum*))
 
 (define (normalize-discrete-dist d)
-  (define vs (*discrete-dist-vs d))
-  (define ws (*discrete-dist-ws d))
-  (define wsum (*discrete-dist-wsum d))
-  (*discrete-dist vs (vector-map (lambda (w) (/ w wsum)) ws) 1))
+  (make-discrete-dist* (*discrete-dist-vs d) (*discrete-dist-ws d) #:normalize? #t))
 
 (define (print-discrete-dist vs ws port mode)
   (define (recur x p)
