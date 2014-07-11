@@ -8,7 +8,6 @@
           scribble/eval
           (for-label racket/contract
                      racket/class
-                     math/distributions
                      (except-in pict table)
                      (only-in plot/pict plot)
                      (except-in plot plot)

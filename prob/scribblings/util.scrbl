@@ -8,7 +8,6 @@
           scribble/eval
           (for-label racket/contract
                      racket/class
-                     math/distributions
                      prob
                      prob/viz))
 

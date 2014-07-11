@@ -7,7 +7,6 @@
           scribble/basic
           scribble/eval
           (for-label racket/contract
-                     math/distributions
                      prob
                      prob/viz))
 
@@ -36,14 +35,14 @@ value drawn from some distribution each time it is called.
 
 @subsection[#:tag "discrete-erps"]{Discrete ERPs}
 
-@defproc[(flip [p probability? 1/2])
+@defproc[(flip [p (real-in 0 1) 1/2])
          boolean?]{
 
 Returns @racket[#t] with probability @racket[p], @racket[#f] with
 probability @racket[(- 1 p)].
 }
 
-@defproc[(bernoulli [p probability? 1/2])
+@defproc[(bernoulli [p (real-in 0 1) 1/2])
          (or/c 1 0)]{
 
 Returns @racket[1] with probability @racket[p], @racket[0] with
@@ -80,18 +79,17 @@ Equivalent to @racket[(discrete (map cons vals weights))].
 @subsection[#:tag "integer-erps"]{Integer-Valued ERPs}
 
 @defproc[(binomial [count exact-nonnegative-integer?]
-                   [p probability?])
+                   [p (real-in 0 1)])
          exact-nonnegative-integer?]{
 
 Returns an integer drawn from @racket[(binomial-dist count p)].
 }
 
-@defproc[(geometric [p probability? 1/2])
+@defproc[(geometric [p (real-in 0 1) 1/2])
          exact-nonnegative-integer?]{
 
 Returns an integer drawn from @racket[(geometric-dist p)].
 }
-
 
 @defproc[(poisson [mean (>/c 0)])
          exact-nonnegative-integer?]{

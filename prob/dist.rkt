@@ -298,9 +298,10 @@
                                    (+ (/ (sqr stddev))
                                       (/ (vector-length data)
                                          (sqr data-stddev))))
-                                (/ (+ (/ (sqr stddev))
-                                      (/ (vector-length data)
-                                         (sqr data-stddev)))))]
+                                (sqrt
+                                 (/ (+ (/ (sqr stddev))
+                                       (/ (vector-length data)
+                                          (sqr data-stddev))))))]
                   [_ #f])))
 
 (define-dist-type uniform
