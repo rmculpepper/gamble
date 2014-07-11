@@ -12,16 +12,14 @@
          "sampler.rkt"
          "util.rkt")
 (provide (contract-out
-          [mem (-> procedure? procedure?)])
-         ERP
+          [mem (-> procedure? procedure?)]
+          [sample (-> dist? any)])
          fail)
 
 ;; mem and ERP wrappers
 
-;; NOTE: enum-ERP knows about discrete dists by tag
-;; FIXME: add discrete-dist? to math/distributions
 (define (mem f) ((current-mem) f))
-(define (ERP dist) ((current-ERP) dist))
+(define (sample dist) ((current-ERP) dist))
 (define (fail [reason #f]) ((current-fail) reason))
 
 ;; == Finite distributions ==
@@ -43,11 +41,11 @@
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
   (positive?
-   (ERP (make-bernoulli-dist prob))))
+   (sample (make-bernoulli-dist prob))))
 
 (define (bernoulli [prob 1/2])
   (inexact->exact
-   (ERP (make-bernoulli-dist prob))))
+   (sample (make-bernoulli-dist prob))))
 
 ;; discrete : Nat -> Nat
 ;; discrete : (Listof (Cons A Prob)) -> A
@@ -74,14 +72,14 @@
 (define (discrete-uniform n)
   (inexact->exact
    (floor
-    (ERP (make-categorical-dist (make-vector n (/ n)))))))
+    (sample (make-categorical-dist (make-vector n (/ n)))))))
 
 ;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
 (define (discrete/weights who vals probs)
   (unless (positive? (apply + probs))
     (error who "weights list sum is not positive\n  weights: ~e" probs))
   (list-ref vals (inexact->exact
-                  (ERP (make-categorical-dist probs)))))
+                  (sample (make-categorical-dist probs)))))
 
 ;; == Countable distributions ==
 
@@ -101,18 +99,18 @@
 ;; FIXME: discretizable
 (define (binomial n p)
   (inexact->exact
-   (ERP (make-binomial-dist n p))))
+   (sample (make-binomial-dist n p))))
 
 ;; geometric : Prob -> Integer
 ;; FIXME: discretizable
 (define (geometric [p 1/2])
   (inexact->exact
-   (ERP (make-geometric-dist p))))
+   (sample (make-geometric-dist p))))
 
 ;; poisson : Real -> Integer
 (define (poisson mean)
   (inexact->exact
-   (ERP (make-poisson-dist mean))))
+   (sample (make-poisson-dist mean))))
 
 ;; == Continuous distributions ==
 
@@ -143,29 +141,29 @@
 
 ;; beta : PositiveReal PositiveReal -> Real in [0,1]
 (define (beta a b)
-  (ERP (make-beta-dist a b)))
+  (sample (make-beta-dist a b)))
 
 (define (cauchy [mode 0] [scale 1])
-  (ERP (make-cauchy-dist mode scale)))
+  (sample (make-cauchy-dist mode scale)))
 
 ;; exponential : PositiveReal -> PositiveReal
 ;; NOTE: mean aka scale = 1/rate
 (define (exponential [mean 1])
-  (ERP (make-exponential-dist mean)))
+  (sample (make-exponential-dist mean)))
 
 ;; gamma : PositiveReal PositiveReal -> Real
 ;; NOTE: scale = 1/rate
 (define (gamma [shape 1] [scale 1])
-  (ERP (make-gamma-dist shape scale)))
+  (sample (make-gamma-dist shape scale)))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
-  (ERP (make-logistic-dist mean scale)))
+  (sample (make-logistic-dist mean scale)))
 
 ;; normal : Real PositiveReal -> Real
 ;; NOTE: stddev = (sqrt variance)
 (define (normal [mean 0] [stddev 1])
-  (ERP (make-normal-dist mean stddev)))
+  (sample (make-normal-dist mean stddev)))
 
 ;; uniform : Real Real -> Real
 (define uniform
@@ -173,7 +171,7 @@
     [() (uniform 0 1)]
     [(max) (uniform 0 max)]
     [(min max)
-     (ERP (make-uniform-dist min max))]))
+     (sample (make-uniform-dist min max))]))
 
 ;; ========================================
 
@@ -190,9 +188,9 @@
              (hash-set! h a (add1 (hash-ref h a 0)))))]
         [(is-a? s weighted-sampler<%>)
          (for ([i (in-range n)])
-           (let* ([r (send s sample/weight)]
-                  [a (f (car r))]
-                  [p (cadr r)])
+           (let* ([a+p (send s sample/weight)]
+                  [a (f (car a+p))]
+                  [p (cdr a+p)])
              (hash-set! h a (+ p (hash-ref h a 0)))))]
         [else (raise-argument-error 'sampler->discrete-dist "sampler" s)])
   (table->discrete-dist h))
@@ -215,9 +213,9 @@
            (values n sum-f sum-f^2)]
           [(is-a? s weighted-sampler<%>)
            (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
-             (let* ([r (send s sample)]
-                    [v (f (car r))]
-                    [w (cdr r)])
+             (let* ([v+w (send s sample/weight)]
+                    [v (f (car v+w))]
+                    [w (cdr v+w)])
                (values (+ sum-w w) (+ sum-f (* w v)) (+ sum-f^2 (* w v v)))))]
           [else (raise-argument-error 'sampler->mean+variance "sampler" s)]))
   (define Ef (/ sum-f sum-w))

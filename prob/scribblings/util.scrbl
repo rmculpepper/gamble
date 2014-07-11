@@ -61,13 +61,13 @@ of fit of the samples to the distribution.
 @examples[#:eval the-eval
 (sampler->KS (lambda () (uniform 0 1))
              1000
-             (make-uniform-dist 0 1))
+             (uniform-dist 0 1))
 (sampler->KS (lambda () (normal 0 1))
              1000
-             (make-uniform-dist 0 1))
+             (uniform-dist 0 1))
 (sampler->KS (lambda () (for/sum ([i 3]) (uniform -1 1)))
              100
-             (make-normal-dist 0 1))
+             (normal-dist 0 1))
 ]
 }
 
@@ -102,7 +102,7 @@ returned.
 @defproc[(sampler->discrete-dist [sampler (-> _A)]
                                  [n exact-positive-integer?]
                                  [f (-> _A _B) (lambda (x) x)])
-         (listof (list/c _B probability?))]{
+         discrete-dist?]{
 
 Generates @racket[n] samples using @racket[(f (sampler))], and
 produces a list of the results with probability weights.
@@ -126,22 +126,6 @@ real values.
                         100
                         (indicator/value #t))
 ]
-}
-
-@deftogether[[
-@defproc[(weighted-sampler->discrete-dist
-                [sampler (-> (list/c _A probability?))]
-                [f (-> _A _B) (lambda (x) x)])
-         (listof (list/c _B probability?))]
-@defproc[(weighted-sampler->mean+variance
-                [sampler (-> (list/c _A probability?))]
-                [f (-> _A real?) (lambda (x) x)])
-         (values real? real?)]
-]]{
-
-Like @racket[sampler->discrete-dist] and
-@racket[sampler->mean+variance], respectively, but for weighted
-samplers.
 }
 
 @deftogether[[

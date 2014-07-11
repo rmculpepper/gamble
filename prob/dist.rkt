@@ -56,7 +56,9 @@
           [make-discrete-dist*
            (->* [vector? (vectorof (>=/c 0))] [#:normalize? any/c] discrete-dist?)]
           [normalize-discrete-dist
-           (-> discrete-dist? discrete-dist?)]))
+           (-> discrete-dist? discrete-dist?)]
+          [discrete-dist-values
+           (-> discrete-dist? vector?)]))
 
 ;; FIXME:
 ;; - mode -> modes, return list?
@@ -106,7 +108,11 @@
                    [fl-inv-cdf (format-id #'name "~a~a-inv-cdf" prefix #'name)]
                    [fl-sample (format-id #'name "~a~a-sample" prefix #'name)]
                    [d (datum->syntax stx 'this-dist)] ;; !!! unhygienic capture
-                   [kind kind])
+                   [kind kind]
+                   [convert-in ;; Note: applies to both elts and inv-CDF args.
+                    (case kind
+                      [(real nat) #'exact->inexact]
+                      [else #'values])])
        (quasitemplate
         (begin
           (struct name-dist (p.param ...)
@@ -114,11 +120,11 @@
                   #:guard (?? guard-fun (make-guard-fun (p.param ...) kind-kw))
                   #:methods gen:dist
                   [(define (*pdf d x log?)
-                     (fl-pdf (get-param d) ... (exact->inexact x) log?))
+                     (fl-pdf (get-param d) ... (convert-in x) log?))
                    (define (*cdf d x log? 1-p?)
-                     (fl-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
+                     (fl-cdf (get-param d) ... (convert-in x) log? 1-p?))
                    (define (*inv-cdf d x log? 1-p?)
-                     (fl-inv-cdf (get-param d) ... (exact->inexact x) log? 1-p?))
+                     (fl-inv-cdf (get-param d) ... (convert-in x) log? 1-p?))
                    (define (*sample d)
                      (case 'kind
                        [(nat) (inexact->exact (flvector-ref (fl-sample (get-param d) ... 1) 0))]
@@ -400,13 +406,15 @@
   ([vs vector?]
    [ws vector?]
    [wsum real?])
-  #:any #:enum (hash-keys hash)
+  #:any #:enum vs
   #:no-provide
   #:property prop:custom-write
   (lambda (obj port mode)
     (print-discrete-dist (*discrete-dist-vs obj) (*discrete-dist-ws obj) port mode)))
 
 (define (discrete-dist? x) (*discrete-dist? x))
+(define (discrete-dist-values d) (*discrete-dist-vs d))
+(define (discrete-dist-weights d) (*discrete-dist-ws d))
 
 (define-syntax (discrete-dist stx)
   (define-splicing-syntax-class maybe-normalize
@@ -443,7 +451,9 @@
   (define-values (ws* wsum*)
     (if normalize?
         (let ([wsum (vector-sum ws)])
-          (values (vector-map (lambda (w) (/ w wsum)) ws) 1))
+          (values (vector->immutable-vector
+                   (vector-map (lambda (w) (/ w wsum)) ws))
+                  1))
         (values (vector->immutable-vector ws)
                 (vector-sum ws))))
   (*discrete-dist vs* ws* wsum*))

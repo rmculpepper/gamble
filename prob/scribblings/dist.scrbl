@@ -234,4 +234,7 @@ also normally distributed, but the standard deviation is fixed.
 @defproc[(normalize-discrete-dist [d discrete-dist?])
          discrete-dist?]
 
+@defproc[(discrete-dist-values [d discrete-dist?])
+         vector?]
+
 @(close-eval the-eval)

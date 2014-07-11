@@ -205,7 +205,7 @@
          (error 'enum-ERP "cannot enumerate distribution\n  distribution: ~e" dist)]
         [(eq? enum 'lazy)
          (split->subtrees*/lazy dist k (or start 0))]
-        [(exact-nonnegative-integer? enum)
+        [(integer? enum)
          (for/list ([i (in-range enum)])
            (cons (dist-pdf dist i) (lambda () (k i))))]
         [(vector? enum)

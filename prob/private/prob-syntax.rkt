@@ -40,13 +40,14 @@
 (define rejection-sampler%
   (class sampler-base%
     (init-field thunk)
+    (super-new)
     (define/override (sample)
       (let ([v (let/ec escape
                  (parameterize ((current-fail (lambda (r) (escape (cons 'fail r)))))
                    (cons 'succeed (thunk))))])
         (case (car v)
           [(succeed) (cdr v)]
-          [(fail) (sample thunk)])))
+          [(fail) (sample)])))
     ))
 
 ;; ----

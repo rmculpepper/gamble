@@ -159,6 +159,7 @@
   (class* object% (weighted-sampler<%>)
     (init-field tree
                 spconds)
+    (super-new)
 
     ;; cache : (listof (Cons A Positive-Real))
     (define cache null)

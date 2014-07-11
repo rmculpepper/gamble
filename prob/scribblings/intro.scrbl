@@ -309,8 +309,7 @@ creates it, otherwise an error is raised:
 (enumerate
   (define D
     (enumerate (mem flip)))
-  (define f+prob (car D))
-  (define f (car f+prob))
+  (define f (vector-ref (discrete-dist-values D) 0))
   (f))
 ]
 
@@ -333,7 +332,7 @@ search tree reduced to a linear one using reification and reflection.
 (define (xor-flips* n)
   (if (zero? n)
       #t
-      (let ([r (discrete (enumerate (xor-flips* (sub1 n))))])
+      (let ([r (sample (enumerate (xor-flips* (sub1 n))))])
         (xor (flip) r))))
 (time (enumerate (xor-flips* 12)))
 (time (enumerate (xor-flips* 120)))
@@ -377,9 +376,8 @@ and produce weighted samples.
    (define S (label 'S (normal R 1)))
    R
    #:cond (= S 9)))
-(weighted-sampler->mean+variance (make-ws-cd 3) 1000)
-(weighted-sampler->mean+variance (make-ws-cd .5) 1000)
+(sampler->mean+variance (make-ws-cd 1) 1000)
+(sampler->mean+variance (make-ws-cd .5) 1000)
 ]
-
 
 @(close-eval the-eval)
