@@ -12,16 +12,17 @@
          "sampler.rkt"
          "prob-hooks.rkt"
          "../dist.rkt"
+         (only-in "dist.rkt" *type)
          "prob-util.rkt")
 (provide mh-sampler*)
 
 ;; Unlike bher, use two databases---better for detecting collisions (debugging).
 
-;; An Entry is (entry ERPTag Dist Any Boolean)
-;; where the value is appropriate for the ERP denoted by the tag,
+;; An Entry is (entry Dist Any Boolean)
+;; where the value is appropriate for the ERP denoted by the dist,
 ;; and pinned? indicates whether the value originated from a special condition
 ;; (and thus cannot be perturbed).
-(struct entry (tag dist value pinned?) #:prefab)
+(struct entry (dist value pinned?) #:prefab)
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -172,12 +173,12 @@ depending on only choices reused w/ different params.
     ;; Updates db and returns (log) R-F.
     (define/private (perturb! db key-to-change)
       (match (hash-ref db key-to-change)
-        [(entry tag dist value #f)
-         (or (perturb!/proposal db key-to-change tag dist value)
-             (perturb!/resample db key-to-change tag dist value))]))
+        [(entry dist value #f)
+         (or (perturb!/proposal db key-to-change dist value)
+             (perturb!/resample db key-to-change dist value))]))
 
-    ;; perturb!/resample : DB Address Tag Dist Any -> Real
-    (define/private (perturb!/resample db key-to-change tag dist value)
+    ;; perturb!/resample : DB Address Dist Any -> Real
+    (define/private (perturb!/resample db key-to-change dist value)
       ;; Fallback: Just resample from same dist.
       ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
       ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
@@ -187,22 +188,22 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-      (hash-set! db key-to-change (entry tag dist value* #f))
+      (hash-set! db key-to-change (entry dist value* #f))
       (- R F))
 
-    ;; perturb!/proposal : DB Address Tag Dist Any -> (U Real #f)
+    ;; perturb!/proposal : DB Address Dist Any -> (U Real #f)
     ;; If applicable proposal dist avail, updates db and returns (log) R-F,
     ;; otherwise returns #f and perturb! should just resample.
-    (define/private (perturb!/proposal db key-to-change tag dist value)
+    (define/private (perturb!/proposal db key-to-change dist value)
       ;; update! : ... -> Real
       (define (update! R F value*)
         (when (verbose?)
           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
           (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-        (hash-set! db key-to-change (entry tag dist value* #f))
+        (hash-set! db key-to-change (entry dist value* #f))
         (- R F))
-      (match tag
-        [`(normal ,mean ,stddev)
+      (match dist
+        [(normal-dist mean stddev)
          (and (memq 'normal perturb-mode)
               (let ()
                 (define forward-dist
@@ -280,10 +281,10 @@ depending on only choices reused w/ different params.
 (define (db-ll db)
   (for/sum ([(k v) (in-hash db)])
     (match v
-      [(entry tag dist value _)
+      [(entry dist value _)
        (when #f
          (when (verbose?)
-           (eprintf "  - ~s => ~e @ ~s\n" tag value (dist-pdf dist value))))
+           (eprintf "  - ~s => ~e @ ~s\n" dist value (dist-pdf dist value))))
        (dist-pdf dist value #t)])))
 
 (define (db-count/difference db exclude)
@@ -295,10 +296,10 @@ depending on only choices reused w/ different params.
     (if (equal? k exclude-key)
         0
         (match v
-          [(entry tag dist value _)
+          [(entry dist value _)
            (match (hash-ref exclude k #f)
-             [(entry ex-tag ex-dist ex-value _)
-              (cond [(and (tags-compatible? tag ex-tag)
+             [(entry ex-dist ex-value _)
+              (cond [(and (dists-compatible? dist ex-dist)
                           (equal? value ex-value))
                      ;; kept value and rescored; don't count as fresh/stale
                      0]
@@ -314,7 +315,7 @@ depending on only choices reused w/ different params.
 
 ;; FIXME: handle same w/ different params
 
-(define ((make-db-ERP last-db current-db spconds) tag dist)
+(define ((make-db-ERP last-db current-db spconds) dist)
   (define context (get-context))
   (define (mem-context?)
     (and (pair? context)
@@ -329,9 +330,9 @@ depending on only choices reused w/ different params.
                    (cond [(positive? (dist-pdf dist value))
                           (when (verbose?)
                             (when print?
-                              (eprintf "- NEW ~s: ~s = ~e\n" tag context value))
+                              (eprintf "- NEW ~s: ~s = ~e\n" dist context value))
                             (eprintf "  CONDITIONED ~s = ~e\n" (current-label) value))
-                          (hash-set! current-db context (entry tag dist value #t))
+                          (hash-set! current-db context (entry dist value #t))
                           value]
                          [else
                           (fail 'condition)])]
@@ -340,8 +341,8 @@ depending on only choices reused w/ different params.
           [else
            (define value (dist-sample dist))
            (when (and print? (verbose?))
-             (eprintf "- NEW ~s: ~s = ~e\n" tag context value))
-           (hash-set! current-db context (entry tag dist value #f))
+             (eprintf "- NEW ~s: ~s = ~e\n" dist context value))
+           (hash-set! current-db context (entry dist value #f))
            value]))
   (define (collision-error context)
     (error 'ERP
@@ -351,45 +352,44 @@ depending on only choices reused w/ different params.
            context))
   (cond [(hash-ref current-db context #f)
          => (lambda (e)
-              (cond [(not (equal? (entry-tag e) tag))
+              (cond [(not (equal? (entry-dist e) dist))
                      (when (or (verbose?) #t)
                        (eprintf "- MISMATCH ~a ~s / ~s: ~s\n"
                                 (if (mem-context?) "MEMOIZED" "COLLISION")
-                                (entry-tag e) tag context))
+                                (entry-dist e) dist context))
                      (unless (mem-context?) (collision-error context))
                      (new! #f)]
                     [(mem-context?)
                      (when (verbose?)
-                       (eprintf "- MEMOIZED ~s: ~s = ~e\n" tag context (entry-value e)))
+                       (eprintf "- MEMOIZED ~s: ~s = ~e\n" dist context (entry-value e)))
                      (entry-value e)]
                     [else
                      (when (verbose?)
-                       (eprintf "- COLLISION ~s: ~s\n" tag context))
+                       (eprintf "- COLLISION ~s: ~s\n" dist context))
                      (collision-error context)
                      (entry-value e)]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
-              (cond [(equal? (entry-tag e) tag)
-                     ;; Note: equal tags implies equal dists
+              (cond [(equal? (entry-dist e) dist)
                      (when (verbose?)
-                       (eprintf "- REUSED ~s: ~s = ~e\n" tag context (entry-value e)))
+                       (eprintf "- REUSED ~s: ~s = ~e\n" dist context (entry-value e)))
                      (hash-set! current-db context e)
                      (entry-value e)]
-                    [(and (tags-compatible? (entry-tag e) tag)
+                    [(and (dists-compatible? (entry-dist e) dist)
                           (positive? (dist-pdf dist (entry-value e))))
                      (define value (entry-value e))
                      (when (verbose?)
-                       (eprintf "- RESCORE ~s: ~s = ~e\n" tag context value))
-                     (hash-set! current-db context (entry tag dist value (entry-pinned? e)))
+                       (eprintf "- RESCORE ~s: ~s = ~e\n" dist context value))
+                     (hash-set! current-db context (entry dist value (entry-pinned? e)))
                      value]
-                    [(not (equal? (entry-tag e) tag))
+                    [(not (equal? (entry-dist e) dist))
                      (when (verbose?)
-                       (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-tag e) tag context))
+                       (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-dist e) dist context))
                      (new! #f)]))]
         [else (new! #t)]))
 
-(define (tags-compatible? old-tag new-tag)
-  (and (eq? (car old-tag) (car new-tag))))
+(define (dists-compatible? old-dist new-dist)
+  (equal? (*type old-dist) (*type new-dist)))
 
 (define (db-mem f)
   (let ([context (get-context)])

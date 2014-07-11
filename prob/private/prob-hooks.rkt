@@ -20,7 +20,7 @@
       (hash-ref! memo-table args (lambda () (apply f args))))
     memoized-function))
 
-(define (base-ERP tag dist)
+(define (base-ERP dist)
   (dist-sample dist))
 
 (define (base-fail reason)

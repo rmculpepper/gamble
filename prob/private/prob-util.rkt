@@ -21,7 +21,7 @@
 ;; NOTE: enum-ERP knows about discrete dists by tag
 ;; FIXME: add discrete-dist? to math/distributions
 (define (mem f) ((current-mem) f))
-(define (ERP tag dist) ((current-ERP) tag dist))
+(define (ERP dist) ((current-ERP) dist))
 (define (fail [reason #f]) ((current-fail) reason))
 
 ;; == Finite distributions ==
@@ -43,12 +43,11 @@
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
   (positive?
-   (ERP `(flip ,prob)
-        (make-bernoulli-dist prob))))
+   (ERP (make-bernoulli-dist prob))))
 
 (define (bernoulli [prob 1/2])
   (inexact->exact
-   (ERP `(bernoulli ,prob) (make-bernoulli-dist prob))))
+   (ERP (make-bernoulli-dist prob))))
 
 ;; discrete : Nat -> Nat
 ;; discrete : (Listof (Cons A Prob)) -> A
@@ -75,16 +74,14 @@
 (define (discrete-uniform n)
   (inexact->exact
    (floor
-    (ERP `(discrete-uniform ,n)
-         (make-categorical-dist (make-vector n (/ n)))))))
+    (ERP (make-categorical-dist (make-vector n (/ n)))))))
 
 ;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
 (define (discrete/weights who vals probs)
   (unless (positive? (apply + probs))
     (error who "weights list sum is not positive\n  weights: ~e" probs))
   (list-ref vals (inexact->exact
-                  (ERP `(discrete ,vals ,probs)
-                       (make-categorical-dist probs)))))
+                  (ERP (make-categorical-dist probs)))))
 
 ;; == Countable distributions ==
 
@@ -104,21 +101,18 @@
 ;; FIXME: discretizable
 (define (binomial n p)
   (inexact->exact
-   (ERP `(binomial ,n ,p)
-        (make-binomial-dist n p))))
+   (ERP (make-binomial-dist n p))))
 
 ;; geometric : Prob -> Integer
 ;; FIXME: discretizable
 (define (geometric [p 1/2])
   (inexact->exact
-   (ERP `(geometric ,p)
-        (make-geometric-dist p))))
+   (ERP (make-geometric-dist p))))
 
 ;; poisson : Real -> Integer
 (define (poisson mean)
   (inexact->exact
-   (ERP `(poisson ,mean)
-        (make-poisson-dist mean))))
+   (ERP (make-poisson-dist mean))))
 
 ;; == Continuous distributions ==
 
@@ -149,35 +143,29 @@
 
 ;; beta : PositiveReal PositiveReal -> Real in [0,1]
 (define (beta a b)
-  (ERP `(beta ,a ,b)
-       (make-beta-dist a b)))
+  (ERP (make-beta-dist a b)))
 
 (define (cauchy [mode 0] [scale 1])
-  (ERP `(cauchy ,mode ,scale)
-       (make-cauchy-dist mode scale)))
+  (ERP (make-cauchy-dist mode scale)))
 
 ;; exponential : PositiveReal -> PositiveReal
 ;; NOTE: mean aka scale = 1/rate
 (define (exponential [mean 1])
-  (ERP `(exponential ,mean)
-       (make-exponential-dist mean)))
+  (ERP (make-exponential-dist mean)))
 
 ;; gamma : PositiveReal PositiveReal -> Real
 ;; NOTE: scale = 1/rate
 (define (gamma [shape 1] [scale 1])
-  (ERP `(gamma ,shape ,scale)
-       (make-gamma-dist shape scale)))
+  (ERP (make-gamma-dist shape scale)))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
-  (ERP `(logistic ,mean ,scale)
-       (make-logistic-dist mean scale)))
+  (ERP (make-logistic-dist mean scale)))
 
 ;; normal : Real PositiveReal -> Real
 ;; NOTE: stddev = (sqrt variance)
 (define (normal [mean 0] [stddev 1])
-  (ERP `(normal ,mean ,stddev)
-       (make-normal-dist mean stddev)))
+  (ERP (make-normal-dist mean stddev)))
 
 ;; uniform : Real Real -> Real
 (define uniform
@@ -185,8 +173,7 @@
     [() (uniform 0 1)]
     [(max) (uniform 0 max)]
     [(min max)
-     (ERP `(uniform ,min ,max)
-          (make-uniform-dist min max))]))
+     (ERP (make-uniform-dist min max))]))
 
 ;; ========================================
 

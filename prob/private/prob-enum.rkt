@@ -177,7 +177,7 @@
       (match tree
         [(only a)
          (list (cons a prob))]
-        [(split label tag dist k)
+        [(split label dist k _)
          (cond [(assoc label spconds)
                 => (lambda (e)
                      (define forced-subs (force-subtrees (cond->subtrees dist k (cdr e))))

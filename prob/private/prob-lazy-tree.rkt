@@ -100,10 +100,11 @@
 
 ;; A (EnumTree A) is one of
 ;; - (only A)
-;; - (split Any Tag Dist (-> Value (EnumTree A)))
+;; - (split Any Dist (-> Value (EnumTree A)) Nat/#f)
+;;     where Nat represents continuing enumeration of infinite int-dist
 ;; - (failed Any)
 (struct only (answer))
-(struct split (label tag dist k))
+(struct split (label dist k start))
 (struct failed (reason))
 
 ;; ----------------------------------------
@@ -133,7 +134,7 @@
   (abort-current-continuation (activation-prompt (current-activation))
    (lambda () (failed reason))))
 
-(define (enum-ERP tag dist)
+(define (enum-ERP dist)
   (define act (current-activation))
   (define ctag (activation-prompt act))
   (define memo-key (activation-memo-table-key act))
@@ -144,10 +145,11 @@
      (abort-current-continuation
       ctag
       (lambda ()
-        (split label tag dist
+        (split label dist
                (lambda (v)
                  (call-with-enum-context act memo-table
-                   (lambda () (k v))))))))
+                   (lambda () (k v))))
+               #f))))
    ctag))
 
 (define (enum-mem f)
@@ -178,11 +180,11 @@
 ;; split->subtrees : split Condition -> (Listof (List Prob (-> (EnumTree A))))
 (define (split->subtrees s spconds)
   (match s
-    [(split label tag dist k)
+    [(split label dist k start)
      (cond [(assoc label spconds)
             => (lambda (e) (cond->subtrees dist k (cdr e)))]
            [else
-            (split->subtrees* tag dist k)])]))
+            (split->subtrees* dist k start)])]))
 
 (define (cond->subtrees dist k c)
   (match c
@@ -195,37 +197,41 @@
            [else
             (list (cons 1 (lambda () (failed 'condition))))])]))
 
-;; split->subtrees : Any Dist (-> Value (EnumTree A)) -> (Listof (Cons Prob (-> (EnumTree A))))
-(define (split->subtrees* tag dist k)
+;; split->subtrees : Dist (-> Value (EnumTree A)) Nat/#f
+;;                -> (Listof (Cons Prob (-> (EnumTree A))))
+(define (split->subtrees* dist k start)
   (define enum (dist-enum dist))
-  (cond [(eq? enum 'lazy)
-         (define-values (vals probs tail-prob tail-tag)
-           (lazy-dist->vals+probs tag dist 0))
-         (cons (cons tail-prob (lambda () (k (enum-ERP tail-tag dist))))
-               (for/list ([val (in-list vals)]
-                          [prob (in-list probs)])
-                 (cons prob (lambda () (k val)))))]
-        [(eq? enum #f)
-         (error 'ERP "cannot enumerate non-integer distribution: ~s" tag)]
-        [else ;; positive integer
+  (cond [(eq? enum #f)
+         (error 'enum-ERP "cannot enumerate distribution\n  distribution: ~e" dist)]
+        [(eq? enum 'lazy)
+         (split->subtrees*/lazy dist k (or start 0))]
+        [(exact-nonnegative-integer? enum)
          (for/list ([i (in-range enum)])
-           (cons (dist-pdf dist i) (lambda () (k i))))]))
+           (cons (dist-pdf dist i) (lambda () (k i))))]
+        [(vector? enum)
+         (for/list ([v (in-vector enum)])
+           (cons (dist-pdf dist v) (lambda () (k v))))]
+        [else (error 'enum-ERP "internal error: bad enum value: ~e" enum)]))
+
+;; split->subtrees*/lazy : Dist (-> Value (EnumTree A))
+;;                      -> (Listof (Cons Prob (-> (EnumTree A))))
+(define (split->subtrees*/lazy dist k start)
+  (define-values (vals probs tail-prob next)
+    (lazy-dist->vals+probs dist start))
+  (cons (cons tail-prob (lambda () (split dist k next)))
+        (for/list ([val (in-list vals)]
+                   [prob (in-list probs)])
+          (cons prob (lambda () (k val))))))
 
 (define TAKE 10)
 
-(define (lazy-dist->vals+probs tag dist start)
-  (match tag
-    [(list* 'continue-special _ (and base-tag (list* 'geometric _)))
-     ;; Special case: for geometric, no need to resume
-     (lazy-dist->vals+probs base-tag dist 0)]
-    [(list* 'continue-special start base-tag)
-     (lazy-dist->vals+probs base-tag dist start)]
-    [_
-     (define scale (- 1 (dist-cdf dist (sub1 start))))
-     (define-values (vals probs)
-       (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
-         (values i (/ (dist-pdf dist i) scale))))
-     (values vals
-             probs
-             (/ (- 1 (dist-cdf dist (+ start TAKE -1))) scale)
-             `(continue-special ,(+ start TAKE) . ,tag))]))
+;; lazy-dist->vals+probs : Dist Nat -> (values (Listof A) (Listof Prob) Prob Nat)
+(define (lazy-dist->vals+probs dist start)
+  (define scale (- 1 (dist-cdf dist (sub1 start))))
+  (define-values (vals probs)
+    (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
+      (values i (/ (dist-pdf dist i) scale))))
+  (values vals
+          probs
+          (/ (- 1 (dist-cdf dist (+ start TAKE -1))) scale)
+          (+ start TAKE)))
