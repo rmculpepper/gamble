@@ -284,7 +284,7 @@ depending on only choices reused w/ different params.
       [(entry dist value _)
        (when #f
          (when (verbose?)
-           (eprintf "  - ~s => ~e @ ~s\n" dist value (dist-pdf dist value))))
+           (eprintf "  - ~e => ~e @ ~s\n" dist value (dist-pdf dist value))))
        (dist-pdf dist value #t)])))
 
 (define (db-count/difference db exclude)
@@ -330,8 +330,8 @@ depending on only choices reused w/ different params.
                    (cond [(positive? (dist-pdf dist value))
                           (when (verbose?)
                             (when print?
-                              (eprintf "- NEW ~s: ~s = ~e\n" dist context value))
-                            (eprintf "  CONDITIONED ~s = ~e\n" (current-label) value))
+                              (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
+                            (eprintf "  CONDITIONED ~e = ~e\n" (current-label) value))
                           (hash-set! current-db context (entry dist value #t))
                           value]
                          [else
@@ -341,7 +341,7 @@ depending on only choices reused w/ different params.
           [else
            (define value (dist-sample dist))
            (when (and print? (verbose?))
-             (eprintf "- NEW ~s: ~s = ~e\n" dist context value))
+             (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
            (hash-set! current-db context (entry dist value #f))
            value]))
   (define (collision-error context)
@@ -354,37 +354,37 @@ depending on only choices reused w/ different params.
          => (lambda (e)
               (cond [(not (equal? (entry-dist e) dist))
                      (when (or (verbose?) #t)
-                       (eprintf "- MISMATCH ~a ~s / ~s: ~s\n"
+                       (eprintf "- MISMATCH ~a ~e / ~e: ~s\n"
                                 (if (mem-context?) "MEMOIZED" "COLLISION")
                                 (entry-dist e) dist context))
                      (unless (mem-context?) (collision-error context))
                      (new! #f)]
                     [(mem-context?)
                      (when (verbose?)
-                       (eprintf "- MEMOIZED ~s: ~s = ~e\n" dist context (entry-value e)))
+                       (eprintf "- MEMOIZED ~e: ~s = ~e\n" dist context (entry-value e)))
                      (entry-value e)]
                     [else
                      (when (verbose?)
-                       (eprintf "- COLLISION ~s: ~s\n" dist context))
+                       (eprintf "- COLLISION ~e: ~s\n" dist context))
                      (collision-error context)
                      (entry-value e)]))]
         [(hash-ref last-db context #f)
          => (lambda (e)
               (cond [(equal? (entry-dist e) dist)
                      (when (verbose?)
-                       (eprintf "- REUSED ~s: ~s = ~e\n" dist context (entry-value e)))
+                       (eprintf "- REUSED ~e: ~s = ~e\n" dist context (entry-value e)))
                      (hash-set! current-db context e)
                      (entry-value e)]
                     [(and (dists-compatible? (entry-dist e) dist)
                           (positive? (dist-pdf dist (entry-value e))))
                      (define value (entry-value e))
                      (when (verbose?)
-                       (eprintf "- RESCORE ~s: ~s = ~e\n" dist context value))
+                       (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
                      (hash-set! current-db context (entry dist value (entry-pinned? e)))
                      value]
                     [(not (equal? (entry-dist e) dist))
                      (when (verbose?)
-                       (eprintf "- MISMATCH ~s / ~s: ~s\n" (entry-dist e) dist context))
+                       (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
                      (new! #f)]))]
         [else (new! #t)]))
 
