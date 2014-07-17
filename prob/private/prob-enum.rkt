@@ -60,7 +60,7 @@
   (define entries
     (for/list ([(val prob) (in-hash table)])
       (cons val (if normalize? (/ prob prob-accepted) prob))))
-  (make-discrete-dist entries))
+  (make-discrete-dist entries #:normalize? normalize?))
 
 ;; ----------------------------------------
 
@@ -93,7 +93,8 @@
              (eprintf "WARNING: bad prob ~s for ~s\n" p a))
            (values table prob-unexplored prob-accepted)]))
 
-  ;; traverse-tree : (EnumTree A) Prob ... -> (values h table prob-unexplored prob-accepted)
+  ;; traverse-tree : (EnumTree A) Prob ...
+  ;;              -> (values h table prob-unexplored prob-accepted)
   (define (traverse-tree et prob-of-tree h table prob-unexplored prob-accepted)
     (match et
       [(only a)

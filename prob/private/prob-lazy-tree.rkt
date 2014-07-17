@@ -100,7 +100,7 @@
 
 ;; A (EnumTree A) is one of
 ;; - (only A)
-;; - (split Any Dist (-> Value (EnumTree A)) Nat/#f)
+;; - (split Any (Dist B) (-> B (EnumTree A)) Nat/#f)
 ;;     where Nat represents continuing enumeration of infinite int-dist
 ;; - (failed Any)
 (struct only (answer))
@@ -191,11 +191,11 @@
     [(spcond:equal value)
      (define l (dist-pdf dist value))
      (cond [(positive? l)
-            ;; Note: create split w/ prob sum 1 so that explore gets prob-explored right.
-            (list (cons l (lambda () (k value)))
-                  (cons (- 1 l) (lambda () (failed #f))))]
+            ;; Note: subtrees do not sum to 1 ... problem?
+            ;; (probably not, given that densities not bounded by 1 anyway)
+            (list (cons l (lambda () (k value))))]
            [else
-            (list (cons 1 (lambda () (failed 'condition))))])]))
+            null])]))
 
 ;; split->subtrees : Dist (-> Value (EnumTree A)) Nat/#f
 ;;                -> (Listof (Cons Prob (-> (EnumTree A))))

@@ -440,7 +440,7 @@
   (for ([w (in-vector ws)])
     (unless (and (rational? w) (>= w 0))
       (raise-argument-error 'dict->discrete-dist "(dict/c any/c (>=/c 0))" dict)))
-  (make-discrete-dist* vs ws #:normalize? #t))
+  (make-discrete-dist* vs ws #:normalize? normalize?))
 
 (define (make-discrete-dist* vs ws #:normalize? [normalize? #t])
   (unless (= (vector-length vs) (vector-length ws))
