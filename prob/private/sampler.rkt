@@ -23,7 +23,7 @@
     sample))
 
 ;; ============================================================
-;; Utility base classes
+;; Sampler utility base classes
 
 ;; Automatic impl of weighted sampler from "ordinary" sampler.
 (define sampler-base%
