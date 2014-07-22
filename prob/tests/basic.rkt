@@ -14,7 +14,9 @@
       [(test expr expected)
        #`(test-case (format "~a line ~s: ~.s" name '#,(syntax-line stx) 'expr)
            (define actual (compute-dist (lambda () expr)))
-           (check <= (discrete-dist-error actual expected) tolerance))]))
+           (check <=
+                  (discrete-dist-error actual (make-discrete-dist expected))
+                  tolerance))]))
 
   (test (flip 1/2)
         '((#t . 1/2)

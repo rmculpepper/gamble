@@ -230,25 +230,28 @@
 (provide
  (contract-out
   [discrete-dist-error
-   (-> (listof (cons/c any/c (>=/c 0)))
-       (listof (cons/c any/c (>=/c 0)))
+   (-> discrete-dist? discrete-dist?
        (>=/c 0))]
   [sampler->KS
    (-> (-> real?) exact-positive-integer? dist?
        real?)]))
 
-;; discrete-dist-error : (Dict A Real) (Dict A Real) -> Real
+;; discrete-dist-error : (Discrete-Dist A) (Discrete-Dist A) -> Real
 (define (discrete-dist-error a b)
   ;; Why 1/2? Because every error is counted twice: 
   ;; once for being present where it shouldn't be, 
   ;; and again for being absent from where it should be.
   (* 1/2
-     ;; a U b = a U (b - a)
-     (+ (for/sum ([(aval aweight) (in-dict a)])
-          (define bweight (dict-ref b aval 0))
-          (abs (- aweight bweight)))
-        (for/sum ([(bval bweight) (in-dict b)]
-                  #:when (not (dict-ref a bval #f)))
+     ;; a U b = a U (b - a)   --- membership means positive pdf
+     (+ (for/sum ([aval (in-vector (discrete-dist-values a))])
+          (define aweight (dist-pdf a aval))
+          (define bweight (dist-pdf b aval 0))
+          (if (positive? aweight)
+              (abs (- aweight bweight))
+              0))
+        (for/sum ([bval (in-vector (discrete-dist-values b))]
+                  #:when (zero? (dist-pdf a bval)))
+          (define bweight (dist-pdf b bval))
           (abs bweight)))))
 
 ;; sampler->KS : Sampler Nat Dist -> Real
