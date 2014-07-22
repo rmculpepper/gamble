@@ -544,7 +544,7 @@
   (cond [(<= p (- 1 prob)) 0]
         [else 1]))
 (define (rawbernoulli-sample prob)
-  (if (<= (random) prob) 0 1))
+  (if (<= (random) prob) 1 0))
 
 
 ;; ============================================================
