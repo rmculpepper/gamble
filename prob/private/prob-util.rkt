@@ -9,7 +9,7 @@
          racket/dict
          "prob-hooks.rkt"
          "../dist.rkt"
-         "sampler.rkt"
+         "interfaces.rkt"
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)]

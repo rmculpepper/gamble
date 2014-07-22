@@ -9,7 +9,7 @@
          data/order
          "context.rkt"
          "util.rkt"
-         "sampler.rkt"
+         "interfaces.rkt"
          "prob-hooks.rkt"
          "../dist.rkt"
          (only-in "dist.rkt" *type)

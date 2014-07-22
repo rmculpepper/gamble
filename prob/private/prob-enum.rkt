@@ -11,7 +11,7 @@
          "prob-lazy-tree.rkt"
          "prob-hooks.rkt"
          "pairingheap.rkt"
-         "sampler.rkt"
+         "interfaces.rkt"
          "util.rkt")
 (provide enumerate*
          importance-sampler*)

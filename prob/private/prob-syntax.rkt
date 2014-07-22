@@ -13,7 +13,7 @@
          "prob-util.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt"
-         "sampler.rkt")
+         "interfaces.rkt")
 (provide rejection-sampler
          mh-sampler
          enumerate
