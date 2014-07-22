@@ -74,3 +74,6 @@
 
 (define (dist-update-prior d data-d data)
   (*conj d data-d data))
+
+(define (dists-same-type? da db)
+  (equal? (*type da) (*type db)))

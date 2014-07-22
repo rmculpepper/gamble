@@ -12,7 +12,7 @@
          "interfaces.rkt"
          "prob-hooks.rkt"
          "../dist.rkt"
-         (only-in "dist.rkt" *type)
+         (only-in "dist.rkt" dists-same-type?)
          "prob-util.rkt")
 (provide mh-sampler*)
 
@@ -137,9 +137,12 @@ depending on only choices reused w/ different params.
       ;; Run program
       (define result
         (let/ec escape
-          (parameterize ((current-ERP (make-db-ERP perturbed-last-db current-db spconds))
-                         (current-mem db-mem)
-                         (current-fail (lambda (r) (escape (cons 'fail r)))))
+          (parameterize ((current-stochastic-ctx
+                          (new mh-stochastic-ctx%
+                               (last-db perturbed-last-db)
+                               (current-db current-db)
+                               (spconds spconds)
+                               (escape escape))))
             (cons 'okay (apply/delimit thunk)))))
       ;; Accept/reject
       ;; FIXME: check condition or MH step first?
@@ -299,7 +302,7 @@ depending on only choices reused w/ different params.
           [(entry dist value _)
            (match (hash-ref exclude k #f)
              [(entry ex-dist ex-value _)
-              (cond [(and (dists-compatible? dist ex-dist)
+              (cond [(and (dists-same-type? dist ex-dist)
                           (equal? value ex-value))
                      ;; kept value and rescored; don't count as fresh/stale
                      0]
@@ -311,90 +314,100 @@ depending on only choices reused w/ different params.
     (unless (hash-has-key? new-db k)
       (hash-set! new-db k v))))
 
-;; ----
+;; ============================================================
 
-;; FIXME: handle same w/ different params
+(define mh-stochastic-ctx%
+  (class* object% (stochastic-ctx<%>)
+    (init-field last-db
+                current-db
+                spconds
+                escape)
+    (super-new)
 
-(define ((make-db-ERP last-db current-db spconds) dist)
-  (define context (get-context))
-  (define (mem-context?)
-    (and (pair? context)
-         (let ([frame (last context)])
-           (and (list? frame) (memq 'mem frame)))))
-  (define (new! print?)
-    (cond [(assoc (current-label) spconds)
-           => (lambda (e)
-                (match (cdr e)
-                  [(spcond:equal value)
-                   ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
-                   (cond [(positive? (dist-pdf dist value))
-                          (when (verbose?)
-                            (when print?
-                              (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-                            (eprintf "  CONDITIONED ~e = ~e\n" (current-label) value))
-                          (hash-set! current-db context (entry dist value #t))
-                          value]
-                         [else
-                          (fail 'condition)])]
-                  [(spcond:drawn alt-dist)
-                   (error "unimplemented")]))]
-          [else
-           (define value (dist-sample dist))
-           (when (and print? (verbose?))
-             (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-           (hash-set! current-db context (entry dist value #f))
-           value]))
-  (define (collision-error context)
-    (error 'ERP
-           (string-append "collision in random choice database"
-                          ";\n check that the sampler module uses `#lang prob'"
-                          "\n  address: ~e")
-           context))
-  (cond [(hash-ref current-db context #f)
-         => (lambda (e)
-              (cond [(not (equal? (entry-dist e) dist))
-                     (when (or (verbose?) #t)
-                       (eprintf "- MISMATCH ~a ~e / ~e: ~s\n"
-                                (if (mem-context?) "MEMOIZED" "COLLISION")
-                                (entry-dist e) dist context))
-                     (unless (mem-context?) (collision-error context))
-                     (new! #f)]
-                    [(mem-context?)
-                     (when (verbose?)
-                       (eprintf "- MEMOIZED ~e: ~s = ~e\n" dist context (entry-value e)))
-                     (entry-value e)]
-                    [else
-                     (when (verbose?)
-                       (eprintf "- COLLISION ~e: ~s\n" dist context))
-                     (collision-error context)
-                     (entry-value e)]))]
-        [(hash-ref last-db context #f)
-         => (lambda (e)
-              (cond [(equal? (entry-dist e) dist)
-                     (when (verbose?)
-                       (eprintf "- REUSED ~e: ~s = ~e\n" dist context (entry-value e)))
-                     (hash-set! current-db context e)
-                     (entry-value e)]
-                    [(and (dists-compatible? (entry-dist e) dist)
-                          (positive? (dist-pdf dist (entry-value e))))
-                     (define value (entry-value e))
-                     (when (verbose?)
-                       (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
-                     (hash-set! current-db context (entry dist value (entry-pinned? e)))
-                     value]
-                    [(not (equal? (entry-dist e) dist))
-                     (when (verbose?)
-                       (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
-                     (new! #f)]))]
-        [else (new! #t)]))
+    (define/public (sample dist)
+      (define context (get-context))
+      (cond [(hash-ref current-db context #f)
+             => (lambda (e)
+                  (cond [(not (equal? (entry-dist e) dist))
+                         (when (verbose?)
+                           (eprintf "- MISMATCH ~a ~e / ~e: ~s\n"
+                                    (if (mem-context? context) "MEMOIZED" "COLLISION")
+                                    (entry-dist e) dist context))
+                         (unless (mem-context? context) (collision-error context))
+                         (sample/new! dist context #f)]
+                        [(mem-context? context)
+                         (when (verbose?)
+                           (eprintf "- MEMOIZED ~e: ~s = ~e\n" dist context (entry-value e)))
+                         (entry-value e)]
+                        [else
+                         (when (verbose?)
+                           (eprintf "- COLLISION ~e: ~s\n" dist context))
+                         (collision-error context)
+                         (entry-value e)]))]
+            [(hash-ref last-db context #f)
+             => (lambda (e)
+                  (cond [(equal? (entry-dist e) dist)
+                         (when (verbose?)
+                           (eprintf "- REUSED ~e: ~s = ~e\n" dist context (entry-value e)))
+                         (hash-set! current-db context e)
+                         (entry-value e)]
+                        [(and (dists-same-type? (entry-dist e) dist)
+                              (positive? (dist-pdf dist (entry-value e))))
+                         (define value (entry-value e))
+                         (when (verbose?)
+                           (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
+                         (hash-set! current-db context (entry dist value (entry-pinned? e)))
+                         value]
+                        [(not (equal? (entry-dist e) dist))
+                         (when (verbose?)
+                           (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
+                         (sample/new! dist context #f)]))]
+            [else (sample/new! dist context #t)]))
 
-(define (dists-compatible? old-dist new-dist)
-  (equal? (*type old-dist) (*type new-dist)))
+    (define/private (sample/new! dist context print?)
+      (cond [(assoc (current-label) spconds)
+             => (lambda (e)
+                  (match (cdr e)
+                    [(spcond:equal value)
+                     ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
+                     (cond [(positive? (dist-pdf dist value))
+                            (when (verbose?)
+                              (when print?
+                                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
+                              (eprintf "  CONDITIONED ~e = ~e\n" (current-label) value))
+                            (hash-set! current-db context (entry dist value #t))
+                            value]
+                           [else
+                            (fail 'condition)])]
+                    [(spcond:drawn alt-dist)
+                     (error "unimplemented")]))]
+            [else
+             (define value (dist-sample dist))
+             (when (and print? (verbose?))
+               (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
+             (hash-set! current-db context (entry dist value #f))
+             value]))
 
-(define (db-mem f)
-  (let ([context (get-context)])
-    (lambda args
-      (apply/delimit
-       (lambda ()
-         (parameterize ((the-context (list (list 'mem args context))))
-           (apply f args)))))))
+    (define/private (mem-context? context)
+      (and (pair? context)
+           (let ([frame (last context)])
+             (and (list? frame) (memq 'mem frame)))))
+
+    (define/private (collision-error context)
+      (error 'sample
+             (string-append "collision in random choice database"
+                            ";\n check that the sampler module uses `#lang prob'"
+                            "\n  address: ~e")
+             context))
+
+    (define/public (fail reason)
+      (escape (cons 'fail reason)))
+
+    (define/public (mem f)
+      (let ([context (get-context)])
+        (lambda args
+          (apply/delimit
+           (lambda ()
+             (parameterize ((the-context (list (list 'mem args context))))
+               (apply f args)))))))
+    ))

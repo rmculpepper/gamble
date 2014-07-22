@@ -43,11 +43,21 @@
     (super-new)
     (define/override (sample)
       (let ([v (let/ec escape
-                 (parameterize ((current-fail (lambda (r) (escape (cons 'fail r)))))
+                 (parameterize ((current-stochastic-ctx
+                                 (new rejection-stochastic-ctx%
+                                      (escape escape))))
                    (cons 'succeed (thunk))))])
         (case (car v)
           [(succeed) (cdr v)]
           [(fail) (sample)])))
+    ))
+
+(define rejection-stochastic-ctx%
+  (class plain-stochastic-ctx%
+    (init-field escape)
+    (super-new)
+    (define/override (fail reason)
+      (escape (cons 'fail reason)))
     ))
 
 ;; ----

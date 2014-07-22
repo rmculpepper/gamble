@@ -4,8 +4,10 @@
 
 #lang racket/base
 (require racket/match
+         racket/class
          data/order
          unstable/markparam
+         "interfaces.rkt"
          "prob-hooks.rkt"
          "dist.rkt"
          "pairingheap.rkt"
@@ -121,59 +123,64 @@
 (define (call-with-enum-context act memo-table thunk)
   (define ctag (activation-prompt act))
   (define memo-key (activation-memo-table-key act))
-  (parameterize ((current-ERP enum-ERP)
-                 (current-mem enum-mem)
-                 (current-fail enum-fail)
+  ;; FIXME: put more params/ctx into stochastic-ctx???
+  (parameterize ((current-stochastic-ctx
+                  (new lazy-tree-stochastic-ctx%))
                  (current-activation (activation ctag memo-key)))
     (mark-parameterize ((memo-key (box memo-table)))
       (call-with-continuation-prompt thunk (activation-prompt act)))))
 
 ;; ----
 
-(define (enum-fail reason)
-  (abort-current-continuation (activation-prompt (current-activation))
-   (lambda () (failed reason))))
+(define lazy-tree-stochastic-ctx%
+  (class* object% (stochastic-ctx<%>)
+    (super-new)
 
-(define (enum-ERP dist)
-  (define act (current-activation))
-  (define ctag (activation-prompt act))
-  (define memo-key (activation-memo-table-key act))
-  (define memo-table (unbox (memo-key)))
-  (define label (current-label))
-  (call-with-composable-continuation
-   (lambda (k)
-     (abort-current-continuation
-      ctag
-      (lambda ()
-        (split label dist
-               (lambda (v)
-                 (call-with-enum-context act memo-table
-                   (lambda () (k v))))
-               #f))))
-   ctag))
+    (define/public (sample dist)
+      (define act (current-activation))
+      (define ctag (activation-prompt act))
+      (define memo-key (activation-memo-table-key act))
+      (define memo-table (unbox (memo-key)))
+      (define label (current-label))
+      (call-with-composable-continuation
+       (lambda (k)
+         (abort-current-continuation
+          ctag
+          (lambda ()
+            (split label dist
+                   (lambda (v)
+                     (call-with-enum-context act memo-table
+                       (lambda () (k v))))
+                   #f))))
+       ctag))
 
-(define (enum-mem f)
-  (define act (current-activation))
-  (define ctag (activation-prompt act))
-  (define memo-key (activation-memo-table-key act))
-  (define f-key (gensym))
-  (define (memoized-function . args)
-    (unless (continuation-prompt-available? ctag)
-      (error 'mem
-             "memoized function escaped its creating context\n  function: ~e\n  arguments: ~e\n"
-             f args))
-    (let ([b (memo-key)]
-          [key (cons f-key args)])
-      (cond [(hash-has-key? (unbox b) key)
-             (hash-ref (unbox b) key)]
-            [else
-             ;; Call with saved activation; may be outer enumeration!
-             (define v (mark-parameterize ((current-activation act)) (apply f args)))
-             ;; NOTE: outer b might be stale, if f called ERP!
-             (define b (memo-key))
-             (set-box! b (hash-set (unbox b) key v))
-             v])))
-  memoized-function)
+    (define/public (fail reason)
+      (abort-current-continuation (activation-prompt (current-activation))
+        (lambda () (failed reason))))
+
+    (define/public (mem f)
+      (define act (current-activation))
+      (define ctag (activation-prompt act))
+      (define memo-key (activation-memo-table-key act))
+      (define f-key (gensym))
+      (define (memoized-function . args)
+        (unless (continuation-prompt-available? ctag)
+          (error 'mem
+            "memoized function escaped its creating context\n  function: ~e\n  arguments: ~e\n"
+            f args))
+        (let ([b (memo-key)]
+              [key (cons f-key args)])
+          (cond [(hash-has-key? (unbox b) key)
+                 (hash-ref (unbox b) key)]
+                [else
+                 ;; Call with saved activation; may be outer enumeration!
+                 (define v (mark-parameterize ((current-activation act)) (apply f args)))
+                 ;; NOTE: outer b might be stale, if f called ERP!
+                 (define b (memo-key))
+                 (set-box! b (hash-set (unbox b) key v))
+                 v])))
+      memoized-function)
+    ))
 
 ;; ----
 

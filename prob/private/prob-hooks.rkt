@@ -3,52 +3,10 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base racket/syntax)
-         (only-in "dist.rkt" dist-sample))
-(provide current-mem
-         current-ERP
-         current-fail
-         current-label
+(require (for-syntax racket/base racket/syntax))
+(provide current-label
          (struct-out spcond:equal)
          (struct-out spcond:drawn))
-
-;; Basic memoization and ERP implementations
-
-(define (base-mem f)
-  (let ([memo-table (make-hash)])
-    (define (memoized-function . args)
-      (hash-ref! memo-table args (lambda () (apply f args))))
-    memoized-function))
-
-(define (base-ERP dist)
-  (dist-sample dist))
-
-(define (base-fail reason)
-  (if reason
-      (error 'fail "path failed\n  reason: ~s" reason)
-      (error 'fail "path failed")))
-
-;; ----
-
-;; mem and ERP hooks; samplers/solvers override
-
-;; mem : procedure -> procedure
-
-(define current-mem (make-parameter base-mem))
-
-;; ERP : (Sexpr Dist) -> A)
-;; First arg is tag w/ ERP function name and params. Same tag should imply same dist.
-;; Second is dist (or #f to represent fail).
-
-(define current-ERP (make-parameter base-ERP))
-
-;; fail : Any -> (escapes)
-;; FIXME: Maybe change primitive from fail to fail-if (w/ boolean arg), so
-;; can dynamically detect condition-free models?
-
-(define current-fail (make-parameter base-fail))
-
-;; ----
 
 ;; Conditions
 

@@ -18,9 +18,9 @@
 
 ;; mem and ERP wrappers
 
-(define (mem f) ((current-mem) f))
-(define (sample dist) ((current-ERP) dist))
-(define (fail [reason #f]) ((current-fail) reason))
+(define (mem f) (send (current-stochastic-ctx) mem f))
+(define (sample dist) (send (current-stochastic-ctx) sample dist))
+(define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 
 ;; == Finite distributions ==
 
