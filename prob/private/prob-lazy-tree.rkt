@@ -8,7 +8,6 @@
          data/order
          unstable/markparam
          "interfaces.rkt"
-         "prob-hooks.rkt"
          "dist.rkt"
          "pairingheap.rkt"
          "util.rkt")

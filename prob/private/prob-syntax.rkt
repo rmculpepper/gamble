@@ -9,7 +9,6 @@
                      syntax/name)
          racket/contract/base
          racket/class
-         "prob-hooks.rkt"
          "prob-util.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt"

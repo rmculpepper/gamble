@@ -9,7 +9,6 @@
          unstable/markparam
          "../dist.rkt"
          "prob-lazy-tree.rkt"
-         "prob-hooks.rkt"
          "pairingheap.rkt"
          "interfaces.rkt"
          "util.rkt")

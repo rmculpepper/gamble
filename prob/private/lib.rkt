@@ -8,7 +8,6 @@
 #lang racket/base
 (require "util.rkt"
          "prob-util.rkt"
-         "prob-hooks.rkt"
          "prob-syntax.rkt")
 (provide (all-from-out "util.rkt")
          (all-from-out "prob-util.rkt")

@@ -10,7 +10,6 @@
          "context.rkt"
          "util.rkt"
          "interfaces.rkt"
-         "prob-hooks.rkt"
          "../dist.rkt"
          (only-in "dist.rkt" dists-same-type?)
          "prob-util.rkt")
@@ -378,9 +377,7 @@ depending on only choices reused w/ different params.
                             (hash-set! current-db context (entry dist value #t))
                             value]
                            [else
-                            (fail 'condition)])]
-                    [(spcond:drawn alt-dist)
-                     (error "unimplemented")]))]
+                            (fail 'condition)])]))]
             [else
              (define value (dist-sample dist))
              (when (and print? (verbose?))

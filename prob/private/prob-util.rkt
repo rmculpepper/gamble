@@ -7,16 +7,15 @@
          racket/class
          data/order
          racket/dict
-         "prob-hooks.rkt"
-         "../dist.rkt"
          "interfaces.rkt"
+         "../dist.rkt"
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)])
          fail)
 
-;; mem and ERP wrappers
+;; mem and sample wrappers
 
 (define (mem f) (send (current-stochastic-ctx) mem f))
 (define (sample dist) (send (current-stochastic-ctx) sample dist))
