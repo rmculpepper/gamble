@@ -8,29 +8,13 @@
          racket/match
          data/order
          "context.rkt"
+         "db.rkt"
          "util.rkt"
          "interfaces.rkt"
          "../dist.rkt"
          (only-in "dist.rkt" dists-same-type?)
          "prob-util.rkt")
 (provide mh-sampler*)
-
-;; Unlike bher, use two databases---better for detecting collisions (debugging).
-
-;; An Entry is (entry Dist Any Boolean)
-;; where the value is appropriate for the ERP denoted by the dist,
-;; and pinned? indicates whether the value originated from a special condition
-;; (and thus cannot be perturbed).
-(struct entry (dist value pinned?) #:prefab)
-
-(define (print-db db)
-  (define entries (hash-map db list))
-  (define sorted-entries
-    (sort entries (order-<? datum-order) #:key car))
-  (for ([entry (in-list sorted-entries)])
-    (printf "~s => ~s\n" (car entry) (cadr entry))))
-
-;; ----
 
 #|
 MH Acceptance
@@ -139,8 +123,8 @@ depending on only choices reused w/ different params.
           (parameterize ((current-stochastic-ctx
                           (new db-stochastic-ctx%
                                (current-db current-db)
-                               (delta-db delta-db)
                                (last-db last-db)
+                               (delta-db delta-db)
                                (spconds spconds)
                                (escape escape))))
             (cons 'okay (apply/delimit thunk)))))
@@ -148,13 +132,16 @@ depending on only choices reused w/ different params.
       ;; FIXME: check condition or MH step first?
       (match result
         [(cons 'okay sample-value)
-         (define threshold (accept-threshold R-F current-db last-db key-to-change))
+         (define threshold (accept-threshold R-F current-db last-db delta-db))
          (when (verbose?)
            (eprintf "# accept threshold = ~s\n" (exp threshold)))
          (define u (log (random)))
          (cond [(< u threshold)
                 (when (verbose?)
                   (eprintf "# Accepted MH step with ~s\n" (exp u)))
+                (when (eq? threshold-mode 'retain)
+                  ;; If retaining, copy stale choices to current-db.
+                  (db-copy-stale last-db current-db))
                 (set! last-db current-db)
                 (set! accepts (add1 accepts))
                 (set! last-sample sample-value)
@@ -221,35 +208,30 @@ depending on only choices reused w/ different params.
 
     ;; accept-threshold : ... -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/private (accept-threshold R-F current-db last-db key-to-change)
-      (if (and (positive? (hash-count last-db))
-               (positive? (hash-count current-db)))
-          (accept-threshold* R-F current-db last-db key-to-change)
-          +inf.0))
+    (define/private (accept-threshold R-F current-db last-db delta-db)
+      (if (zero? (hash-count last-db))
+          +inf.0
+          (accept-threshold* R-F current-db last-db delta-db)))
 
-    (define/private (accept-threshold* R-F current-db last-db key-to-change)
+    (define/private (accept-threshold* R-F current-db last-db delta-db)
       (define last-ll (db-ll last-db))
       (define current-ll (db-ll current-db))
-
-      (define stale (db-ll/difference last-db current-db key-to-change))
-      (define fresh (db-ll/difference current-db last-db key-to-change))
-
+      (define stale-ll (db-ll/fresh last-db current-db delta-db))
+      (define fresh-ll (db-ll/fresh current-db last-db delta-db))
       (define R-F/pick
         ;; Account for backward and forward likelihood of picking
         ;; the random choice to perturb that we picked.
         ;; Note: assumes we pick uniformly from all choices.
         (case threshold-mode
           [(purge)
-           (define R (/ 1.0 (hash-count current-db)))
-           (define F (/ 1.0 (hash-count last-db)))
-           (- (log R) (log F))]
+           ;; R = (log (/ 1 (hash-count current-db))) = (- (log ....))
+           ;; F = (log (/ 1 (hash-count last-db)))    = (- (log ....))
+           ;; convert to inexact so (log 0.0) = -inf.0
+           (define R (- (log (exact->inexact (hash-count current-db)))))
+           (define F (- (log (exact->inexact (hash-count last-db)))))
+           (- R F)]
           [else 0]))
-
-      (when (eq? threshold-mode 'retain)
-        ;; If retaining, copy stale choices to current-db.
-        (db-copy-stale last-db current-db))
-
-      (+ R-F R-F/pick (- current-ll last-ll) (- stale fresh)))
+      (+ R-F R-F/pick (- current-ll last-ll) (- stale-ll fresh-ll)))
 
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
@@ -266,167 +248,7 @@ depending on only choices reused w/ different params.
 
 ;; pick-a-key : DB -> (U Address #f)
 ;; Returns a key s.t. the value is not pinned.
-;; FIXME: bleh
 (define (pick-a-key db)
-  (define unpinned-entry-count
-    (for/sum ([(k v) (in-hash db)]
-              #:when (not (entry-pinned? v)))
-      1))
-  (and (positive? unpinned-entry-count)
-       (let ([index (random unpinned-entry-count)])
-         (let loop ([iter (hash-iterate-first db)] [i index])
-           (cond [(entry-pinned? (hash-iterate-value db iter))
-                  (loop (hash-iterate-next db iter) i)]
-                 [(zero? i)
-                  (hash-iterate-key db iter)]
-                 [else
-                  (loop (hash-iterate-next db iter) (sub1 i))])))))
-
-(define (db-ll db)
-  (for/sum ([(k v) (in-hash db)])
-    (match v
-      [(entry dist value _)
-       (when #f
-         (when (verbose?)
-           (eprintf "  - ~e => ~e @ ~s\n" dist value (dist-pdf dist value))))
-       (dist-pdf dist value #t)])))
-
-(define (db-count/difference db exclude)
-  (for/sum ([(k v) (in-hash db)])
-    (if (hash-ref exclude k #f) 0 1)))
-
-(define (db-ll/difference db exclude exclude-key)
-  (for/sum ([(k v) (in-hash db)])
-    (if (equal? k exclude-key)
-        0
-        (match v
-          [(entry dist value _)
-           (match (hash-ref exclude k #f)
-             [(entry ex-dist ex-value _)
-              (cond [(and (dists-same-type? dist ex-dist)
-                          (equal? value ex-value))
-                     ;; kept value and rescored; don't count as fresh/stale
-                     0]
-                    [else (dist-pdf dist value #t)])]
-             [#f (dist-pdf dist value #t)])]))))
-
-(define (db-copy-stale old-db new-db)
-  (for ([(k v) (in-hash old-db)])
-    (unless (hash-has-key? new-db k)
-      (hash-set! new-db k v))))
-
-;; ============================================================
-
-(define db-stochastic-ctx%
-  (class* object% (stochastic-ctx<%>)
-    (init-field current-db  ;; mutated
-                last-db     ;; not mutated
-                delta-db    ;; not mutated
-                spconds
-                escape)
-    (super-new)
-
-    ;; The sample method records random choices by mutating
-    ;; current-db. At the end of execution, current-db contains a
-    ;; complete record of all random choices made by the program;
-    ;; if accepted, it typically becomes a new execution's last-db.
-
-    (define/public (sample dist)
-      (define context (get-context))
-      ;; If choice address (context) is in current-db, likely error unless
-      ;; memoized function (FIXME: shouldn't happen w/ real memoization).
-      ;; Otherwise, consult delta-db (represents proposed changes), then
-      ;; last-db; they are kept separate to avoid data structure copy and
-      ;; also to provide more precise debugging messages.
-      (cond [(hash-ref current-db context #f)
-             => (lambda (e)
-                  (sample/reused dist context e))]
-            [(hash-ref delta-db context #f)
-             => (lambda (e)
-                  (sample/old dist context e #t))]
-            [(hash-ref last-db context #f)
-             => (lambda (e)
-                  (sample/old dist context e #f))]
-            [else (sample/new dist context #t)]))
-
-    (define/private (sample/reused dist context e)
-      (cond [(not (equal? (entry-dist e) dist))
-             (when (verbose?)
-               (eprintf "- MISMATCH ~a ~e / ~e: ~s\n"
-                        (if (mem-context? context) "MEMOIZED" "COLLISION")
-                        (entry-dist e) dist context))
-             (collision-error context)]
-            [(mem-context? context)
-             (when (verbose?)
-               (eprintf "- MEMOIZED ~e: ~s = ~e\n" dist context (entry-value e)))
-             (entry-value e)]
-            [else
-             (when (verbose?)
-               (eprintf "- COLLISION ~e: ~s\n" dist context))
-             (collision-error context)]))
-
-    (define/private (sample/new dist context print?)
-      (cond [(assoc (current-label) spconds)
-             => (lambda (e)
-                  (match (cdr e)
-                    [(spcond:equal value)
-                     ;; FIXME: value might not match internal dist support (eg flip vs bernoulli)
-                     (cond [(positive? (dist-pdf dist value))
-                            (when (verbose?)
-                              (when print?
-                                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-                              (eprintf "  CONDITIONED ~e = ~e\n" (current-label) value))
-                            (hash-set! current-db context (entry dist value #t))
-                            value]
-                           [else
-                            (fail 'condition)])]))]
-            [else
-             (define value (dist-sample dist))
-             (when (and print? (verbose?))
-               (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-             (hash-set! current-db context (entry dist value #f))
-             value]))
-
-    (define/private (sample/old dist context e in-delta?)
-      (cond [(equal? (entry-dist e) dist)
-             (when (verbose?)
-               (eprintf "- ~a ~e: ~s = ~e\n"
-                        (if in-delta? "PERTURBED" "REUSED")
-                        dist context (entry-value e)))
-             (hash-set! current-db context e)
-             (entry-value e)]
-            [(and (dists-same-type? (entry-dist e) dist)
-                  (positive? (dist-pdf dist (entry-value e))))
-             (define value (entry-value e))
-             (when (verbose?)
-               (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
-             (hash-set! current-db context (entry dist value (entry-pinned? e)))
-             value]
-            [(not (equal? (entry-dist e) dist))
-             (when (verbose?)
-               (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
-             (sample/new dist context #f)]))
-
-    (define/private (mem-context? context)
-      (and (pair? context)
-           (let ([frame (last context)])
-             (and (list? frame) (memq 'mem frame)))))
-
-    (define/private (collision-error context)
-      (error 'sample
-             (string-append "collision in random choice database"
-                            ";\n check that the sampler module uses `#lang prob'"
-                            "\n  address: ~e")
-             context))
-
-    (define/public (fail reason)
-      (escape (cons 'fail reason)))
-
-    (define/public (mem f)
-      (let ([context (get-context)])
-        (lambda args
-          (apply/delimit
-           (lambda ()
-             (parameterize ((the-context (list (list 'mem args context))))
-               (apply f args)))))))
-    ))
+  (define unpinned-count (db-count-unpinned db))
+  (and (positive? unpinned-count)
+       (db-nth-unpinned db (random unpinned-count))))
