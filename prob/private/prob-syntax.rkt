@@ -10,11 +10,13 @@
          racket/contract/base
          racket/class
          "prob-util.rkt"
+         "prob-hmc.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt"
          "interfaces.rkt")
 (provide rejection-sampler
          mh-sampler
+         hmc-sampler
          enumerate
          importance-sampler
          label
@@ -76,6 +78,15 @@
       (mh-sampler*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
        (list sp.e ...)))]))
+
+;; ----
+
+(define-syntax (hmc-sampler stx)
+  (syntax-parse stx
+    [(hmc-sampler def:expr ... result:expr)
+     (template
+      (hmc-sampler*
+       (λ () def ... (λ () result))))]))
 
 ;; ----
 
