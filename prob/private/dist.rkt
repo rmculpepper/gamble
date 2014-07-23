@@ -20,6 +20,7 @@
   (*mode dist)
   (*variance dist)
   (*conj dist obs-dist data)
+  (*Denergy dist x)
   #:fallbacks
   [(define (*enum d) #f)
    (define (*support d) #f)
@@ -27,7 +28,9 @@
    (define (*median d) #f)
    (define (*mode d) #f)
    (define (*variance d) #f)
-   (define (*conj d data-d data) #f)])
+   (define (*conj d data-d data) #f)
+   (define (*Denergy d x)
+     (error 'dist-Denergy "not implemented"))])
 
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))
@@ -39,6 +42,13 @@
   (*sample d))
 (define (dist-enum d)
   (*enum d))
+
+(define (dist-energy d x)
+  ;; -log(pdf(d,x))
+  (- (dist-pdf d x #t)))
+(define (dist-Denergy d x)
+  ;; derivative of energy(d,x) wrt x
+  (*Denergy d x))
 
 ;; Support is one of
 ;; - #f        -- unknown/unrestricted

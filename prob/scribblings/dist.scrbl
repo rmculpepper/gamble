@@ -123,6 +123,38 @@ it may not be defined, it may be infinite, or the calculation simply
 might not be implemented.
 }
 
+@defproc[(dist-energy [d dist?] [x any/c]) any/c]{
+
+Returns the value of the ``energy'' function of @racket[d] evaluated
+at @racket[x]. Minimizing energy is equivalent to maximizing likelihood.
+
+Equivalent to @racket[(- (log (dist-pdf d x)))].
+
+@examples[#:eval the-eval
+(define N (normal-dist 0 1))
+(dist-energy N 5)
+(dist-energy N 1)
+(dist-energy N 0)
+(dist-energy N -1)
+]
+}
+
+@defproc[(dist-Denergy [d dist?] [x any/c]) any/c]{
+
+Returns the value at @racket[x] of the derivative of @racket[d]'s
+energy function. If the derivative of energy is not defined (such as
+for non-continuous distributions) or not implemented for distribution
+@racket[d], an exception is raised.
+
+@examples[#:eval the-eval
+(define N (normal-dist 0 1))
+(dist-Denergy N 5)
+(dist-Denergy N 1)
+(dist-Denergy N 0)
+(dist-Denergy N -1)
+]
+}
+
 @defproc[(dist-update-prior [prior dist?] [dist-pattern any/c] [data vector?])
          (or/c dist? #f)]{
 

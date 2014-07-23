@@ -44,6 +44,10 @@
            (-> dist? any)]
           [dist-variance
            (-> dist? any)]
+          [dist-energy
+           (-> dist? any/c any)]
+          [dist-Denergy
+           (-> dist? any/c any)]
           [dist-update-prior
            (-> dist? any/c vector? (or/c dist? #f))])
 
@@ -91,6 +95,7 @@
             (~optional (~seq #:mode mode:expr))
             (~optional (~seq #:variance variance:expr))
             (~optional (~seq #:conjugate conj-fun:expr))
+            (~optional (~seq #:Denergy Denergy-fun:expr))
             (~optional (~and no-provide #:no-provide)))
        ...
        extra-clause ...)
@@ -138,9 +143,11 @@
                    (?? (define (*median d) (let ([p.param (get-param d)] ...) median)))
                    (?? (define (*mode d) (let ([p.param (get-param d)] ...) mode)))
                    (?? (define (*variance d) (let ([p.param (get-param d)] ...) variance)))
+                   (?? (define (*Denergy d x)
+                         ((let ([p.param (get-param d)] ...) Denergy-fun) x)))
                    (?? (define (*conj d data-d data)
                          (let ([p.param (get-param d)] ...)
-                           (and conj-fun (conj-fun data-d data)))))]
+                           (conj-fun data-d data))))]
                   extra-clause ...
                   #:transparent)
           #,(if (attribute no-provide)
@@ -204,6 +211,7 @@
   #:mean (/ a (+ a b))
   #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
   #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1)))
+  #:Denergy (lambda (x) (+ (/ (- 1 a) x) (/ (- 1 b) (- 1 x))))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(bernoulli-dist _)
@@ -224,15 +232,20 @@
   #:support '#s(real-range -inf.0 +inf.0)
   #:mean +nan.0
   #:mode mode
-  #:variance +nan.0)
+  #:variance +nan.0
+  #:Denergy (lambda (x)
+              (define x* (- x mode))
+              (/ (* 2 scale x*) (+ (* scale scale) (* x* x*)))))
 
 (define-dist-type exponential
   ([mean (>/c 0)])
+  ;; λ = 1/mean
   #:real
   #:support '#s(real-range 0 +inf.0) ;; [0, inf)
   #:mean mean
   #:mode 0
-  #:variance (expt mean -2))
+  #:variance (expt mean 2)
+  #:Denergy (/ mean))
 
 (define-dist-type gamma
   ([shape (>/c 0)]
@@ -242,6 +255,7 @@
   #:mean (* shape scale)
   #:mode (if (> shape 1) (* (- shape 1) scale) +nan.0)
   #:variance (* shape scale scale)
+  #:Denergy (lambda (x) (+ (/ (- 1 shape) x) (/ scale)))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(poisson-dist _)
@@ -284,7 +298,10 @@
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
   #:mean mean #:median mean #:mode mean
-  #:variance (* scale scale pi pi 1/3))
+  #:variance (* scale scale pi pi 1/3)
+  #:Denergy (lambda (x)
+              (define T (exp (- (/ (- x mean) scale))))
+              (* (/ scale) (/ (- 1 T) (+ 1 T)))))
 
 (define-dist-type normal
   ([mean real?]
@@ -295,6 +312,7 @@
   #:median mean
   #:mode mean
   #:variance (* stddev stddev)
+  #:Denergy (lambda (x) (/ (- x mean) (* stddev stddev)))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(normal-dist _ ,data-stddev)
@@ -318,6 +336,7 @@
   #:mean (/ (+ min max) 2)
   #:median (/ (+ min max) 2)
   #:variance (* (- max min) (- max min) 1/12)
+  #:Denergy (lambda (x) 0)
   #:guard (lambda (a b _name)
             (unless (< a b)
               (error 'uniform-dist
