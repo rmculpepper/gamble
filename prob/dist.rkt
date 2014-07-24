@@ -47,7 +47,7 @@
           [dist-energy
            (-> dist? any/c any)]
           [dist-Denergy
-           (-> dist? any/c any)]
+           (->* [dist? any/c] [] #:rest list? any)]
           [dist-update-prior
            (-> dist? any/c vector? (or/c dist? #f))])
 
@@ -143,8 +143,8 @@
                    (?? (define (*median d) (let ([p.param (get-param d)] ...) median)))
                    (?? (define (*mode d) (let ([p.param (get-param d)] ...) mode)))
                    (?? (define (*variance d) (let ([p.param (get-param d)] ...) variance)))
-                   (?? (define (*Denergy d x)
-                         ((let ([p.param (get-param d)] ...) Denergy-fun) x)))
+                   (?? (define (*Denergy d x . d/dts)
+                         (apply (let ([p.param (get-param d)] ...) Denergy-fun) x d/dts)))
                    (?? (define (*conj d data-d data)
                          (let ([p.param (get-param d)] ...)
                            (conj-fun data-d data))))]
@@ -162,6 +162,16 @@
      #'(lambda (param ... _name) (values (exact->inexact param) ...))]
     [(make-guard-fun (param ...) #:real)
      #'(lambda (param ... _name) (values (exact->inexact param) ...))]))
+
+;; If every q is 0, returns 0 without evaluating e.
+(define-syntax-rule (ifnz [q ...] e)
+  (if (and (zero? q) ...) 0 e))
+
+;; Multiply, but short-circuit if first arg evals to 0.
+(define-syntax-rule (lazy* a b ...)
+  (let ([av a]) (ifnz [av] (* av b ...))))
+
+(define (digamma x) (m:psi0 x))
 
 ;; ----
 
@@ -211,7 +221,13 @@
   #:mean (/ a (+ a b))
   #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
   #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1)))
-  #:Denergy (lambda (x) (+ (/ (- 1 a) x) (/ (- 1 b) (- 1 x))))
+  #:Denergy (lambda (x [dx 1] [da 0] [db 0])
+              (+ (lazy* dx (+ (/ (- 1 a) x)
+                              (/ (- b 1) (- 1 x))))
+                 (lazy* da (- (log x)))
+                 (lazy* da (digamma a))
+                 (lazy* db (digamma b))
+                 (lazy* (+ da db) (- (digamma (+ a b))))))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(bernoulli-dist _)
@@ -233,9 +249,12 @@
   #:mean +nan.0
   #:mode mode
   #:variance +nan.0
-  #:Denergy (lambda (x)
-              (define x* (- x mode))
-              (/ (* 2 scale x*) (+ (* scale scale) (* x* x*)))))
+  #:Denergy (lambda (x [dx 1] [dm 0] [ds 0])
+              (define x-m (- x mode))
+              (+ (lazy* ds (/ scale))
+                 (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
+                    (- (/ (- dx dm) scale)
+                       (lazy* ds (/ x-m scale scale)))))))
 
 (define-dist-type exponential
   ([mean (>/c 0)])
@@ -245,17 +264,28 @@
   #:mean mean
   #:mode 0
   #:variance (expt mean 2)
-  #:Denergy (/ mean))
+  #:Denergy (lambda (x [dx 1] [dm 0])
+              (define /mean (/ mean))
+              (+ (lazy* dm (- /mean (* x /mean /mean)))
+                 (* dx /mean))))
 
 (define-dist-type gamma
   ([shape (>/c 0)]
    [scale (>/c 0)])
+  ;; k = shape, θ = scale
   #:real
   #:support '#s(real-range 0 +inf.0) ;; (0,inf)
   #:mean (* shape scale)
   #:mode (if (> shape 1) (* (- shape 1) scale) +nan.0)
   #:variance (* shape scale scale)
-  #:Denergy (lambda (x) (+ (/ (- 1 shape) x) (/ scale)))
+  #:Denergy (lambda (x [dx 1] [dk 0] [dθ 0])
+              (define k shape)
+              (define θ scale)
+              (+ (lazy* dx (+ (- 1 k) (/ x)) (/ θ))
+                 (ifnz [dk dθ]
+                       (+ (* (expt θ k) (+ (* (log θ) dk) (* (/ k θ) dθ)))
+                          (lazy* dk (- (digamma k) (log x)))
+                          (lazy* dθ (- (/ x (* θ θ))))))))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(poisson-dist _)
@@ -299,9 +329,14 @@
   #:support '#s(real-range -inf.0 +inf.0)
   #:mean mean #:median mean #:mode mean
   #:variance (* scale scale pi pi 1/3)
-  #:Denergy (lambda (x)
-              (define T (exp (- (/ (- x mean) scale))))
-              (* (/ scale) (/ (- 1 T) (+ 1 T)))))
+  #:Denergy (lambda (x [dx 1] [dm 0] [ds 0])
+              (define s scale)
+              (define x-m (- x mean))
+              (define A (- (/ (- dx dm) s) (lazy* ds (/ x-m (* s s)))))
+              (define B (exp (- (/ x-m s))))
+              (+ A
+                 (lazy* ds (/ s))
+                 (* 2 (/ (+ 1 B)) B (- A)))))
 
 (define-dist-type normal
   ([mean real?]
@@ -312,7 +347,13 @@
   #:median mean
   #:mode mean
   #:variance (* stddev stddev)
-  #:Denergy (lambda (x) (/ (- x mean) (* stddev stddev)))
+  #:Denergy (lambda (x [dx 1] [dμ 0] [dσ 0])
+              (define μ mean)
+              (define σ stddev)
+              (define x-μ (- x μ))
+              (+ (lazy* dσ (- (/ σ) (* x-μ x-μ (* σ σ σ))))
+                 (lazy* (- dx dμ)
+                        (/ x-μ (* σ σ)))))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(normal-dist _ ,data-stddev)
@@ -336,7 +377,10 @@
   #:mean (/ (+ min max) 2)
   #:median (/ (+ min max) 2)
   #:variance (* (- max min) (- max min) 1/12)
-  #:Denergy (lambda (x) 0)
+  #:Denergy (lambda (x [dx 1] [dmin 0] [dmax 0])
+              (cond [(<= min x max)
+                     (lazy* (- dmax dmin) (/ (- max min)))]
+                    [else 0]))
   #:guard (lambda (a b _name)
             (unless (< a b)
               (error 'uniform-dist

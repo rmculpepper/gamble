@@ -139,12 +139,14 @@ Equivalent to @racket[(- (log (dist-pdf d x)))].
 ]
 }
 
-@defproc[(dist-Denergy [d dist?] [x any/c]) any/c]{
+@defproc[(dist-Denergy [d dist?] 
+                       [x real?]
+                       [dx/dt real? 1]
+                       [dparam/dt real? 0] ...)
+         any/c]{
 
 Returns the value at @racket[x] of the derivative of @racket[d]'s
-energy function. If the derivative of energy is not defined (such as
-for non-continuous distributions) or not implemented for distribution
-@racket[d], an exception is raised.
+energy function. 
 
 @examples[#:eval the-eval
 (define N (normal-dist 0 1))
@@ -153,6 +155,24 @@ for non-continuous distributions) or not implemented for distribution
 (dist-Denergy N 0)
 (dist-Denergy N -1)
 ]
+
+The parameters of @racket[d] and the position @racket[x] are
+considered functions of a hypothetical variable @racket[_t], and the
+derivative is taken with respect to @racket[_t]. Thus by varying
+@racket[dx/dt] and the @racket[dparam/dt]s, mixtures of the partial
+derivatives of energy with respect to the distribution's parameters
+can be recovered.
+
+@examples[#:eval the-eval
+(define N (normal-dist 0 1))
+(code:line (dist-Denergy N 5 1 0 0) (code:comment "∂energy/∂x"))
+(code:line (dist-Denergy N 5 0 1 0) (code:comment "∂energy/∂μ; μ is 1st param of normal-dist"))
+(code:line (dist-Denergy N 5 0 0 1) (code:comment "∂energy/∂σ; σ is 2nd param of normal-dist"))
+]
+
+If the derivative is not defined (such as for non-continuous
+distributions) or not implemented for distribution @racket[d], an
+exception is raised.
 }
 
 @defproc[(dist-update-prior [prior dist?] [dist-pattern any/c] [data vector?])
