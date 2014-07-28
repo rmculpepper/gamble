@@ -7,7 +7,8 @@
          data/order)
 (provide hist
          hist-pict
-         bin)
+         bin
+         bin-pict)
 
 (define (hist xs #:invert? [invert? #f])
   (hist* xs invert? plot))
@@ -22,8 +23,14 @@
   (define sorted-entries (sort entries (order-<? datum-order)))
   (plot (discrete-histogram sorted-entries #:invert? invert?)))
 
-;; Alternatively, use (plot (density ...))
 (define (bin xs [nbins0 #f])
+  (bin* xs nbins0 plot))
+
+(define (bin-pict xs [nbins0 #f])
+  (bin* xs nbins0 plot-pict))
+
+;; Alternatively, use (plot (density ...))
+(define (bin* xs nbins0 plot)
   (define n (length xs))
   (define nbins (max 2 (or nbins0 (inexact->exact (ceiling (log n))))))
   (define lo (apply min xs))
