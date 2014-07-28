@@ -42,27 +42,24 @@ the database as the potential energy of the entire system.
 
 |#
 
-;; hmc-sampler* : (-> (-> A)) -> Sampler
-;; The idea is that when the sampler runs the definition thunk, it will
-;; populate the random choice DB and return a (non-stochastic) answer thunk
-;; which closed over the random variables (ie the DB) of the definition.
-(define (hmc-sampler* definition-thunk)
+;; hmc-sampler* : (-> A) PositiveReal PositiveInteger -> Sampler
+(define (hmc-sampler* thunk epsilon L)
   (new hmc-sampler%
-       [definition-thunk definition-thunk]
-       [epsilon          0.01]
-       [L                10]))
+       [thunk   thunk]
+       [epsilon epsilon]
+       [L       L]))
 
 (define hmc-sampler%
   (class sampler-base%
-    (init-field definition-thunk
+    (init-field thunk
                 epsilon
                 L)
     (field [last-db '#hash()]
-           [answer-thunk #f])
+           [answer #f])
     (super-new)
     
     (define/override (sample)
-      (unless answer-thunk
+      (when (hash-empty? last-db)
         (eval-definition-thunk!))
       (define-values
         (last-p-db next-x-db next-p-db)
@@ -72,7 +69,8 @@ the database as the potential energy of the entire system.
       (define u (log (random)))
       (cond [(< u alpha)
              (set! last-db next-x-db)
-             (answer-thunk)]
+             (eval-definition-thunk!)
+             answer]
             [else
              ;; restart
              (sample)]))
@@ -80,7 +78,7 @@ the database as the potential energy of the entire system.
     (define (eval-definition-thunk!)
       (define delta-db (make-hash))
       (define current-db (make-hash))
-      (define first-run-result
+      (define result
         (let/ec escape
           (parameterize ((current-stochastic-ctx
                           (new db-stochastic-ctx%
@@ -89,10 +87,10 @@ the database as the potential energy of the entire system.
                                (delta-db delta-db)
                                (spconds null)
                                (escape escape))))
-            (cons 'okay (apply/delimit definition-thunk)))))
-      (match first-run-result
-        [(cons 'okay answer)
-         (set! answer-thunk answer)]
+            (cons 'okay (apply/delimit thunk)))))
+      (match result
+        [(cons 'okay ans)
+         (set! answer ans)]
         [(cons 'fail fail-reason)
          (when (verbose?)
            (eprintf "# Rejected condition (~s)" fail-reason))

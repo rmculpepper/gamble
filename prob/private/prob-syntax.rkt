@@ -83,10 +83,14 @@
 
 (define-syntax (hmc-sampler stx)
   (syntax-parse stx
-    [(hmc-sampler def:expr ... result:expr)
+    [(hmc-sampler def:expr ... result:expr
+                  (~or (~optional (~seq #:epsilon epsilon:expr))
+                       (~optional (~seq #:L L:expr))))
      (template
       (hmc-sampler*
-       (λ () def ... (λ () result))))]))
+       (λ () def ... result)
+       (?? epsilon 0.01)
+       (?? L 10)))]))
 
 ;; ----
 
