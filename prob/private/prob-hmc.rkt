@@ -27,7 +27,7 @@ is conserved.  Where U(x) is the "potential energy" of the position
 and K(p) is the "kinetic energy" of the momentum.
 |#
 
-;; (-> (-> A)) -> Sampler
+;; hmc-sampler* : (-> (-> A)) -> Sampler
 ;; The idea is that when the sampler runs the definition thunk, it will
 ;; populate the random choice DB and return a (non-stochastic) answer thunk
 ;; which closed over the random variables (ie the DB) of the definition.
@@ -67,18 +67,45 @@ and K(p) is the "kinetic energy" of the momentum.
         [(cons 'fail fail-reason)
          (when (verbose?)
            (eprintf "# Rejected condition (~s)" fail-reason))
-         #f]))))
+         #f]))
 
-;; (-> DB (Values DB 
-(define (hmc-step curr-x-db epsilon)
+    ))
+    
+
+;; hmc-step : DB[X] Epsilon Positive-Integer -> (Values DB[P] DB[X*] DB[P*])
+;;
+;; Construct randomly an initial momentum, then run L epsilon-steps
+;; of Hamiltonian dynamics to arrive at a new position and momentum.
+(define (hmc-step curr-x-db epsilon L grad-potential-fn)
   (define curr-p-db
-    (db-map (λ (_)
+    (db-map (λ (e)
+              ; pinned entries have zero momentum,
+              ; and will thus not move in next-x-db.
               (let* ([d      (normal-dist 0 1)]
-                     [v      (dist-sample d)]
-                     [pinned #f])
+                     [v      (if (entry-pinned? e) 
+                                 0
+                                 (dist-sample d))]
+                     [pinned (entry-pinned? e)])
                 (entry d v pinned)))
             curr-x-db))
-  (define next-x-db (error "finish me"))
-  (define next-p-db (error "finish me"))
-  (values curr-x-db curr-p-db next-x-db next-p-db))
+  (define-values (next-x-db next-p-db)
+    (hmc-leapfrog-proposal epsilon L
+                           grad-potential-fn
+                           curr-x-db
+                           curr-p-db))
+  (values curr-p-db next-x-db next-p-db))
   
+;; hmc-acceptance-threshold : DB[X] DB[P] DB[X*] DB[P*] -> Real
+;;
+;; Compute the acceptance ratio for a move from the given position and
+;; momentum to a proposed position and momentum
+(define (hmc-acceptance-threshold curr-x-db curr-p-db next-x-db next-p-db)
+  (define curr-x-ll (db-ll curr-x-db))
+  (define curr-p-ll (db-ll curr-p-db))
+
+  (define next-x-ll (db-ll next-x-db))
+  (define next-p-ll (db-ll next-p-db))
+  
+  (+ (- curr-x-ll next-x-ll)
+     (- curr-p-ll next-p-ll)))
+
