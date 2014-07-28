@@ -11,7 +11,9 @@
                      prob/viz))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
+@(the-eval '(require prob (only-in prob/viz
+                                   [hist-pict hist]
+                                   [bin-pict bin])))
 
 @title[#:tag "solvers"]{Samplers and Solvers}
 
@@ -88,6 +90,39 @@ variant of Metropolis-Hastings as described in @cite{Bher}.
 (hist (repeat mh-n-flips 100))
 (hist (repeat (lag mh-n-flips 100) 100))
 (hist (repeat mh-n-flips 2000))
+]
+}
+
+@defform[(hmc-sampler def/expr ... result-expr
+                      maybe-epsilon-clause
+                      maybe-L-clause)
+         #:grammar ([maybe-epsilon-clause (code:line)
+                                          (code:line #:epsilon epsilon-expr)]
+                    [maybe-L-clause (code:line)
+                                    (code:line #:L L-expr)])]{
+
+Like @racket[mh-sampler], but when applied uses a Hamiltonian Monte Carlo method
+for MH proposals.
+
+This solver is EXPERIMENTAL and comes with a number of restritctions:
+
+@itemlist[
+  @item{There must be no structural dependencies among the distributions of @racket[def/expr ... result-expr]}
+  @item{All the distributions must be continuous}
+  @item{The parameters to each distributino must not depend on any other random choices.  (This is a shortcoming of the current implementation that will be lifted some day).}
+]
+
+The parameters @racket[epsilon-expr] and @racket[L-expr] specify the size of each Hamiltonian step and the
+number of Hamiltonian steps to take in the course of obtaining a sample.
+
+@examples[#:eval the-eval
+(define hmc-TwoNormals
+  (hmc-sampler
+    (define A (normal 0 1))
+    (define B (normal 0 1))
+    (+ A B)))
+
+(bin (repeat hmc-TwoNormals 100))
 ]
 }
 
