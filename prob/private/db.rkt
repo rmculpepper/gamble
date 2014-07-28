@@ -21,6 +21,10 @@
 ;; (and thus cannot be perturbed).
 (struct entry (dist value pinned?) #:prefab)
 
+;; update-entry-value : Entry Any -> Entry
+(define (update-entry-value e v)
+  (entry (entry-dist e) v (entry-pinned? e)))
+
 ;; ------------------------------------------------------------
 
 ;; A DB is (Hashof Address Entry)
