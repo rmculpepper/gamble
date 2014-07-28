@@ -4,6 +4,8 @@
 
 #lang racket/base
 
+(require "db.rkt")
+
 (provide hmc-leapfrog-proposal)
 
 ;; Compute an update step for Hamiltonian Monte Carlo using the leapfrog method.
@@ -11,11 +13,12 @@
 ;; Assumes that the momentum is drawn from a joint Normal(0,1) distribution such that
 ;; the mass matrix M in "x = x0 + ε·M⁻¹p(t+ε/2)" is the identity.
 ;;
-;;  PositiveReal NonNegativeInteger
-;;               (Position -> (Listof Position))
-;;               Position
-;;               Momentum
-;;  -> (Values Position Momentum)
+;;  (-> PositiveReal
+;;      NonNegativeInteger
+;;      (-> Address Position Momentum) ; partial derivative with respect to Address at Position
+;;      Position
+;;      Momentum
+;;      (Values Position Momentum))
 (define (hmc-leapfrog-proposal
          epsilon
          L
@@ -51,13 +54,25 @@
           (loop (- i 1) next-x next-p)))))
          
 (define ((momentum-step epsilon grad-potential-fn) x p)
-  (for/list ([p p]
-             [grad-U-x (grad-potential-fn x)])
-    (- p (* epsilon grad-U-x))))
+  (db-map (λ (k e)
+            ;; if p is a pinned entry keep its momentum unchanged
+            ;; (and presumably zero)
+            (if (entry-pinned? e)
+                e
+                (let ([grad-U-x (grad-potential-fn k x)])
+                  (update-entry-value e
+                                      (- p (* epsilon grad-U-x))))))
+          p
+          #:with-address #t))
 
 ; There ought to be a (* epsilon inv-M p) term, but
 ; we assume that M is the identity, so inv-M is 1.
 (define ((position-step epsilon) x p)
-  (for/list ([x x]
-             [p p])
-    (+ x (* epsilon p))))
+  (db-map (λ (k e)
+            (if (entry-pinned? e)
+                e
+                (let ([p (hash-ref p k)])
+                  (update-entry-value e
+                                      (+ x (* epsilon p))))))
+          x
+          #:with-address #t))
