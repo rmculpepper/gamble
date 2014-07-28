@@ -15,6 +15,8 @@
                   verbose?
                   ))
 
+(provide hmc-sampler*)
+
 #|
 HMC - Harmonic Monte Carlo
 
@@ -25,6 +27,19 @@ quantity:
   H(x,p) = U(x) + K(p)
 is conserved.  Where U(x) is the "potential energy" of the position
 and K(p) is the "kinetic energy" of the momentum.
+
+Limitations:
+1. All distributions in the database should be continous.
+
+2. There should be no "structural" choices.  (ie, the values of random
+choices do not affect control flow through the probabilistic program).
+
+3. (Temporary) All parameters of all random choices must be constant
+and cannot depend on earlier random choices.  This means we don't have
+to use automatic differentiation to account for dependencies in random
+choices --- we can just take the sum of the energies of each entry in
+the database as the potential energy of the entire system.
+
 |#
 
 ;; hmc-sampler* : (-> (-> A)) -> Sampler
@@ -32,11 +47,16 @@ and K(p) is the "kinetic energy" of the momentum.
 ;; populate the random choice DB and return a (non-stochastic) answer thunk
 ;; which closed over the random variables (ie the DB) of the definition.
 (define (hmc-sampler* definition-thunk)
-  (new hmc-sampler% (definition-thunk definition-thunk)))
+  (new hmc-sampler%
+       [definition-thunk definition-thunk]
+       [epsilon          0.01]
+       [L                10]))
 
 (define hmc-sampler%
   (class sampler-base%
-    (init-field definition-thunk)
+    (init-field definition-thunk
+                epsilon
+                L)
     (field [last-db '#hash()]
            [answer-thunk #f])
     (super-new)
@@ -44,8 +64,18 @@ and K(p) is the "kinetic energy" of the momentum.
     (define/override (sample)
       (unless answer-thunk
         (eval-definition-thunk!))
-      
-      (answer-thunk))
+      (define-values
+        (last-p-db next-x-db next-p-db)
+        (hmc-step last-db epsilon L hmc-naive-potential-fn))
+      (define alpha
+        (hmc-acceptance-threshold last-db last-p-db next-x-db next-p-db))
+      (define u (log (random)))
+      (cond [(< u alpha)
+             (set! last-db next-x-db)
+             (answer-thunk)]
+            [else
+             ;; restart
+             (sample)]))
     
     (define (eval-definition-thunk!)
       (define delta-db (make-hash))
@@ -60,7 +90,6 @@ and K(p) is the "kinetic energy" of the momentum.
                                (spconds null)
                                (escape escape))))
             (cons 'okay (apply/delimit definition-thunk)))))
-      
       (match first-run-result
         [(cons 'okay answer)
          (set! answer-thunk answer)]
@@ -71,6 +100,19 @@ and K(p) is the "kinetic energy" of the momentum.
 
     ))
     
+;; hmc-naive-potential-fn : Address Position -> PotentialEnergy
+;;
+;; This potential function is WRONG.  It assumes that each
+;; DB entry is independent of all the others.  An assumption that
+;; only holds for samples drawn independently.
+(define (hmc-naive-potential-fn k x)
+  (cond [(hash-ref k x #f)
+         => (λ (entry)
+              (define dist (entry-dist entry))
+              (define v (entry-value entry))
+              ;; d/dt dist at v
+              (dist-Denergy dist v))]
+        [else 0]))
 
 ;; hmc-step : DB[X] Epsilon Positive-Integer -> (Values DB[P] DB[X*] DB[P*])
 ;;
@@ -79,7 +121,7 @@ and K(p) is the "kinetic energy" of the momentum.
 (define (hmc-step curr-x-db epsilon L grad-potential-fn)
   (define curr-p-db
     (db-map (λ (e)
-              ; pinned entries have zero momentum,
+              ; pinned entries have zero kinetic energy
               ; and will thus not move in next-x-db.
               (let* ([d      (normal-dist 0 1)]
                      [v      (if (entry-pinned? e) 
