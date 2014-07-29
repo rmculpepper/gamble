@@ -4,29 +4,36 @@
 
 #lang racket/base
 
-(require "db.rkt")
+(require racket/contract
+         "db.rkt")
 
-(provide hmc-leapfrog-proposal)
+(provide 
+ (contract-out
+  [hmc-leapfrog-proposal
+   (-> positive?
+       exact-nonnegative-integer?
+       (-> any/c hash? hash?)
+       hash?
+       hash?
+       (values hash? hash?))]))
 
 ;; Compute an update step for Hamiltonian Monte Carlo using the leapfrog method.
 ;;
 ;; Assumes that the momentum is drawn from a joint Normal(0,1) distribution such that
 ;; the mass matrix M in "x = x0 + ε·M⁻¹p(t+ε/2)" is the identity.
 ;;
-;;  (-> PositiveReal
-;;      NonNegativeInteger
-;;      (-> Address Position Momentum) ; partial derivative with respect to Address at Position
-;;      Position
-;;      Momentum
-;;      (Values Position Momentum))
+;;  PositiveReal
+;;  NonNegativeInteger
+;;  (Address Position -> Momentum) ; partial derivative with respect to Address at Position
+;;  Position
+;;  Momentum
+;;  -> (Values Position Momentum)
 (define (hmc-leapfrog-proposal
          epsilon
          L
          grad-potential-fn
          x0
          p0)
-  (unless (> L 0)
-    (error "wanted non-negative L, got " L))
   (define half-epsilon (/ epsilon 2.0))
   (define P-half-step (momentum-step half-epsilon grad-potential-fn))
   (define P-step (momentum-step epsilon grad-potential-fn))

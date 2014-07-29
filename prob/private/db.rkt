@@ -95,19 +95,19 @@
     (unless (hash-has-key? new-db k)
       (hash-set! new-db k v))))
 
-;; db-update! : (-> Entry Entry) DB -> Void
-;; db-update!:  (-> Address Entry Entry) DB -> Void
+;; db-update! : (Entry -> Entry) DB #f -> Void
+;; db-update! : (Address Entry -> Entry) DB #t -> Void
 ;;
 ;; Update each entry in the database by applying the given function to it.
 ;; if #:with-address #t also pass the entry address to the funciton
 (define (db-update! f db #:with-address [with-address #f])
   (for ([(k v) (in-hash db)])
-    (hash-set db k (if with-address (f k v) (f v)))))
+    (hash-set! db k (if with-address (f k v) (f v)))))
 
-;; db-map : (-> Entry Entry) DB -> DB
-;; db-map : (-> Address Entry Entry) DB -> DB
+;; db-map : (Entry -> Entry) DB #f -> DB
+;; db-map : (Address Entry -> Entry) DB #t -> DB
 ;;
-;; Copy old-db to new-db and then updated it using f.
+;; Copy old-db to new-db and then update it using f.
 (define (db-map f old-db #:with-address [with-address #f])
   (define new-db (make-hash))
   (db-copy-stale old-db new-db)

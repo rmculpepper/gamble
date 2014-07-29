@@ -109,7 +109,7 @@ This solver is EXPERIMENTAL and comes with a number of restritctions:
 @itemlist[
   @item{There must be no structural dependencies among the distributions of @racket[def/expr ... result-expr]}
   @item{All the distributions must be continuous}
-  @item{The parameters to each distributino must not depend on any other random choices.  (This is a shortcoming of the current implementation that will be lifted some day).}
+  @item{The parameters to each distribution must not depend on any other random choices.  (This is a shortcoming of the current implementation that will be lifted some day).}
 ]
 
 The parameters @racket[epsilon-expr] and @racket[L-expr] specify the size of each Hamiltonian step and the

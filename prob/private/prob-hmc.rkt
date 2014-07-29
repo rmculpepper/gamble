@@ -18,7 +18,7 @@
 (provide hmc-sampler*)
 
 #|
-HMC - Harmonic Monte Carlo
+HMC - Hamiltonian Monte Carlo
 
 The usual database of random choices is now thought of as
 the "position" of a particle and an auxiliary normally
@@ -75,7 +75,7 @@ the database as the potential energy of the entire system.
              ;; restart
              (sample)]))
     
-    (define (eval-definition-thunk!)
+    (define/private (eval-definition-thunk!)
       (define delta-db (make-hash))
       (define current-db (make-hash))
       (define result
