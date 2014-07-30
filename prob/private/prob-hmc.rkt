@@ -81,13 +81,20 @@ the database as the potential energy of the entire system.
       (define result
         (let/ec escape
           (parameterize ((current-stochastic-ctx
-                          (new db-stochastic-ctx%
+                          (new db-stochastic-derivative-ctx%
                                (current-db current-db)
                                (last-db last-db)
                                (delta-db delta-db)
                                (spconds null)
                                (escape escape))))
-            (cons 'okay (apply/delimit thunk)))))
+            (cons 'okay 
+                  (begin0
+                      (apply/delimit thunk)
+                    (when (verbose?)
+                      (eprintf " (recorded derivatives are) ~e\n"
+                               (get-field derivatives (current-stochastic-ctx)))
+                      (eprintf " (relevant labels were) ~e \n"
+                               (get-field relevant-labels (current-stochastic-ctx)))))))))
       (match result
         [(cons 'okay ans)
          (set! answer ans)]

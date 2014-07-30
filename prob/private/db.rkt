@@ -6,6 +6,7 @@
 (require racket/list
          racket/class
          racket/match
+         racket/vector
          data/order
          "context.rkt"
          "util.rkt"
@@ -229,3 +230,53 @@
              (parameterize ((the-context (list (list 'mem args context))))
                (apply f args)))))))
     ))
+
+(define db-stochastic-derivative-ctx%
+  (class* db-stochastic-ctx% (stochastic-ctx<%>)
+    (init current-db
+          last-db
+          delta-db
+          spconds
+          escape)
+    (field [derivatives (make-hash)]      ;; (Hashof Address Derivative)
+           [relevant-labels (make-hash)]) ;; (Hashof Label Address)
+    (super-new [current-db current-db]
+               [last-db last-db]
+               [delta-db delta-db]
+               [spconds spconds]
+               [escape escape])
+    
+    (define/override (sample dist) 
+      (record-current-label)
+      (record-current-derivatives)
+      (super sample dist))
+    
+    (define (record-current-label)
+      (define lbl (current-label))
+      (when lbl
+        (define context (get-context))
+        (hash-set! relevant-labels lbl context)))
+    
+    (define (record-current-derivatives)
+      (define label-derivs (current-derivatives))
+      (when label-derivs
+        (define context (get-context))
+        (define address-derivs
+          (vector-map (λ (parameter-derivative)
+                        (derivative-label->address parameter-derivative))
+                      label-derivs))
+        (hash-set! derivatives context address-derivs)))
+    
+    ;; (U #f (Pair (Vector Label) DerivativeFn))
+    ;; -> (U #f (Pair (Vector Address) DerivativeFn))
+    ;;
+    ;; replace each label by its latest address.
+    (define/private (derivative-label->address pd)
+      (cond
+       [pd
+        (define labels (car pd))
+        (define derivative-fn (cdr pd))
+        (cons (vector-map (λ (lbl) (hash-ref relevant-labels lbl)) labels)
+              derivative-fn)]
+       [else #f]))))
+        
