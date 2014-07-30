@@ -59,8 +59,9 @@ the database as the potential energy of the entire system.
     (super-new)
     
     (define/override (sample)
-      (when (hash-empty? last-db)
-        (eval-definition-thunk!))
+      (when (or (not last-db) (hash-empty? last-db))
+        (let ([current-db (eval-definition-thunk!)])
+          (set! last-db current-db)))
       (define-values
         (last-p-db next-x-db next-p-db)
         (hmc-step last-db epsilon L hmc-naive-potential-fn))
@@ -87,10 +88,11 @@ the database as the potential energy of the entire system.
                                (delta-db delta-db)
                                (spconds null)
                                (escape escape))))
-            (cons 'okay (apply/delimit thunk)))))
+            (list 'okay (apply/delimit thunk) current-db))))
       (match result
-        [(cons 'okay ans)
-         (set! answer ans)]
+        [(list 'okay ans ans-db)
+         (set! answer ans)
+         ans-db]
         [(cons 'fail fail-reason)
          (when (verbose?)
            (eprintf "# Rejected condition (~s)" fail-reason))
@@ -104,11 +106,11 @@ the database as the potential energy of the entire system.
 ;; DB entry is independent of all the others.  An assumption that
 ;; only holds for samples drawn independently.
 (define (hmc-naive-potential-fn k x)
-  (cond [(hash-ref k x #f)
+  (cond [(hash-ref x k #f)
          => (λ (entry)
               (define dist (entry-dist entry))
               (define v (entry-value entry))
-              ;; d/dt dist at v
+              ;; d(-log(distpdf))/dt at v
               (dist-Denergy dist v))]
         [else 0]))
 
