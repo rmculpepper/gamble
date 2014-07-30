@@ -59,8 +59,9 @@ the database as the potential energy of the entire system.
     (super-new)
     
     (define/override (sample)
-      (when (hash-empty? last-db)
-        (eval-definition-thunk!))
+      (when (or (not last-db) (hash-empty? last-db))
+        (let ([current-db (eval-definition-thunk!)])
+          (set! last-db current-db)))
       (define-values
         (last-p-db next-x-db next-p-db)
         (hmc-step last-db epsilon L hmc-naive-potential-fn))

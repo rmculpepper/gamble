@@ -12,7 +12,7 @@
   [hmc-leapfrog-proposal
    (-> positive?
        exact-nonnegative-integer?
-       (-> any/c hash? hash?)
+       (-> any/c hash? real?)
        hash?
        hash?
        (values hash? hash?))]))
@@ -61,25 +61,35 @@
           (loop (- i 1) next-x next-p)))))
          
 (define ((momentum-step epsilon grad-potential-fn) x p)
+  (unless (hash? x)
+    (raise-argument-error 'momentum-step "hash" 1 grad-potential-fn x p))
+  (unless (hash? p)
+    (raise-argument-error 'momentum-step "hash" 2 grad-potential-fn x p))
   (db-map (λ (k e)
-            ;; if p is a pinned entry keep its momentum unchanged
+            ;; if e is a pinned entry keep its momentum unchanged
             ;; (and presumably zero)
             (if (entry-pinned? e)
                 e
                 (let ([grad-U-x (grad-potential-fn k x)])
-                  (update-entry-value e
-                                      (- p (* epsilon grad-U-x))))))
+                  (entry-value-map (λ (p)
+                                       (- p (* epsilon grad-U-x)))
+                                   e))))
           p
           #:with-address #t))
 
 ; There ought to be a (* epsilon inv-M p) term, but
 ; we assume that M is the identity, so inv-M is 1.
 (define ((position-step epsilon) x p)
+  (unless (hash? x)
+    (raise-argument-error 'position-step "hash" 1 epsilon x p))
+  (unless (hash? p)
+    (raise-argument-error 'position-step "hash" 2 epsilon x p))
   (db-map (λ (k e)
             (if (entry-pinned? e)
                 e
-                (let ([p (hash-ref p k)])
-                  (update-entry-value e
-                                      (+ x (* epsilon p))))))
+                (let ([p (entry-value (hash-ref p k))])
+                  (entry-value-map (λ (x)
+                                       (+ x (* epsilon p)))
+                                   e))))
           x
           #:with-address #t))
