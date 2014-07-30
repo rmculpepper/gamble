@@ -10,7 +10,7 @@
 (provide 
  (contract-out
   [hmc-leapfrog-proposal
-   (-> positive?
+   (-> (>/c 0)
        exact-nonnegative-integer?
        (-> any/c hash? hash?)
        hash?
