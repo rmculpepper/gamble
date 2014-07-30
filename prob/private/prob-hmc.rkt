@@ -88,22 +88,23 @@ the database as the potential energy of the entire system.
                                (delta-db delta-db)
                                (spconds null)
                                (escape escape))))
-            (cons 'okay 
-                  (begin0
+            (begin0
+                (list 'okay 
                       (apply/delimit thunk)
-                    (when (verbose?)
-                      (eprintf " (recorded derivatives are) ~e\n"
-                               (get-field derivatives (current-stochastic-ctx)))
-                      (eprintf " (relevant labels were) ~e \n"
-                               (get-field relevant-labels (current-stochastic-ctx)))))))))
+                      current-db)
+              (when (verbose?)
+                (eprintf " (recorded derivatives are) ~e\n"
+                         (get-field derivatives (current-stochastic-ctx)))
+                (eprintf " (relevant labels were) ~e \n"
+                         (get-field relevant-labels (current-stochastic-ctx))))))))
       (match result
-        [(cons 'okay ans)
-         (set! answer ans)]
+        [(list 'okay ans ans-db)
+         (set! answer ans)
+         ans-db]
         [(cons 'fail fail-reason)
          (when (verbose?)
            (eprintf "# Rejected condition (~s)" fail-reason))
          #f]))
-
     ))
     
 ;; hmc-naive-potential-fn : Address Position -> PotentialEnergy
@@ -112,11 +113,11 @@ the database as the potential energy of the entire system.
 ;; DB entry is independent of all the others.  An assumption that
 ;; only holds for samples drawn independently.
 (define (hmc-naive-potential-fn k x)
-  (cond [(hash-ref k x #f)
+  (cond [(hash-ref x k #f)
          => (λ (entry)
               (define dist (entry-dist entry))
               (define v (entry-value entry))
-              ;; d/dt dist at v
+              ;; d(-log(distpdf))/dt at v
               (dist-Denergy dist v))]
         [else 0]))
 
