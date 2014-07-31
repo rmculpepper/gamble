@@ -55,7 +55,8 @@ the database as the potential energy of the entire system.
                 epsilon
                 L)
     (field [last-db '#hash()]
-           [answer #f])
+           [answer #f]
+           [gradients '#hash()])
     (super-new)
     
     (define/override (sample)
@@ -64,7 +65,7 @@ the database as the potential energy of the entire system.
           (set! last-db current-db)))
       (define-values
         (last-p-db next-x-db next-p-db)
-        (hmc-step last-db epsilon L hmc-naive-potential-fn))
+        (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)))
       (define alpha
         (hmc-acceptance-threshold last-db last-p-db next-x-db next-p-db))
       (define u (log (random)))
@@ -91,15 +92,17 @@ the database as the potential energy of the entire system.
             (begin0
                 (list 'okay 
                       (apply/delimit thunk)
-                      current-db)
+                      current-db
+                      (get-field derivatives (current-stochastic-ctx)))
               (when (verbose?)
                 (eprintf " (recorded derivatives are) ~e\n"
                          (get-field derivatives (current-stochastic-ctx)))
                 (eprintf " (relevant labels were) ~e \n"
                          (get-field relevant-labels (current-stochastic-ctx))))))))
       (match result
-        [(list 'okay ans ans-db)
+        [(list 'okay ans ans-db grads)
          (set! answer ans)
+         (set! gradients grads)
          ans-db]
         [(cons 'fail fail-reason)
          (when (verbose?)
@@ -109,9 +112,9 @@ the database as the potential energy of the entire system.
     
 ;; hmc-naive-potential-fn : Address Position -> PotentialEnergy
 ;;
-;; This potential function is WRONG.  It assumes that each
-;; DB entry is independent of all the others.  An assumption that
-;; only holds for samples drawn independently.
+;; This potential function is WRONG to use on its own.  It assumes
+;; that each DB entry is independent of all the others.  An assumption
+;; that only holds for samples drawn independently.
 (define (hmc-naive-potential-fn k x)
   (cond [(hash-ref x k #f)
          => (λ (entry)
@@ -121,7 +124,65 @@ the database as the potential energy of the entire system.
               (dist-Denergy dist v))]
         [else 0]))
 
-;; hmc-step : DB[X] Epsilon Positive-Integer -> (Values DB[P] DB[X*] DB[P*])
+;; hmc-gradient-potential-fn : (Hashof Address (Vectorof PartialDerivatives))
+;;                             -> (Address Position -> PotentialEnergy)
+(define ((hmc-gradient-potential-fn gradients) k x)
+  (cond [(hash-ref gradients k #f)
+         => (λ (gradient-vec)
+              (define k-entry (hash-ref x k))
+              (define k-dist (entry-dist k-entry))
+              (define k-dist-num-params (dist-param-count k-dist))
+              (define v (entry-value k-entry))
+              (unless (and (vector? gradient-vec)
+                           (= (vector-length gradient-vec)
+                              k-dist-num-params))
+                (error 'hmc-gradient-potential-fn
+                       " recorded derivative for ~e has ~e gradients, but the distribution ~e has ~e params"
+                       k
+                       (vector-length gradient-vec)
+                       k-dist
+                       k-dist-num-params))
+              (define param-d/dts
+                (for/list ([partial-deriv-entry (in-vector gradient-vec)])
+                  (if (not partial-deriv-entry)
+                      0
+                      (let ([dependent-addrs-vec (car partial-deriv-entry)]
+                            [partial-deriv-fn (cdr partial-deriv-entry)])
+                        (define dependent-values
+                          (for/list ([a (in-vector dependent-addrs-vec)])
+                            (entry-value (hash-ref x a))))
+                        (call-with-values (λ () (apply partial-deriv-fn dependent-values))
+                          (λ param-partial-vs
+                            ;; we are working on param(v1(t), ... vN(t)) = <something>   
+                            ;; and we just got param-partial-vs which is dparam/dv for each v1... vN
+                            ;; we want dparam/dt, which is the total derivative of param
+                            ;;   dparamt/dt = dparam/dv1 * dv1/dt + ... + dparam/dvN * dvN/dt
+                            ;;
+                            ;; Example: suppose param(y1,y2) = y1^2*y2^2
+                            ;; so, dparam(y1,y2)/dt = d(y1^2)/dy1 * y2^2 * dy1/dt + d(y2^2)/dy2 * y1^2 * dy2/dt
+                            ;;                      = 2*y1*y2^2 * dy1/dt + 2*y2*y1^2 * dy2/dt
+                            ;;
+                            ;; So we need to sum up while recursively calling ourselves to compute
+                            ;; the time derivatives of the variables we depend on.
+                            (for/sum ([dparam/dv param-partial-vs]
+                                      [a (in-vector dependent-addrs-vec)]
+                                      [v dependent-values])
+                              ;; one more complication: we don't have dv/dt directly,
+                              ;; we have Denergy: d(-log v)/dt = - d(log v)/dt = - 1/v * dv/dt
+                              ;; so dv/dt = - v * d(-log v)/dt 
+                              ;; so overall we want
+                              ;;  dparam/dt = dparam/dv * (- v) * d(-log v)/dt
+                              (define v-Denergy ((hmc-gradient-potential-fn gradients) a x))
+                              (* dparam/dv (- v) v-Denergy))))))))
+              (apply dist-Denergy k-dist v 1 param-d/dts))]
+        [else
+         (error 'hmc-gradient-potential-fn
+                " no derivative available for distribution with address ~e"
+                k)]))
+                       
+
+;; hmc-step : DB[X] Epsilon Positive-Integer (Address Position -> PotentialEnergy)
+;;            -> (Values DB[P] DB[X*] DB[P*])
 ;;
 ;; Construct randomly an initial momentum, then run L epsilon-steps
 ;; of Hamiltonian dynamics to arrive at a new position and momentum.
