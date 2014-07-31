@@ -63,8 +63,11 @@ the database as the potential energy of the entire system.
     
     (define/override (sample)
       (when (or (not last-db) (hash-empty? last-db))
-        (let ([current-db (eval-definition-thunk!)])
-          (set! last-db current-db)))
+        (let loop ()
+          (let ([current-db (eval-definition-thunk!)])
+            (if (not current-db)
+                (loop)
+                (set! last-db current-db)))))
       (define-values
         (last-p-db next-x-db next-p-db)
         (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)))
@@ -76,9 +79,15 @@ the database as the potential energy of the entire system.
       (cond [(< u alpha)
              (when (verbose?)
                (eprintf "# Accepted HMC step with ~s\n" (exp u)))
-             (set! last-db next-x-db)
-             (eval-definition-thunk!)
-             answer]
+             (let ([prev-db last-db])
+               (set! last-db next-x-db)
+               (if (not (eval-definition-thunk!))
+                   (begin
+                     (when (verbose?)
+                       (eprintf "# ... but the condition didn't hold, rejecting!\n"))
+                     (set! last-db prev-db)
+                     (sample))
+                   answer))]
             [else
              ;; restart
              (when (verbose?)

@@ -86,10 +86,12 @@
   (syntax-parse stx
     [(hmc-sampler def:expr ... result:expr
                   (~or (~optional (~seq #:epsilon epsilon:expr))
-                       (~optional (~seq #:L L:expr))))
+                       (~optional (~seq #:L L:expr))
+                       (~optional (~seq #:when condition:expr)))
+                  ...)
      (template
       (hmc-sampler*
-       (λ () def ... result)
+       (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
        (?? epsilon 0.01)
        (?? L 10)))]))
 
