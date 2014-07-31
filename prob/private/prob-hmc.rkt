@@ -6,6 +6,8 @@
 
 (require racket/class
          racket/match
+         (only-in racket/vector
+                  vector-member)
          "context.rkt"
          "db.rkt"
          "hmc-leapfrog.rkt"
@@ -69,12 +71,18 @@ the database as the potential energy of the entire system.
       (define alpha
         (hmc-acceptance-threshold last-db last-p-db next-x-db next-p-db))
       (define u (log (random)))
+      (when (verbose?)
+        (eprintf "# accept threshold = ~s\n" (exp alpha)))
       (cond [(< u alpha)
+             (when (verbose?)
+               (eprintf "# Accepted HMC step with ~s\n" (exp u)))
              (set! last-db next-x-db)
              (eval-definition-thunk!)
              answer]
             [else
              ;; restart
+             (when (verbose?)
+               (eprintf "# Rejected HMC step with ~s\n" (exp u)))
              (sample)]))
     
     (define/private (eval-definition-thunk!)
@@ -126,60 +134,70 @@ the database as the potential energy of the entire system.
 
 ;; hmc-gradient-potential-fn : (Hashof Address (Vectorof PartialDerivatives))
 ;;                             -> (Address Position -> PotentialEnergy)
+;;
+;; Compute the partial derivative of the energy U(x) total system x with
+;; respect to the random variable xk with address k. 
+;;   ∂U(x)/∂xk = ∂Ux1/∂xk + ... + ∂UxN/∂xk
+;; Let's do a change of variable by considering xk as a function of a convenience variable t, such that
+;;     xk(t) = t   (and therefore ∂xk/∂t = 1)
+;;   ∂U(x)/∂xk = ∂Ux1/∂t / (∂xk/∂t) + ... + ∂UxN/∂t / (∂xk/∂t)
+;;             = ∂Ux1/∂t + ... + ∂UxN/∂t
+;; Now consider an individual ∂Uxi/∂t
+;;   It is given by (dist-Denergy Di ∂xi/∂t ∂param(i,1)/∂t ... ∂param(i,jᵢ)/∂t)
+;;  Where ∂xi/∂t = (indicator i k) = { 1 if i = k, 0 if i ≠ k }.
+;;  Consider a change of variable with respect to some xr:
+;;    ∂param(i,j)/∂t = ∂param(i,j)/∂xr * (∂xr/∂t)
+;;    Here again ∂xr/∂t is (indicator r k)
+;;  so ∂param(i,j)/∂t = ∂param(i,j)/∂xk or 0 if param(i,j) does not depend on xk.
+;;
+;; So to compute the ∂U(x)/∂xk, let  I = { i | i = k ∨ ∃ j . param(i,j) depends on k }
+;;  Then ∂U(x)/∂xk = Σ{i∈I} (dist-Denergy Di (indicator i k) ∂param(i,1)/∂xk ... ∂param(i,jᵢ)/∂xk)
 (define ((hmc-gradient-potential-fn gradients) k x)
-  (cond [(hash-ref gradients k #f)
-         => (λ (gradient-vec)
-              (define k-entry (hash-ref x k))
-              (define k-dist (entry-dist k-entry))
-              (define k-dist-num-params (dist-param-count k-dist))
-              (define v (entry-value k-entry))
-              (unless (and (vector? gradient-vec)
-                           (= (vector-length gradient-vec)
-                              k-dist-num-params))
-                (error 'hmc-gradient-potential-fn
-                       " recorded derivative for ~e has ~e gradients, but the distribution ~e has ~e params"
-                       k
-                       (vector-length gradient-vec)
-                       k-dist
-                       k-dist-num-params))
-              (define param-d/dts
-                (for/list ([partial-deriv-entry (in-vector gradient-vec)])
-                  (if (not partial-deriv-entry)
-                      0
-                      (let ([dependent-addrs-vec (car partial-deriv-entry)]
-                            [partial-deriv-fn (cdr partial-deriv-entry)])
-                        (define dependent-values
-                          (for/list ([a (in-vector dependent-addrs-vec)])
-                            (entry-value (hash-ref x a))))
-                        (call-with-values (λ () (apply partial-deriv-fn dependent-values))
-                          (λ param-partial-vs
-                            ;; we are working on param(v1(t), ... vN(t)) = <something>   
-                            ;; and we just got param-partial-vs which is dparam/dv for each v1... vN
-                            ;; we want dparam/dt, which is the total derivative of param
-                            ;;   dparamt/dt = dparam/dv1 * dv1/dt + ... + dparam/dvN * dvN/dt
-                            ;;
-                            ;; Example: suppose param(y1,y2) = y1^2*y2^2
-                            ;; so, dparam(y1,y2)/dt = d(y1^2)/dy1 * y2^2 * dy1/dt + d(y2^2)/dy2 * y1^2 * dy2/dt
-                            ;;                      = 2*y1*y2^2 * dy1/dt + 2*y2*y1^2 * dy2/dt
-                            ;;
-                            ;; So we need to sum up while recursively calling ourselves to compute
-                            ;; the time derivatives of the variables we depend on.
-                            (for/sum ([dparam/dv param-partial-vs]
-                                      [a (in-vector dependent-addrs-vec)]
-                                      [v dependent-values])
-                              ;; one more complication: we don't have dv/dt directly,
-                              ;; we have Denergy: d(-log v)/dt = - d(log v)/dt = - 1/v * dv/dt
-                              ;; so dv/dt = - v * d(-log v)/dt 
-                              ;; so overall we want
-                              ;;  dparam/dt = dparam/dv * (- v) * d(-log v)/dt
-                              (define v-Denergy ((hmc-gradient-potential-fn gradients) a x))
-                              (* dparam/dv (- v) v-Denergy))))))))
-              (apply dist-Denergy k-dist v 1 param-d/dts))]
-        [else
-         (error 'hmc-gradient-potential-fn
-                " no derivative available for distribution with address ~e"
-                k)]))
-                       
+  (define (indicator i) (if (equal? k i) 1 0))
+  (when (verbose?)
+    (eprintf " computing derivative of energy with respect to ~e\n" k))
+
+  (define denergy/dk
+    (for/sum ([(i xi) (in-hash x)])
+      (define xi-dist (entry-dist xi))
+      (define xi-value (entry-value xi))
+      (define i-param-vec (hash-ref gradients i))
+      (define parameter-partials
+        (for/list ([param-i-j (in-vector i-param-vec)])
+          (if (not param-i-j)
+              0 ; param is #f aka [() . (λ () 0)], so ∂param(i,j)/∂xk = 0
+              (let ([depends (car param-i-j)]
+                    [param-fn (cdr param-i-j)])
+                (define (evaluate-depends)
+                  (define depends-values 
+                    (for/list ([p (in-vector depends)])
+                      (entry-value (hash-ref x p))))
+                  (apply param-fn depends-values))
+                (cond
+                 [(vector-member k depends)
+                  => (λ (r)
+                       (nth-value evaluate-depends r))]
+                 [else 0])))))
+      (let ([denergy-i/dk (apply dist-Denergy xi-dist xi-value (indicator i) parameter-partials)])
+        (when (verbose?)
+          (eprintf "  dU(~e)/d~e = ~s\n" i k denergy-i/dk))
+        denergy-i/dk)))
+  
+  (when (verbose?)
+    (eprintf " denergy/d~e = ~s\n"
+             k
+             denergy/dk))
+
+  denergy/dk)
+
+
+;; nth-value : (-> (Values Any ...)) Exact-Nonnegative-Integer -> Any
+;;
+;; (nth-value producer n) evaluates producer and returns just its nth result.
+(define (nth-value producer n)
+  (call-with-values producer
+    (λ results
+      (list-ref results n))))
 
 ;; hmc-step : DB[X] Epsilon Positive-Integer (Address Position -> PotentialEnergy)
 ;;            -> (Values DB[P] DB[X*] DB[P*])
@@ -216,6 +234,6 @@ the database as the potential energy of the entire system.
   (define next-x-ll (db-ll next-x-db))
   (define next-p-ll (db-ll next-p-db))
   
-  (+ (- curr-x-ll next-x-ll)
-     (- curr-p-ll next-p-ll)))
+  (+ (- curr-x-ll) next-x-ll
+     (- curr-p-ll) next-p-ll))
 
