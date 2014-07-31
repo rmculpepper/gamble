@@ -86,5 +86,7 @@
 (define (dist-update-prior d data-d data)
   (*conj d data-d data))
 
+(define (dist-param-count d) (vector-length (*params d)))
+
 (define (dists-same-type? da db)
   (equal? (*type da) (*type db)))
