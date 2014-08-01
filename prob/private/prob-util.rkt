@@ -179,7 +179,7 @@
          indicator/value
          indicator/predicate)
 
-(define (sampler->discrete-dist s n [f values])
+(define (sampler->discrete-dist s n [f values] #:normalize? [normalize? #t])
   (define h (make-hash))
   (cond [(is-a? s sampler<%>)
          (for ([i (in-range n)])
@@ -192,15 +192,15 @@
                   [p (cdr a+p)])
              (hash-set! h a (+ p (hash-ref h a 0)))))]
         [else (raise-argument-error 'sampler->discrete-dist "sampler" s)])
-  (table->discrete-dist h))
+  (table->discrete-dist h normalize?))
 
-(define (table->discrete-dist h)
+(define (table->discrete-dist h normalize?)
   (define total-w
     (for/sum ([(a w) (in-hash h)]) w))
   (define entries
     (for/list ([(a w) (in-hash h)])
       (cons a (exact->inexact (/ w total-w)))))
-  (make-discrete-dist entries))
+  (make-discrete-dist entries #:normalize? normalize?))
 
 (define (sampler->mean+variance s n [f values])
   (define-values (sum-w sum-f sum-f^2)
