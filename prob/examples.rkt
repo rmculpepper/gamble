@@ -291,3 +291,15 @@
    (discrete-dist-error
     (sampler->discrete-dist (rejection-sampler (prog)) iters)
     (enumerate (prog)))))
+
+;; ----
+
+#|
+;; Alternative formulation of CD problem, using observe-at directly.
+(define s-c
+  (mh-sampler
+   (define R (normal 10 1))
+   (observe-at (normal-dist R 1) 9)
+   R))
+(sampler->mean+variance s-c 1000)
+|#

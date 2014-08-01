@@ -4,7 +4,7 @@
 
 #lang racket/base
 (require racket/class
-         (only-in "dist.rkt" dist-sample))
+         (only-in "dist.rkt" dist-sample dist-pdf))
 (provide weighted-sampler<%>
          sampler<%>
          sampler-base%
@@ -46,6 +46,7 @@
 (define stochastic-ctx<%>
   (interface ()
     sample  ;; (Dist A) -> A
+    observe-at ;; (Dist A) A -> Void
     fail    ;; Any -> (escapes)
     mem     ;; Function -> Function
     ))
@@ -56,6 +57,11 @@
 
     (define/public (sample dist)
       (dist-sample dist))
+
+    (define/public (observe-at dist val)
+      ;; No ambient weight to affect; just check likelihood is non-zero.
+      (when (zero? (dist-pdf dist val))
+        (fail 'observation)))
 
     (define/public (mem f)
       (let ([memo-table (make-hash)])

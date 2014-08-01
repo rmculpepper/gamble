@@ -12,13 +12,15 @@
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)]
-          [sample (-> dist? any)])
+          [sample (-> dist? any)]
+          [observe-at (-> dist? any/c void?)])
          fail)
 
 ;; mem and sample wrappers
 
 (define (mem f) (send (current-stochastic-ctx) mem f))
 (define (sample dist) (send (current-stochastic-ctx) sample dist))
+(define (observe-at dist val) (send (current-stochastic-ctx) observe-at dist val))
 (define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 
 ;; == Finite distributions ==

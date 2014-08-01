@@ -9,6 +9,7 @@
                      syntax/name)
          racket/contract/base
          racket/class
+         "dist.rkt"
          "prob-util.rkt"
          "prob-hmc.rkt"
          "prob-mh.rkt"
@@ -60,6 +61,13 @@
     (super-new)
     (define/override (fail reason)
       (escape (cons 'fail reason)))
+    (define/override (observe-at dist val)
+      (cond [(finite-dist? dist)
+             (unless (< (random) (dist-pdf dist val))
+               (fail 'observation))]
+            [else
+             (error 'observe-at 
+                    "observations on non-finite distributions not supported by rejection-sampler")]))
     ))
 
 ;; ----

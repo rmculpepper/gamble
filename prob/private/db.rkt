@@ -139,7 +139,7 @@
       ;; also to provide more precise debugging messages.
       (cond [(hash-ref current-db context #f)
              => (lambda (e)
-                  (sample/reused dist context e))]
+                  (sample/collision dist context e))]
             [(hash-ref delta-db context #f)
              => (lambda (e)
                   (sample/old dist context e #t))]
@@ -148,7 +148,7 @@
                   (sample/old dist context e #f))]
             [else (sample/new dist context #t)]))
 
-    (define/private (sample/reused dist context e)
+    (define/private (sample/collision dist context e)
       (cond [(not (equal? (entry-dist e) dist))
              (when (verbose?)
                (eprintf "- MISMATCH ~a ~e / ~e: ~s\n"
@@ -178,7 +178,7 @@
                             (hash-set! current-db context (entry dist value #t))
                             value]
                            [else
-                            (fail 'condition)])]))]
+                            (fail 'observation)])]))]
             [else
              (define value (dist-sample dist))
              (when (and print? (verbose?))
@@ -201,10 +201,43 @@
                (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
              (hash-set! current-db context (entry dist value (entry-pinned? e)))
              value]
-            [(not (equal? (entry-dist e) dist))
+            [else
              (when (verbose?)
                (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
              (sample/new dist context #f)]))
+
+    (define/public (observe-at dist val)
+      (define context (get-context))
+      (cond [(hash-ref current-db context #f) ;; COLLISION
+             => (lambda (e)
+                  (cond [(mem-context? context)
+                         (when (verbose?)
+                           (eprintf "- OBS MEMOIZED ~e / ~e ~s\n"
+                                    (entry-dist e) dist context))]
+                        [else
+                         (when (verbose?)
+                           (eprintf "- OBS COLLISION ~e / ~e: ~s\n"
+                                    (entry-dist e) dist context))
+                         (collision-error context)]))]
+            [(hash-ref delta-db context #f) ;; impossible
+             => (lambda (e)
+                  (error 'observe-at "internal error: cannot perturb an observation"))]
+            [(hash-ref last-db context #f) ;; RESCORE
+             => (lambda (e)
+                  ;; FIXME: better diagnostic messages. What are the
+                  ;; relevant cases? Do we care if an obs value changed?
+                  (when (verbose?)
+                    (eprintf "- OBS UPDATE ....\n"))
+                  (cond [(positive? (dist-pdf dist val))
+                         (hash-set! current-db context (entry dist val #t))
+                         (void)]
+                        [else (fail 'observation)]))]
+            [else
+             (when (verbose?)
+               (eprintf "- OBS NEW ~e: ~s = ~e\n" dist context val))
+             (cond [(positive? (dist-pdf dist val))
+                    (hash-set! current-db context (entry dist val #t))]
+                   [else (fail 'observation)])]))
 
     (define/private (mem-context? context)
       (and (pair? context)

@@ -153,6 +153,12 @@
                    #f))))
        ctag))
 
+    (define/public (observe-at dist val)
+      ;; Need a new EnumTree variant.  Probably should move
+      ;; spcond-handling here, maybe also straighten out lazy handling
+      ;; of infinite dists while we're changing this.
+      (error 'observe-at "not yet implemented"))
+
     (define/public (fail reason)
       (abort-current-continuation (activation-prompt (current-activation))
         (lambda () (failed reason))))
