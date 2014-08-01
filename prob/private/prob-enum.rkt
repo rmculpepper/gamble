@@ -13,7 +13,7 @@
          "interfaces.rkt"
          "util.rkt")
 (provide enumerate*
-         importance-sampler*)
+         enum-importance-sampler*)
 
 ;; == Overview ==
 ;;
@@ -153,14 +153,14 @@
 
 ;; ============================================================
 
-;; importance-sampler* : (-> A) -> (Cons A Positive-Real)
+;; enum-importance-sampler* : (-> A) -> (Cons A Positive-Real)
 ;; FIXME: can get stuck on infinitely deep path (eg, geometric)
-(define (importance-sampler* thunk spconds)
-  (new importance-sampler%
+(define (enum-importance-sampler* thunk spconds)
+  (new enum-importance-sampler%
        (tree (reify-tree thunk))
        (spconds spconds)))
 
-(define importance-sampler%
+(define enum-importance-sampler%
   (class* object% (weighted-sampler<%>)
     (init-field tree
                 spconds)

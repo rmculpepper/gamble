@@ -19,7 +19,7 @@
          mh-sampler
          hmc-sampler
          enumerate
-         importance-sampler
+         enum-importance-sampler
          label
          derivative
          ppromise?
@@ -120,13 +120,13 @@
        (?? (?@ #:limit limit))
        (?? (?@ #:normalize? normalize?))))]))
 
-(define-syntax (importance-sampler stx)
+(define-syntax (enum-importance-sampler stx)
   (syntax-parse stx
     [(importance-sample def:expr ... result:expr
                         (~optional (~seq #:when condition:expr))
                         (~seq #:cond sp:special-condition) ...)
      (template
-      (importance-sampler*
+      (enum-importance-sampler*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
        (list sp.e ...)))]))
 

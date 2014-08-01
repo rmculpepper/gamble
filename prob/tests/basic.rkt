@@ -49,14 +49,18 @@
 (define ((enumerate-compute-dist) proc)
   (enumerate (proc)))
 
+(define ((enum-imp-compute-dist iters) proc)
+  (sampler->discrete-dist (enum-importance-sampler (proc)) iters))
+
 (make-basic-tests 'rejection (rejection-compute-dist 1000) 0.05)
 (make-basic-tests 'mh        (mh-compute-dist 1000)        0.10)
 (make-basic-tests 'enumerate (enumerate-compute-dist)      1e-6)
+(make-basic-tests 'enum-imp  (enum-imp-compute-dist 1000)  0.05)
 
 ;; ----
 
 #|
-;; Pathological case for importance sampler
+;; Pathological case for lazy-tree-based importance sampler
 
 (define (bad)
   (if (flip)
@@ -67,7 +71,7 @@
 
 (enumerate (bad))
 ;; => {1 -> 1/2, 2 -> 1/2}
-(sampler->discrete-dist (importance-sampler (bad)))
+(sampler->discrete-dist (enum-importance-sampler (bad)))
 ;; => {1 -> 0.66, 2 -> 0.33}
 
 Might be able to fix by weighting immediate successes differently
