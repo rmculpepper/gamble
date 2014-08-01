@@ -107,12 +107,17 @@
          (match sub
            [(cons p lt)
             (let ([p* (* prob-of-tree p)])
-              (cond [(positive? p)
+              (cond [(positive? p*)
                      (values (heap-insert h (cons p* lt)) table prob-unexplored prob-accepted)]
                     [else
                      (when (verbose?)
-                       (eprintf "WARNING: bad prob ~s in path\n" p*))
+                       (eprintf "enumerate: probability of a path may have underflowed\n"))
                      (values h table prob-unexplored prob-accepted)]))]))]
+      [(weight dist val k)
+       (when (and limit (not (or (finite-dist? dist) (integer-dist? dist))))
+         ;; limit applies to mass; it can't handle densities
+         (error 'enumerate "cannot use both #:limit and observe-at with continuous distribution"))
+       (traverse-tree (k) (* prob-of-tree (dist-pdf dist val)) h table prob-unexplored prob-accepted)]
       [(failed reason)
        (let ([prob-unexplored (- prob-unexplored prob-of-tree)])
          (values h table prob-unexplored prob-accepted))]))
@@ -192,6 +197,8 @@
                [else
                 (define forced-subs (force-subtrees (split->subtrees tree null)))
                 (get-samples/paths forced-subs prob)])]
+        [(weight dist val k)
+         (get-samples/paths (list (cons (dist-pdf dist val) (k))))]
         [(failed _)
          null]))
 

@@ -14,6 +14,7 @@
 (provide (struct-out only)
          (struct-out split)
          (struct-out failed)
+         (struct-out weight)
          reify-tree
          split->subtrees
          cond->subtrees)
@@ -104,9 +105,11 @@
 ;; - (split Any (Dist B) (-> B (EnumTree A)) Nat/#f)
 ;;     where Nat represents continuing enumeration of infinite int-dist
 ;; - (failed Any)
+;; - (weight PositiveReal (-> (EnumTree A)))
 (struct only (answer))
 (struct split (label dist k start))
 (struct failed (reason))
+(struct weight (dist val k))
 
 ;; ----------------------------------------
 
@@ -154,10 +157,20 @@
        ctag))
 
     (define/public (observe-at dist val)
-      ;; Need a new EnumTree variant.  Probably should move
-      ;; spcond-handling here, maybe also straighten out lazy handling
-      ;; of infinite dists while we're changing this.
-      (error 'observe-at "not yet implemented"))
+      (define act (current-activation))
+      (define ctag (activation-prompt act))
+      (define memo-key (activation-memo-table-key act))
+      (define memo-table (unbox (memo-key)))
+      (define label (current-label))
+      (call-with-composable-continuation
+       (lambda (k)
+         (abort-current-continuation
+          ctag
+          (lambda ()
+            (weight dist val
+                    (lambda ()
+                      (call-with-enum-context act memo-table (lambda () (k (void)))))))))
+       ctag))
 
     (define/public (fail reason)
       (abort-current-continuation (activation-prompt (current-activation))

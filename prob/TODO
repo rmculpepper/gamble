@@ -1,7 +1,6 @@
 Tentative plans for the near future:
 
 - finish observe-at
-  - lazy-tree needs reworking to support
   - implement simple importance-sampler, rename existing
   - support continuous choices in rejection-sampler using dist max density?
 - add ll to entry
