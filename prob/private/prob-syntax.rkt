@@ -16,6 +16,7 @@
          "prob-enum.rkt"
          "interfaces.rkt")
 (provide rejection-sampler
+         importance-sampler
          mh-sampler
          hmc-sampler
          enumerate
@@ -28,6 +29,15 @@
           [pforce (-> ppromise? any)])
          (rename-out [table* table])
          table?)
+
+;; ----
+
+(begin-for-syntax
+ (define-syntax-class special-condition
+   (pattern ((~datum =) label value:expr)
+            #:with e #'(cons `label (spcond:equal value)))))
+
+;; ----
 
 (define-syntax (rejection-sampler stx)
   (syntax-parse stx
@@ -72,10 +82,48 @@
 
 ;; ----
 
-(begin-for-syntax
- (define-syntax-class special-condition
-   (pattern ((~datum =) label value:expr)
-            #:with e #'(cons `label (spcond:equal value)))))
+(define-syntax (importance-sampler stx)
+  (syntax-parse stx
+    [(importance-sampler def:expr ... result:expr
+                         (~optional (~seq #:when condition:expr))
+                         (~seq #:cond sp:special-condition)
+                         ...)
+     (template
+      (importance-sampler*
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (list sp.e ...)))]))
+
+(define (importance-sampler* thunk spconds)
+  (new importance-sampler% (thunk thunk) (spconds spconds)))
+
+(define importance-sampler%
+  (class* object% (weighted-sampler<%>)
+    (init-field thunk
+                spconds)
+    (super-new)
+
+    (define/public (sample/weight)
+      (let ([v (let/ec escape
+                 (define ctx (new importance-stochastic-ctx% (escape escape)))
+                 (parameterize ((current-stochastic-ctx ctx))
+                   (define result (thunk))
+                   (define weight (get-field weight ctx))
+                   (cons 'succeed (cons (thunk) weight))))])
+        (case (car v)
+          [(succeed) (cdr v)]
+          [(fail) (sample/weight)])))
+    ))
+
+(define importance-stochastic-ctx%
+  (class rejection-stochastic-ctx%
+    (field [weight 1])
+    (inherit fail)
+    (super-new)
+    (define/override (observe-at dist val)
+      (set! weight (* weight (dist-pdf dist val))))
+    ))
+
+;; ----
 
 (define-syntax (mh-sampler stx)
   (syntax-parse stx

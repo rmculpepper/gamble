@@ -40,11 +40,14 @@
 
   )
 
-(define ((mh-compute-dist iters) proc)
-  (sampler->discrete-dist (mh-sampler (proc)) iters))
-
 (define ((rejection-compute-dist iters) proc)
   (sampler->discrete-dist (rejection-sampler (proc)) iters))
+
+(define ((imp-compute-dist iters) proc)
+  (sampler->discrete-dist (importance-sampler (proc)) iters))
+
+(define ((mh-compute-dist iters) proc)
+  (sampler->discrete-dist (mh-sampler (proc)) iters))
 
 (define ((enumerate-compute-dist) proc)
   (enumerate (proc)))
@@ -53,6 +56,7 @@
   (sampler->discrete-dist (enum-importance-sampler (proc)) iters))
 
 (make-basic-tests 'rejection (rejection-compute-dist 1000) 0.05)
+(make-basic-tests 'imp-sampl (imp-compute-dist 1000)       0.05)
 (make-basic-tests 'mh        (mh-compute-dist 1000)        0.10)
 (make-basic-tests 'enumerate (enumerate-compute-dist)      1e-6)
 (make-basic-tests 'enum-imp  (enum-imp-compute-dist 1000)  0.05)
@@ -61,6 +65,7 @@
 
 #|
 ;; Pathological case for lazy-tree-based importance sampler
+;; HANSEI impl has some mitigations, but ultimate problem remains.
 
 (define (bad)
   (if (flip)
