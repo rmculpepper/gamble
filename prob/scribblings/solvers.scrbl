@@ -11,7 +11,9 @@
                      prob/viz))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
+@(the-eval '(require prob (only-in prob/viz
+                                   [hist-pict hist]
+                                   [bin-pict bin])))
 
 @title[#:tag "solvers"]{Samplers and Solvers}
 
@@ -88,6 +90,52 @@ variant of Metropolis-Hastings as described in @cite{Bher}.
 (hist (repeat mh-n-flips 100))
 (hist (repeat (lag mh-n-flips 100) 100))
 (hist (repeat mh-n-flips 2000))
+]
+}
+
+@defform[(hmc-sampler def/expr ... result-expr
+                      maybe-epsilon-clause
+                      maybe-L-clause
+                      maybe-when-clause)
+         #:grammar ([maybe-epsilon-clause (code:line)
+                                          (code:line #:epsilon epsilon-expr)]
+                    [maybe-L-clause (code:line)
+                                    (code:line #:L L-expr)]
+
+                    [maybe-when-clause (code:line)
+                                       (code:line #:when cond-expr)])]{
+
+Like @racket[mh-sampler], but when applied uses a Hamiltonian Monte Carlo method
+for MH proposals.
+
+This solver is EXPERIMENTAL and comes with a number of restritctions:
+
+@itemlist[
+  @item{There must be no structural dependencies among the distributions of @racket[def/expr ... result-expr]}
+  @item{All the distributions must be continuous.}
+  @item{Any distribution that has parameters that depend on the value of another distribution
+        must be wrapped in a @racket[derivative] form. See @seclink["hmc-utils"] for more information.}
+]
+
+The parameters @racket[epsilon-expr] and @racket[L-expr] specify the size of each Hamiltonian step and the
+number of Hamiltonian steps to take in the course of obtaining a sample.  Note that careful tuning
+may be required to achive good results.
+
+@examples[#:eval the-eval
+(define one-dim-loc-hmc
+  (hmc-sampler
+     (define Hid (label 'Hid (derivative (normal 10 0.5) #f #f)))
+     (define Obs (derivative (normal Hid 0.01)
+                             [(Hid)
+                              (λ (hid) 1)]
+                             #f))
+     
+     Hid
+     #:when (< (abs (- Obs 9.7)) 0.01)
+     #:epsilon 0.005
+     #:L 40))
+
+(bin (repeat one-dim-loc-hmc 100))
 ]
 }
 
@@ -187,4 +235,55 @@ Produces a @emph{weighted sampler}.
 ]
 }
 
+@section[#:tag "hmc-utils"]{Special utilities for Harmonic Monte Carlo}
+
+The @racket[hmc-solver] requires that all the distrubutions in the
+model are continuous.  It further requires partial derivatives of each
+expression that mentions previously defined random variables that may
+occur in the parameters of another random variable.  Such information
+may be provided using the @racket[derivative] special form.
+
+@defform[(derivative dist-expr parameter-derivative-clause ...)
+         #:grammar ([parameter-derivative-clause (code:line [(label-ids ...) partial-fn-expr])
+                                          (code:line #f)])]{
+
+Anottate the @racket[dist-expr] distribution sample expression with
+the partial derivatives of its parameters.  There should be as many
+parameter derivative clauses as there are parameters of the underlying
+distribution.
+
+Each @racket[parameter-derivative-clause] must be either @racket[#f]
+which indicates that the parameter is constant (with respect to random
+variables). Or else it must consist of a list of previously applied
+@racket[label] symbols - one for each random variable that occurs in
+the expression for the corresponding parameter of @racket[dist-expr].
+The @racket[partial-fn-expr] should be a procedure that takes one
+argument for each random variable and returns the same number of
+values.  Each value is the partial derivative with respect to the
+correspondingly labeled variable.
+
+@examples[#:eval the-eval
+(define derivative-example
+  (hmc-sampler
+   (define A (label 'A-lbl (derivative (normal 0 1) #f #f)))
+   (define B (label 'B-lbl (derivative (normal 1 1) #f #f)))
+
+   (define C (derivative (normal (- (* A A) (* B B)) 1)
+                         [(A-lbl B-lbl)
+                          (λ (a b)
+                            (values (* 2 a)
+                                    (- (* 2 b))))]
+                         #f))
+   B))
+]
+
+In the example above, @racket[A] and @racket[B] do not depend on any other random variables,
+so the derivatives of their parameters are zero (shorthand: @racket[#f]).  On the other hand,
+the mean of @racket[C] mentions both of them.  Therefore the first derivative clause lists two labels,
+and the expression returns two values: the partial derivative of @racket[(- (* A A) (* B B))] with respect to
+@racket[A] and @racket[B], in that order.
+
+}
+
 @(close-eval the-eval)
+

@@ -24,6 +24,7 @@
          real-dist?
          finite-dist?
          (contract-out
+          [dist-param-count (-> dist? exact-nonnegative-integer?)]
           [dist-pdf
            (->* [dist? any/c] [any/c] real?)]
           [dist-cdf

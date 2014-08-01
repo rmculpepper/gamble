@@ -12,7 +12,8 @@
          current-stochastic-ctx
          plain-stochastic-ctx%
          current-label
-         (struct-out spcond:equal))
+         (struct-out spcond:equal)
+         current-derivatives)
 
 ;; Defines interfaces, base classes, and parameters.
 
@@ -106,3 +107,36 @@
 ;; A Label is any value, eg symbol
 ;; A SpecialCond is (spcond:equal Any)
 (struct spcond:equal (value))
+
+;; ============================================================
+;; Partial derivatives
+
+;; Each instance of a distribution (corresponding to an entry in the MCMC database)
+;; may have attached a specification of the partial derivatives of its parameters with
+;; respect to some of the other random variables.
+
+;; (define Mean (label 'Mean (normal 0 1)))
+;; (define Variable (label 'Variance (inverse-gamma 1 1)))
+;; (define N (derivative (normal Mean (square Variance))
+;;                       [(Mean)
+;;                        (lambda (m) 1)]
+;;                       [(Variance)
+;;                        (λ (v) (* 2 v))]))
+;;
+;; For each parameter of normal-dist, there is a [(labels ...) expr]
+;; term where the expression corresponds to (λ (label-vals ...)
+;; (values dparam/dlabels ...))  that is, the expression returns as
+;; many values as there are random variables that appear within the
+;; parameter, and each such value represents the partial derivative of
+;; the parameter expression with respect to that variable.  If a
+;; parameter does not depend on any random choices, the corresponding
+;; derivative may be #f (rather than [() (λ() 0)]).
+
+;; current-derivatives : (Parameter (Vectorof Label-Derivative))
+;; where
+;;   Label-Derivative is (Pair (Vectorof Symbol)
+;;                             (Real ... -> Real))
+;;                       or #f
+;; Furthermore, each Label-Derivative function takes as many
+;; arguments as there are symbols in the vector.
+(define current-derivatives (make-parameter #f))

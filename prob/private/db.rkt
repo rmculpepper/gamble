@@ -6,6 +6,7 @@
 (require racket/list
          racket/class
          racket/match
+         racket/vector
          data/order
          "context.rkt"
          "util.rkt"
@@ -21,6 +22,9 @@
 ;; (and thus cannot be perturbed).
 (struct entry (dist value pinned?) #:prefab)
 
+;; modify-entry-value : (Any -> Any) Entry -> Entry
+(define (entry-value-map f e)
+  (entry (entry-dist e) (f (entry-value e)) (entry-pinned? e)))
 ;; ------------------------------------------------------------
 
 ;; A DB is (Hashof Address Entry)
@@ -90,6 +94,25 @@
   (for ([(k v) (in-hash old-db)])
     (unless (hash-has-key? new-db k)
       (hash-set! new-db k v))))
+
+;; db-update! : (Entry -> Entry) DB #f -> Void
+;; db-update! : (Address Entry -> Entry) DB #t -> Void
+;;
+;; Update each entry in the database by applying the given function to it.
+;; if #:with-address #t also pass the entry address to the funciton
+(define (db-update! f db #:with-address [with-address #f])
+  (for ([(k v) (in-hash db)])
+    (hash-set! db k (if with-address (f k v) (f v)))))
+
+;; db-map : (Entry -> Entry) DB #f -> DB
+;; db-map : (Address Entry -> Entry) DB #t -> DB
+;;
+;; Copy old-db to new-db and then update it using f.
+(define (db-map f old-db #:with-address [with-address #f])
+  (define new-db (make-hash))
+  (db-copy-stale old-db new-db)
+  (db-update! f new-db #:with-address with-address)
+  new-db)
 
 ;; ============================================================
 
@@ -206,3 +229,53 @@
              (parameterize ((the-context (list (list 'mem args context))))
                (apply f args)))))))
     ))
+
+(define db-stochastic-derivative-ctx%
+  (class* db-stochastic-ctx% (stochastic-ctx<%>)
+    (init current-db
+          last-db
+          delta-db
+          spconds
+          escape)
+    (field [derivatives (make-hash)]      ;; (Hashof Address Derivative)
+           [relevant-labels (make-hash)]) ;; (Hashof Label Address)
+    (super-new [current-db current-db]
+               [last-db last-db]
+               [delta-db delta-db]
+               [spconds spconds]
+               [escape escape])
+    
+    (define/override (sample dist) 
+      (record-current-label)
+      (record-current-derivatives)
+      (super sample dist))
+    
+    (define (record-current-label)
+      (define lbl (current-label))
+      (when lbl
+        (define context (get-context))
+        (hash-set! relevant-labels lbl context)))
+    
+    (define (record-current-derivatives)
+      (define label-derivs (current-derivatives))
+      (when label-derivs
+        (define context (get-context))
+        (define address-derivs
+          (vector-map (λ (parameter-derivative)
+                        (derivative-label->address parameter-derivative))
+                      label-derivs))
+        (hash-set! derivatives context address-derivs)))
+    
+    ;; (U #f (Pair (Vector Label) DerivativeFn))
+    ;; -> (U #f (Pair (Vector Address) DerivativeFn))
+    ;;
+    ;; replace each label by its latest address.
+    (define/private (derivative-label->address pd)
+      (cond
+       [pd
+        (define labels (car pd))
+        (define derivative-fn (cdr pd))
+        (cons (vector-map (λ (lbl) (hash-ref relevant-labels lbl)) labels)
+              derivative-fn)]
+       [else #f]))))
+        

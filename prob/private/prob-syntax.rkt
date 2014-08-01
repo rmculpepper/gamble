@@ -10,14 +10,17 @@
          racket/contract/base
          racket/class
          "prob-util.rkt"
+         "prob-hmc.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt"
          "interfaces.rkt")
 (provide rejection-sampler
          mh-sampler
+         hmc-sampler
          enumerate
          importance-sampler
          label
+         derivative
          ppromise?
          pdelay
          (contract-out
@@ -79,6 +82,21 @@
 
 ;; ----
 
+(define-syntax (hmc-sampler stx)
+  (syntax-parse stx
+    [(hmc-sampler def:expr ... result:expr
+                  (~or (~optional (~seq #:epsilon epsilon:expr))
+                       (~optional (~seq #:L L:expr))
+                       (~optional (~seq #:when condition:expr)))
+                  ...)
+     (template
+      (hmc-sampler*
+       (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (?? epsilon 0.01)
+       (?? L 10)))]))
+
+;; ----
+
 (define-syntax (enumerate stx)
   (syntax-parse stx
     [(enumerate def:expr ... result:expr
@@ -118,6 +136,23 @@
 
 (define-syntax-rule (label l e)
   (parameterize ((current-label l)) e))
+
+;; ----
+
+(begin-for-syntax
+  (define-syntax-class derivative-spec
+    (pattern [(ids:id ...) grad-e:expr]
+             #:with grad #'(cons (vector (quote ids) ...)
+                                 grad-e))
+    (pattern #f
+             #:with grad #'#f)))
+
+(define-syntax (derivative stx)
+  (syntax-parse stx
+    [(derivative dist:expr pderivs:derivative-spec ...)
+     (template
+      (parameterize ([current-derivatives (vector pderivs.grad ...)])
+        dist))]))
 
 ;; ----
 
