@@ -24,137 +24,16 @@ associated probability distribution. The precise behavior of an ERP,
 however, depends on the sampler/solver context it is executed
 under. In a @racket[mh-sampler] context, for example, an ERP might
 reuse a choice from a previous run, subject to random
-perturbations. In an @racket[enumeration] context, an ERP will fork
+perturbations. In an @racket[enumerate] context, an ERP will fork
 its context and potentially the consequences of all values in its
 distribution.
 
-@section[#:tag "erps"]{Elementary Random Procedures}
+@defproc[(sample [dist dist?]) any]{
 
-An @deftech[#:key "erp"]{elementary random procedure (ERP)} returns a
-value drawn from some distribution each time it is called.
-
-@subsection[#:tag "discrete-erps"]{Discrete ERPs}
-
-@defproc[(flip [p (real-in 0 1) 1/2])
-         boolean?]{
-
-Returns @racket[#t] with probability @racket[p], @racket[#f] with
-probability @racket[(- 1 p)].
+Returns a sample from @racket[dist]. The @racket[sample] procedure
+cooperates with the enclosing sampler/solver, unlike
+@racket[dist-sample].
 }
-
-@defproc[(bernoulli [p (real-in 0 1) 1/2])
-         (or/c 1 0)]{
-
-Returns @racket[1] with probability @racket[p], @racket[0] with
-probability @racket[(- 1 p)].
-}
-
-@defproc*[([(discrete [n exact-positive-integer?])
-            exact-nonnegative-integer?]
-           [(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
-            any/c])]{
-
-In the first form, returns an integer drawn uniformly from [0, @racket[n]).
-
-In the second form, @racket[(discrete (list (cons _val _weight) ...))]
-returns a value drawn from the @racket[_val]s with probability
-proportional to the corresponding @racket[_weight].
-
-See also @racket[discrete-dist].
-}
-
-
-@defproc[(discrete* [vals (non-empty-listof any/c)]
-                    [weights (non-empty-listof (>/c 0))])
-         any/c]{
-
-Returns a value drawn from @racket[vals], with the probability of each
-element in @racket[vals] weighted by the corresponding element in
-@racket[weights], if present.
-
-Equivalent to @racket[(discrete (map cons vals weights))].
-}
-
-
-@subsection[#:tag "integer-erps"]{Integer-Valued ERPs}
-
-@defproc[(binomial [count exact-nonnegative-integer?]
-                   [p (real-in 0 1)])
-         exact-nonnegative-integer?]{
-
-Returns an integer drawn from @racket[(binomial-dist count p)].
-}
-
-@defproc[(geometric [p (real-in 0 1) 1/2])
-         exact-nonnegative-integer?]{
-
-Returns an integer drawn from @racket[(geometric-dist p)].
-}
-
-@defproc[(poisson [mean (>/c 0)])
-         exact-nonnegative-integer?]{
-
-Returns an integer drawn from @racket[(poisson-dist p)].
-}
-
-
-@subsection[#:tag "real-erps"]{Real-Valued ERPs}
-
-@defproc[(beta [a (>/c 0)]
-               [b (>/c 0)])
-         real?]{
-
-Returns a real drawn from @racket[(beta-dist a b)].
-}
-
-@defproc[(cauchy [mode real?]
-                 [scale (>/c 0) 1])
-         real?]{
-
-Returns a real drawn from @racket[(cauchy-dist mode scale)].
-}
-
-@defproc[(exponential [mean (>/c 0)])
-         real?]{
-
-Returns a real drawn from @racket[(exponential-dist mean)].
-}
-
-@defproc[(gamma [shape (>/c 0) 1]
-                [scale (>/c 0) 1])
-         real?]{
-
-Returns a real drawn from @racket[(gamma-dist shape scale)].
-}
-
-@defproc[(logistic [mean real? 0]
-                   [scale (>/c 0) 1])
-         real?]{
-
-Returns a real drawn from @racket[(logistic-dist mean scale)].
-}
-
-@defproc[(normal [mean real? 0]
-                 [stddev (>/c 0) 1])
-         real?]{
-
-Returns a real drawn from @racket[(normal-dist mean stddev)].
-}
-
-@defproc*[([(uniform)
-            real?]
-           [(uniform [hi real?])
-            real?]
-           [(uniform [lo real?] [hi real?])
-            real?])]{
-
-Returns a real drawn from @racket[(uniform-dist)],
-@racket[(uniform-dist hi)], or @racket[(uniform-dist lo hi)],
-respectively.
-}
-
-
-@section[#:tag "fail"]{Condition Failure}
 
 @defproc[(fail [reason any/c #f]) any]{
 
@@ -174,48 +53,13 @@ least one of them is known to be heads (@racket[#t]):
 ]
 }
 
+@defproc[(observe-at [dist dist?] [value any/c])
+         void?]{
 
-@section[#:tag "table"]{Indexed Tables}
-
-@defform*[[(table ([var-id sequence-expr] ...+) maybe-lazy body ...+)
-           (table (var-id ...+) body ...+)]
-          #:grammar ([maybe-lazy (code:line)
-                                 (code:line #:lazy)])
-          #:contracts ([sequence-expr sequence?])]{
-
-Creates an indexed collection that acts like a function; the function
-takes as many arguments as there are @racket[var-id]s.
-
-In the first form, the table is finite, and it is eagerly populated
-with an entry for every combination of elements from each
-@racket[sequence-expr]. (Each @racket[sequence-expr] must be finite.)
-If a finite table is addressed with indexes that
-do not occur in @racket[sequence-expr], an error is raised.
-
-@examples[#:eval the-eval
-(define F (table ([i 10] [j 20]) (flip)))
-(F 0 0)
-(F 2 3)
-(F 7 13)
-]
-
-If the @racket[#:lazy] keyword appears after the variable binding
-sequence, then the table's entries are not evaluated until they are
-looked up (see also @racket[pdelay]).
-
-@examples[#:eval the-eval
-(define LF (table ([i 10] [j 20]) #:lazy (printf "flipping!\n") (flip)))
-(LF 0 0)
-(LF 0 0)
-]
-
-In the second form, the table is conceptually infinite, and it is
-lazily populated as entries are requested. This form is equivalent to
-@racket[(mem (lambda (var-id ...) body ...))].
+Represents observing the value of a random variable distributed as
+@racket[dist] being @racket[value]. Typically, the effect is to adjust
+the likelihood of the current sampler/solver execution.
 }
-
-
-@section[#:tag "mem"]{Memoization}
 
 @defproc[(mem [f procedure?])
          procedure?]{
@@ -235,5 +79,136 @@ created. See @seclink["nesting"] for more discussion.
 (for/list ([i 10]) (f i))
 ]
 }
+
+
+@; ------------------------------------------------------------
+@section[#:tag "erps"]{Elementary Random Procedures}
+
+An @deftech[#:key "erp"]{elementary random procedure (ERP)} returns a
+value drawn from some distribution each time it is called.
+
+@subsection[#:tag "discrete-erps"]{Discrete ERPs}
+
+@defproc[(flip [p (real-in 0 1) 1/2])
+         boolean?]{
+
+Returns @racket[#t] with probability @racket[p], @racket[#f] with
+probability @racket[(- 1 p)].
+
+Equivalent to @racket[(= 1 (sample (bernoulli-dist p)))].
+}
+
+@defproc*[([(discrete [n exact-positive-integer?])
+            exact-nonnegative-integer?]
+           [(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
+            any/c])]{
+
+In the first form, returns an integer drawn uniformly from [0, @racket[n]).
+
+In the second form, @racket[(discrete (list (cons _val _weight) ...))]
+returns a value drawn from the @racket[_val]s with probability
+proportional to the corresponding @racket[_weight].
+
+Equivalent to
+@racket[(sample (make-discrete-dist (for/hash ([i n]) (values i (/ n)))))]
+and @racket[(sample (make-discrete-dist weighted-vals))], respectively.
+}
+
+@defproc[(discrete* [vals (non-empty-listof any/c)]
+                    [weights (non-empty-listof (>/c 0))])
+         any/c]{
+
+Returns a value drawn from @racket[vals], with the probability of each
+element in @racket[vals] weighted by the corresponding element in
+@racket[weights], if present.
+
+Equivalent to @racket[(sample (make-discrete-dist* vals weights))].
+}
+
+
+@subsection[#:tag "integer-erps"]{Integer-Valued ERPs}
+
+@defproc[(bernoulli [p (real-in 0 1) 1/2])
+         (or/c 1 0)]{
+
+Returns @racket[1] with probability @racket[p], @racket[0] with
+probability @racket[(- 1 p)].
+
+Equivalent to @racket[(sample (bernoulli-dist p))].
+}
+
+@defproc[(binomial [count exact-nonnegative-integer?]
+                   [p (real-in 0 1)])
+         exact-nonnegative-integer?]{
+
+Equivalent to @racket[(sample (binomial-dist count p))].
+}
+
+@defproc[(geometric [p (real-in 0 1) 1/2])
+         exact-nonnegative-integer?]{
+
+Equivalent to @racket[(sample (geometric-dist p))].
+}
+
+@defproc[(poisson [mean (>/c 0)])
+         exact-nonnegative-integer?]{
+
+Equivalent to @racket[(sample (poisson-dist mean))].
+}
+
+
+@subsection[#:tag "real-erps"]{Real-Valued ERPs}
+
+@defproc[(beta [a (>/c 0)]
+               [b (>/c 0)])
+         real?]{
+
+Equivalent to @racket[(sample (beta-dist a b))].
+}
+
+@defproc[(cauchy [mode real?]
+                 [scale (>/c 0) 1])
+         real?]{
+
+Equivalent to @racket[(sample (cauchy-dist mode scale))].
+}
+
+@defproc[(exponential [mean (>/c 0)])
+         real?]{
+
+Equivalent to @racket[(sample (exponential-dist mean))].
+}
+
+@defproc[(gamma [shape (>/c 0) 1]
+                [scale (>/c 0) 1])
+         real?]{
+
+Equivalent to @racket[(sample (gamma-dist shape scale))].
+}
+
+@defproc[(logistic [mean real? 0]
+                   [scale (>/c 0) 1])
+         real?]{
+
+Equivalent to @racket[(sample (logistic-dist mean scale))].
+}
+
+@defproc[(normal [mean real? 0]
+                 [stddev (>/c 0) 1])
+         real?]{
+
+Equivalent to @racket[(sample (normal-dist mean stddev))].
+}
+
+@defproc*[([(uniform)
+            real?]
+           [(uniform [hi real?])
+            real?]
+           [(uniform [lo real?] [hi real?])
+            real?])]{
+
+Equivalent to @racket[(sample (uniform-dist lo hi))].
+}
+
 
 @(close-eval the-eval)

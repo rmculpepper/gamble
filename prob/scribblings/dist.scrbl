@@ -7,7 +7,7 @@
           scribble/basic
           scribble/eval
           (for-label racket/contract
-                     prob))
+                     (except-in prob max min)))
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require prob (only-in prob/viz [hist-pict hist])))

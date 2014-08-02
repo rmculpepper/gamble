@@ -63,6 +63,13 @@ The sampler is implemented using rejection sampling. That is, the
 ]
 }
 
+@defform[(importance-sampler def/expr ... result-expr maybe-when-clause)
+         #:grammar ([maybe-when-clause (code:line)
+				       (code:line #:when condition-expr)])]{
+
+Like @racket[rejection-sampler], but returns a @emph{weighted sampler}.
+}
+
 @defform[(mh-sampler def/expr ... result-expr maybe-when-clause)
          #:grammar ([maybe-when-clause (code:line)
                                        (code:line #:when condition-expr)])]{
@@ -214,7 +221,7 @@ normalizing by the acceptance rate:
 }
 
 
-@defform[(importance-sampler def/expr ... result-expr maybe-when-clause)
+@defform[(enum-importance-sampler def/expr ... result-expr maybe-when-clause)
          #:grammar ([maybe-when-clause (code:line)
                                        (code:line #:when condition-expr)])]{
 
