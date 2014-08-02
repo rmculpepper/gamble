@@ -12,6 +12,10 @@
 @(define the-eval (make-base-eval))
 @(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
 
+@(define (wiki url-suffix . pre-content)
+   (apply hyperlink (string-append "http://en.wikipedia.org/wiki/" url-suffix)
+   	  pre-content))
+
 @title[#:tag "dist"]{Probability Distributions}
 
 @section[#:tag "dist-ops"]{Distribution Operations}
@@ -27,25 +31,33 @@ Returns @racket[#t] if @racket[v] is a distribution object,
 Returns @racket[#t] if @racket[v] is a distribution object whose
 support is intrinsically integer-valued, @racket[#f] otherwise.
 
-A discrete distribution whose values happen to be integers is
-@emph{not} considered an integer distribution.
-}
-
-@defproc[(real-dist? [v any/c]) boolean?]{
-
-Returns @racket[#t] if @racket[v] is a distribution object whose
-support is intrinsically real-valued, @racket[#f] otherwise.
-
-A discrete distribution whose values happen to be real numbers is
-@emph{not} considered a real distribution. A distribution whose values
-consist of real vectors, such as a Dirichlet distribution, is @emph{not}
-considered real-valued.
+The distribution types for which @racket[integer-dist?] returns true
+consist of exactly the ones listed in @secref["integer-dists"]. A
+discrete distribution whose values happen to be integers is not
+considered an integer distribution.
 }
 
 @defproc[(finite-dist? [v any/c]) boolean?]{
 
 Returns @racket[#t] if @racket[v] is a distribution object whose
 support is finite, @racket[#f] otherwise.
+
+The distribution types for which @racket[finite-dist?] returns true
+consist of exactly the ones listed in @secref["integer-dists"] and
+@secref["discrete-dist"].
+}
+
+@defproc[(real-dist? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a distribution object whose
+support is a real interval, @racket[#f] otherwise.
+
+The distribution types for which @racket[real-dist?] returns true
+consist of exactly the ones listed in @secref["real-dists"].  A
+discrete distribution whose values happen to be real numbers is
+@emph{not} considered a real distribution. A distribution whose values
+consist of real vectors, such as a Dirichlet distribution, is
+@emph{not} considered real-valued.
 }
 
 @defproc[(dist-pdf [d dist?] [v any/c] [log? any/c #f]) 
@@ -217,85 +229,185 @@ also normally distributed, but the standard deviation is fixed.
 ]
 }
 
-@section{Integer Distribution Types}
+
+@section[#:tag "integer-dists"]{Integer Distribution Types}
 
 @defstruct*[bernoulli-dist
-            ([p (real-in 0 1)])]
+            ([p (real-in 0 1)])]{
+
+Represents a @wiki["Bernoulli_distribution"]{Bernoulli distribution}
+with success probability @racket[p].}
 
 @defstruct*[binomial-dist
             ([n exact-positive-integer?]
-             [p (real-in 0 1)])]
+             [p (real-in 0 1)])]{
+
+Represents a @wiki["Binomial_distribution"]{binomial distribution} of
+@racket[n] trials each with success probability @racket[p].}
+
+@defstruct*[categorical-dist
+            ([weights (vectorof (>=/c 0))])]{
+
+Represents a @wiki["Categorical_distribution"]{categorical
+distribution} (sometimes called a discrete distribution, multinomial
+distribution, or multinoulli distribution).}
 
 @defstruct*[geometric-dist
-            ([p (real-in 0 1)])]
+            ([p (real-in 0 1)])]{
+
+Represents a @wiki["Geometric_distribution"]{geometric distribution}.}
 
 @defstruct*[poisson-dist
-            ([mean (>/c 0)])]
+            ([mean (>/c 0)])]{
 
-@section{Real Distribution Types}
+Represents a @wiki["Poisson_distribution"]{Poisson distribution} with
+mean @racket[mean].}
+
+
+@section[#:tag "real-dists"]{Real Distribution Types}
 
 @defstruct*[beta-dist
             ([a (>=/c 0)]
-             [b (>=/c 0)])]
+             [b (>=/c 0)])]{
+
+Represents a @wiki["Beta_distribution"]{beta distribution} with shape
+@racket[a] and scale @racket[b].}
 
 @defstruct*[cauchy-dist
             ([mode real?]
-             [scale (>/c 0)])]
+             [scale (>/c 0)])]{
+
+Represents a @wiki["Cauchy_distribution"]{Cauchy distribution} with
+mode @racket[mode] and scale @racket[scale].}
 
 @defstruct*[exponential-dist
-            ([mean (>/c 0)])]
+            ([mean (>/c 0)])]{
+
+Represents an @wiki["Exponential_distribution"]{exponential
+distribution} with mean @racket[mean].
+
+Note: A common alternative parameterization uses the rate @italic{λ} =
+@racket[(/ mean)].}
 
 @defstruct*[gamma-dist
             ([shape (>/c 0)]
-             [scale (>/c 0)])]
+             [scale (>/c 0)])]{
+
+Represents a @wiki["Gamma_distribution"]{gamma distribution} with
+shape (@italic{k}) @racket[shape] and scale (@italic{θ})
+@racket[scale].
+
+Note: A common alternative parameterization uses the shape @italic{α}
+= @racket[shape] and rate @italic{β} = @racket[(/ scale)].}
 
 @defstruct*[inverse-gamma-dist
             ([shape (>/c 0)]
-             [scale (>/c 0)])]
+             [scale (>/c 0)])]{
+
+Represents an @wiki["Inverse_gamma_distribution"]{inverse-gamma
+distribution}, the reciprocals of whose values are distributed
+according to @racket[(gamma-dist shape scale)].}
 
 @defstruct*[logistic-dist
             ([mean real?]
-             [scale (>/c 0)])]
+             [scale (>/c 0)])]{
+
+Represents a @wiki["Logistic_distribution"]{logistic distribution}
+with mean @racket[mean] and scale @racket[scale].}
 
 @defstruct*[normal-dist
             ([mean real?]
-             [stddev (>/c 0)])]
+             [stddev (>/c 0)])]{
 
-@defstruct*[uniform-dist
-            ([min real?]
-             [max real?])]
+Represents a @wiki["Normal_distribution"]{normal (Gaussian)
+distribution} with mean (@italic{μ}) @racket[mean] and standard
+deviation (@italic{σ}) @racket[stddev].
 
-@defstruct*[categorical-dist
-            ([weights (vectorof (>=/c 0))])]
-
-@defstruct*[dirichlet-dist
-            ([alpha (vectorof (>/c 0))])]
+Note: A common alternative parameterization uses the variance
+@italic{σ@superscript{2}}.}
 
 @defstruct*[pareto-dist
             ([scale (>/c 0)]
-             [shape (>/c 0)])]
+             [shape (>/c 0)])]{
 
-@section{Discrete Distribution Type}
+Represents a @wiki["Pareto_distribution"]{Pareto distribution}.}
 
-@defproc[(discrete-dist? [v any/c]) boolean?]
+@defstruct*[uniform-dist
+            ([min real?]
+             [max real?])]{
+
+Represents a @wiki["Uniform_distribution"]{uniform distribution} with
+lower bound @racket[min] and upper bound @racket[max].}
+
+
+@section[#:tag "other-dists"]{Other Distribution Types}
+
+@defstruct*[dirichlet-dist
+            ([alpha (vectorof (>/c 0))])]{
+
+Represents a @wiki["Dirichlet_distribution"]{Dirichlet distribution}.}
+
+
+@section[#:tag "discrete-dist"]{Discrete Distribution Type}
+
+A discrete distribution is a distribution whose support is a finite
+collection of arbitrary Racket values. Note: this library calls
+@racket[categorical-dist] a distribution whose support consists of the
+integers {0, 1, ..., @italic{N}}.
+
+@defproc[(discrete-dist? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a discrete distribution,
+@racket[#f] otherwise.
+}
 
 @defform[(discrete-dist maybe-normalize
            [value-expr weight-expr] ...)
-         #:contracts ([weight-expr (>=/c 0)])]
+         #:grammar ([maybe-normalize (code:line)
+	 	   		     (code:line #:normalize? normalize?-expr)])
+         #:contracts ([weight-expr (>=/c 0)])]{
+
+Produces a discrete distribution whose values are the
+@racket[value-expr]s and whose probability masses are the
+corresponding @racket[weight-expr]s.
+
+Normalization affects printing and @racket[discrete-dist-weights], but
+not @racket[dist-pdf].
+}
 
 @defproc[(make-discrete-dist [weighted-values dict?]
                              [#:normalize? normalize? any/c #t])
-         discrete-dist?]
+         discrete-dist?]{
+
+Produces a discrete distribution from the dictionary
+@racket[weighted-values] that maps values to weights.
+}
 
 @defproc[(make-discrete-dist* [values vector?]
                               [weights (vectorof (>=/c 0)) (vector 1 ...)]
                               [#:normalize? normalize? any/c #t])
-         discrete-dist?]
+         discrete-dist?]{
+
+Produces a discrete distribution with the values of @racket[values]
+and weights of @racket[weights]. The two vectors must have equal
+lengths.
+}
 
 @defproc[(normalize-discrete-dist [d discrete-dist?])
-         discrete-dist?]
+         discrete-dist?]{
 
+Normalizes a discrete distribution. If @racket[d] is already
+normalized, the function may return @racket[d].
+}
+
+@deftogether[[
 @defproc[(discrete-dist-values [d discrete-dist?])
          vector?]
+@defproc[(discrete-dist-weights [d discrete-dist?])
+         vector?]
+]]{
+
+Returns the values and weights of @racket[d], respectively.
+}
 
 @(close-eval the-eval)
