@@ -17,7 +17,7 @@
   (*support dist)
   (*mean dist)
   (*median dist)
-  (*mode dist)
+  (*modes dist)
   (*variance dist)
   (*conj dist obs-dist data)
   (*Denergy dist x . d/dts)
@@ -26,7 +26,7 @@
    (define (*support d) #f)
    (define (*mean d) #f)
    (define (*median d) #f)
-   (define (*mode d) #f)
+   (define (*modes d) #f)
    (define (*variance d) #f)
    (define (*conj d data-d data) #f)
    (define (*Denergy d x . d/dts)
@@ -80,8 +80,10 @@
 ;; #f means unknown; NaN means known to be undefined
 (define (dist-mean d)     (*mean d))
 (define (dist-median d)   (*median d))
-(define (dist-mode d)     (*mode d))
 (define (dist-variance d) (*variance d))
+
+;; dist-modes : Dist -> list | #f
+(define (dist-modes d)     (*modes d))
 
 (define (dist-update-prior d data-d data)
   (*conj d data-d data))

@@ -41,7 +41,7 @@
            (-> dist? any)]
           [dist-median
            (-> dist? any)]
-          [dist-mode
+          [dist-modes
            (-> dist? any)]
           [dist-variance
            (-> dist? any)]
@@ -64,9 +64,6 @@
            (-> discrete-dist? discrete-dist?)]
           [discrete-dist-values
            (-> discrete-dist? vector?)]))
-
-;; FIXME:
-;; - mode -> modes, return list?
 
 ;; Distributions from math/distributions have performance penalty in untyped code
 ;; (Also, no discrete-dist? predicate.)
@@ -93,7 +90,7 @@
             (~optional (~seq #:support support:expr))
             (~optional (~seq #:mean mean:expr))
             (~optional (~seq #:median median:expr))
-            (~optional (~seq #:mode mode:expr))
+            (~optional (~seq #:modes modes:expr))
             (~optional (~seq #:variance variance:expr))
             (~optional (~seq #:conjugate conj-fun:expr))
             (~optional (~seq #:Denergy Denergy-fun:expr))
@@ -142,7 +139,7 @@
                    (?? (define (*support d) (let ([p.param (get-param d)] ...) support)))
                    (?? (define (*mean d) (let ([p.param (get-param d)] ...) mean)))
                    (?? (define (*median d) (let ([p.param (get-param d)] ...) median)))
-                   (?? (define (*mode d) (let ([p.param (get-param d)] ...) mode)))
+                   (?? (define (*modes d) (let ([p.param (get-param d)] ...) modes)))
                    (?? (define (*variance d) (let ([p.param (get-param d)] ...) variance)))
                    (?? (define (*Denergy d x . d/dts)
                          (apply (let ([p.param (get-param d)] ...) Denergy-fun) x d/dts)))
@@ -182,7 +179,7 @@
   #:support '#s(integer-range 0 1)
   #:mean p
   #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
-  #:mode (cond [(> p 1/2) 1] [(= p 1/2) '(0 1)] [else 0])
+  #:modes (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)])
   #:variance (* p (- 1 p)))
 
 (define-dist-type binomial
@@ -191,9 +188,9 @@
   #:nat #:enum (add1 n)
   #:support (integer-range 0 n)
   #:mean (* n p)
-  #:mode (filter-modes this-dist
-                       (let ([m (inexact->exact (floor (* (+ n 1) p)))])
-                         (list m (sub1 m))))
+  #:modes (filter-modes this-dist
+                        (let ([m (inexact->exact (floor (* (+ n 1) p)))])
+                          (list m (sub1 m))))
   #:variance (* n p (- 1 p)))
 
 (define-dist-type geometric
@@ -201,7 +198,7 @@
   #:nat #:enum 'lazy
   #:support '#s(integer-range 0 +inf.0)
   #:mean (/ (- 1 p) p)
-  #:mode 0
+  #:modes '(0)
   #:variance (/ (- 1 p) (* p p)))
 
 (define-dist-type poisson
@@ -209,9 +206,9 @@
   #:nat #:enum 'lazy
   #:support '#s(integer-range 0 +inf.0)
   #:mean mean
-  #:mode (if (integer? mean)
-             (list (inexact->exact mean) (sub1 (inexact->exact mean)))
-             (inexact->exact (floor mean)))
+  #:modes (if (integer? mean)
+              (list (inexact->exact mean) (sub1 (inexact->exact mean)))
+              (list (inexact->exact (floor mean))))
   #:variance mean)
 
 (define-dist-type beta
@@ -220,7 +217,9 @@
   #:real
   #:support '#s(real-range 0 1) ;; [0,1]
   #:mean (/ a (+ a b))
-  #:mode (and (> a 1) (> b 1) (/ (+ a -1) (+ a b -2)))
+  #:modes (if (and (> a 1) (> b 1))
+              (list (/ (+ a -1) (+ a b -2)))
+              '())
   #:variance (/ (* a b) (* (+ a b) (+ a b) (+ a b 1)))
   #:Denergy (lambda (x [dx 1] [da 0] [db 0])
               (+ (lazy* dx (+ (/ (- 1 a) x)
@@ -249,7 +248,7 @@
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
   #:mean +nan.0
-  #:mode mode
+  #:modes (list mode)
   #:variance +nan.0
   #:Denergy (lambda (x [dx 1] [dm 0] [ds 0])
               (define x-m (- x mode))
@@ -264,7 +263,7 @@
   #:real
   #:support '#s(real-range 0 +inf.0) ;; [0, inf)
   #:mean mean
-  #:mode 0
+  #:modes '(0)
   #:variance (expt mean 2)
   #:Denergy (lambda (x [dx 1] [dm 0])
               (define /mean (/ mean))
@@ -278,7 +277,7 @@
   #:real
   #:support '#s(real-range 0 +inf.0) ;; (0,inf)
   #:mean (* shape scale)
-  #:mode (if (> shape 1) (* (- shape 1) scale) +nan.0)
+  #:modes (if (> shape 1) (list (* (- shape 1) scale)) null)
   #:variance (* shape scale scale)
   #:Denergy (lambda (x [dx 1] [dk 0] [dθ 0])
               (define k shape)
@@ -329,7 +328,7 @@
    [scale (>/c 0)])
   #:real
   #:support '#s(real-range -inf.0 +inf.0)
-  #:mean mean #:median mean #:mode mean
+  #:mean mean #:median mean #:modes (list mean)
   #:variance (* scale scale pi pi 1/3)
   #:Denergy (lambda (x [dx 1] [dm 0] [ds 0])
               (define s scale)
@@ -347,7 +346,7 @@
   #:support '#s(real-range (-inf.0 +inf.0))
   #:mean mean
   #:median mean
-  #:mode mean
+  #:modes (list mean)
   #:variance (* stddev stddev)
   #:Denergy (lambda (x [dx 1] [dμ 0] [dσ 0])
               (define μ mean)
@@ -395,15 +394,15 @@
   #:any #:enum (length weights)
   #:support (integer-range 0 (sub1 (vector-length weights)))
   #:mean (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w))
-  #:mode (let-values ([(best best-w)
-                       (for/fold ([best null] [best-w -inf.0])
-                           ([i (in-naturals)] [w (in-vector weights)])
-                         (cond [(> w best-w)
-                                (values (list i) w)]
-                               [(= w best-w)
-                                (values (cons i best) best-w)]
-                               [else (values best best-w)]))])
-           (reverse best))
+  #:modes (let-values ([(best best-w)
+                        (for/fold ([best null] [best-w -inf.0])
+                                  ([i (in-naturals)] [w (in-vector weights)])
+                          (cond [(> w best-w)
+                                 (values (list i) w)]
+                                [(= w best-w)
+                                 (values (cons i best) best-w)]
+                                [else (values best best-w)]))])
+            (reverse best))
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
 ;; FIXME: cache computations of B(alpha) normalizing factor for pdf
@@ -415,10 +414,10 @@
   ;; (product (make-vector (vector-length concentrations) '#s(real-range 0 1)))
   #:mean (let ([alphasum (vector-sum alpha)])
            (for/vector ([ai (in-vector alpha)]) (/ ai alphasum)))
-  #:mode (if (for/and ([ai (in-vector alpha)]) (> ai 1))
-             (let ([denom (for/sum ([ai (in-vector alpha)]) (sub1 ai))])
-               (for/vector ([ai (in-vector alpha)]) (/ (sub1 ai) denom)))
-             +nan.0)
+  #:modes (if (for/and ([ai (in-vector alpha)]) (> ai 1))
+              (let ([denom (for/sum ([ai (in-vector alpha)]) (sub1 ai))])
+                (list (for/vector ([ai (in-vector alpha)]) (/ (sub1 ai) denom))))
+              null)
   #:variance (let* ([a0 (vector-sum alpha)]
                     [denom (* a0 a0 (add1 a0))])
                (for/vector ([ai (in-vector alpha)])
@@ -443,7 +442,7 @@
   #:mean (if (<= shape 1)
              +inf.0
              (/ (* scale shape) (sub1 shape)))
-  #:mode scale
+  #:modes (list scale)
   #:variance (if (<= shape 2)
                  +inf.0
                  (/ (* scale scale shape)

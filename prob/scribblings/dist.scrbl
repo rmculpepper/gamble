@@ -85,7 +85,7 @@ p)] is used instead.
 
 Produces a sample distributed according to @racket[d].
 
-@emph{Do no use @racket[dist-sample] within a sampler/solver; use
+@emph{Do not use @racket[dist-sample] within a sampler/solver; use
 @racket[sample] instead.}
 }
 
@@ -102,14 +102,12 @@ Produces a sample distributed according to @racket[d].
          (or/c any/c +nan.0 #f)]
 @defproc[(dist-median [d dist?])
          (or/c any/c +nan.0 #f)]
-@defproc[(dist-mode [d dist?])
-         (or/c any/c +nan.0 #f)]
 @defproc[(dist-variance [d dist?])
          (or/c any/c +nan.0 #f)]
 ]]{
 
-Returns the mean, median, mode, or variance of the distribution
-@racket[d], respectively.
+Returns the mean, median, or variance of the distribution @racket[d],
+respectively.
 
 If the distribution is integer-valued or real-valued, the statistic is
 a real number. Other kinds of distribution may have other types for
@@ -119,7 +117,18 @@ A return value of @racket[+nan.0] indicates that the statistic is
 known to be undefined.
 
 A return value of @racket[#f] indicates that the statistic is unknown;
-it may not be defined, it may be infinite, or the calculation simply
+it may not be defined, it may be infinite, or the calculation might
+not be implemented.
+}
+
+@defproc[(dist-modes [d dist?])
+         (or/c list? #f)]{
+
+Returns the modes of the distribution @racket[d].
+
+A return value of @racket['()] indicates that the distribution has no
+mode. A return value of @racket[#f] indicates that the statistic is
+unknown; it may not be defined, it may be infinite, or the calculation
 might not be implemented.
 }
 
