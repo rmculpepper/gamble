@@ -261,28 +261,6 @@
 
 ;; ----
 
-;; Testing MH modes
-
-(define (run-sb) (flip 0.1))
-(define (run-sg) (geom 1/2))
-
-(define (test-mh-modes run #:iterations [iterations 1000])
-  (define expected (enumerate (run) #:limit 0.01 #:normalize? #f))
-  (when #f
-    (printf "expected\n  => ~e\n" expected))
-  (for* ([rmode '(retry-from-top last)]
-         [tmode '(purge retain)])
-    (define s (mh-sampler (run)))
-    (send s set-modes! rmode tmode)
-    (define actual (sampler->discrete-dist s iterations))
-    (printf "~s, ~s\n  |error| = ~a%\n"
-                        rmode tmode
-                        (~r (* 100 (discrete-dist-error actual expected)) #:precision 4))
-    (when #f
-      (printf "  => ~e\n" actual))))
-
-;; ----
-
 (define (cmp prog [iters 1000])
   (values
    (discrete-dist-error

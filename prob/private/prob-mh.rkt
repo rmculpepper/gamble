@@ -62,17 +62,6 @@ So, need to accumulate
 depending on only choices reused w/ different params.
 |#
 
-;; default-reject-mode : one of the following
-;; - 'retry-from-top : re-pick db key to change on rejection
-;; - 'retry/same-choice : keep same db key to change on rejection
-;; - 'last : replay last state (ie, produce same sample as prev)
-(define default-reject-mode 'last)
-
-;; default-threshold-mode : one of the following
-;; - 'retain : R - F + ll_new - ll_old + ll_stale - ll_fresh
-;; - 'purge : same, but purge unused entries from db
-(define default-threshold-mode 'purge)
-
 ;; default-perturb-mode : list containing some subset of the following
 ;; - 'normal : use specialized proposal distribution for normal dist
 ;; (the default is to simply resample)
@@ -93,25 +82,14 @@ depending on only choices reused w/ different params.
            [cond-rejects 0]
            [mh-rejects 0]
            [perturb-mode default-perturb-mode]
-           [reject-mode default-reject-mode]
-           [threshold-mode default-threshold-mode]
            [last-sample #f])
     (super-new)
-
-    (define/public (get-modes) (values reject-mode threshold-mode))
-    (define/public (set-modes! reject-mode* threshold-mode*)
-      (when reject-mode* (set! reject-mode reject-mode*))
-      (when threshold-mode* (set! threshold-mode threshold-mode*)))
 
     (define/override (sample)
       (sample/picked-key (pick-a-key last-nchoices last-db)))
 
     (define/private (sample/picked-key key-to-change)
-      (define (reject)
-        (case reject-mode
-          [(retry-from-top) (sample)]
-          [(retry/same-choice) (sample/picked-key key-to-change)]
-          [(last) last-sample]))
+      (define (reject) last-sample)
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
       (defmatch (cons delta-db R-F) (perturb key-to-change))
@@ -135,9 +113,6 @@ depending on only choices reused w/ different params.
          (cond [(< u threshold)
                 (when (verbose?)
                   (eprintf "# Accepted MH step with ~s\n" (exp u)))
-                (when (eq? threshold-mode 'retain)
-                  ;; If retaining, copy stale choices to current-db.
-                  (db-copy-stale last-db current-db))
                 (set! last-db current-db)
                 (set! last-nchoices nchoices)
                 (set! accepts (add1 accepts))
@@ -215,15 +190,12 @@ depending on only choices reused w/ different params.
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
       ;; Note: assumes we pick uniformly from all choices.
-      (case threshold-mode
-        [(purge)
-         ;; R = (log (/ 1 (hash-count current-db))) = (- (log ....))
-         ;; F = (log (/ 1 (hash-count last-db)))    = (- (log ....))
-         ;; convert to inexact so (log 0.0) = -inf.0
-         (define R (- (log (exact->inexact nchoices))))
-         (define F (- (log (exact->inexact last-nchoices))))
-         (- R F)]
-        [else 0]))
+      ;; R = (log (/ 1 (hash-count current-db))) = (- (log ....))
+      ;; F = (log (/ 1 (hash-count last-db)))    = (- (log ....))
+      ;; convert to inexact so (log 0.0) = -inf.0
+      (define R (- (log (exact->inexact nchoices))))
+      (define F (- (log (exact->inexact last-nchoices))))
+      (- R F))
 
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
