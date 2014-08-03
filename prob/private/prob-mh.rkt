@@ -72,27 +72,32 @@ depending on only choices reused w/ different params.
 (define (mh-sampler* thunk spconds)
   (new mh-sampler% (thunk thunk) (spconds spconds)))
 
-(define mh-sampler%
-  (class sampler-base%
-    (init-field thunk
-                spconds)
-    (field [last-db '#hash()]
-           [last-nchoices 0]
-           [accepts 0]
-           [cond-rejects 0]
-           [mh-rejects 0]
-           [perturb-mode default-perturb-mode]
-           [last-sample #f])
+;; A RunResult is one of
+;; - Trace              -- run completed, includes threshold (not yet checked)
+;; - (cons 'failed any) -- run failed
+
+;; A Trace is (trace Any DB Nat Real)
+(struct trace (value db nchoices ll-diff))
+
+(define init-trace (trace #f '#hash() 0 0))
+
+(define mh-transition<%>
+  (interface ()
+    run ;; (-> A) SPConds Trace -> RunResult
+    ))
+
+(define single-site-mh-transition%
+  (class* object% (mh-transition<%>)
+    (init-field [perturb-mode default-perturb-mode])
     (super-new)
 
-    (define/override (sample)
-      (sample/picked-key (pick-a-key last-nchoices last-db)))
-
-    (define/private (sample/picked-key key-to-change)
-      (define (reject) last-sample)
+    ;; run : (-> A) SPConds Trace -> TransitionResult
+    (define/public (run thunk spconds last-trace)
+      (defmatch (trace _last-sample last-db last-nchoices _last-ll-diff) last-trace)
+      (define key-to-change (pick-a-key last-nchoices last-db))
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
-      (defmatch (cons delta-db R-F) (perturb key-to-change))
+      (defmatch (cons delta-db R-F) (perturb last-db key-to-change))
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
@@ -103,37 +108,16 @@ depending on only choices reused w/ different params.
       (define current-db (get-field current-db ctx))
       (define nchoices (get-field nchoices ctx))
       (define ll-diff (get-field ll-diff ctx))
-      ;; Accept/reject
       (match result
         [(cons 'okay sample-value)
          (define threshold (accept-threshold R-F nchoices last-nchoices ll-diff))
-         (when (verbose?)
-           (eprintf "# accept threshold = ~s\n" (exp threshold)))
-         (define u (log (random)))
-         (cond [(< u threshold)
-                (when (verbose?)
-                  (eprintf "# Accepted MH step with ~s\n" (exp u)))
-                (set! last-db current-db)
-                (set! last-nchoices nchoices)
-                (set! accepts (add1 accepts))
-                (set! last-sample sample-value)
-                (when (verbose?)
-                  (eprintf "# Accepted condition\n"))
-                sample-value]
-               [else
-                (set! mh-rejects (add1 mh-rejects))
-                (when (verbose?)
-                  (eprintf "# Rejected MH step with ~s\n" (exp u)))
-                (reject)])]
+         (trace sample-value current-db nchoices threshold)]
         [(cons 'fail fail-reason)
-         (set! cond-rejects (add1 cond-rejects))
-         (when (verbose?)
-           (eprintf "# Rejected condition (~s)" fail-reason))
-         (reject)]))
+         result]))
 
     ;; perturb : (U Address #f) -> (cons DB Real)
     ;; Updates db and returns (log) R-F.
-    (define/private (perturb key-to-change)
+    (define/private (perturb last-db key-to-change)
       (if key-to-change
           (match (hash-ref last-db key-to-change)
             [(entry dist value ll #f)
@@ -197,6 +181,50 @@ depending on only choices reused w/ different params.
       (define F (- (log (exact->inexact last-nchoices))))
       (- R F))
 
+    ;; pick-a-key : DB -> (U Address #f)
+    ;; Returns a key s.t. the value is not pinned.
+    (define/private (pick-a-key nchoices db)
+      (and (positive? nchoices)
+           (db-nth-unpinned db (random nchoices))))
+
+    ))
+
+
+(define mh-sampler%
+  (class sampler-base%
+    (init-field thunk
+                spconds)
+    (field [last-trace init-trace]
+           [accepts 0]
+           [cond-rejects 0]
+           [mh-rejects 0])
+    (super-new)
+
+    (define/override (sample)
+      (define tx (new single-site-mh-transition%))
+      (define tr (send tx run thunk spconds last-trace))
+      (match tr
+        [(trace sample-value current-db nchoices threshold)
+         (when (verbose?)
+           (eprintf "# accept threshold = ~s\n" (exp threshold)))
+         (define u (log (random)))
+         (cond [(< u threshold)
+                (when (verbose?)
+                  (eprintf "# Accepted MH step with ~s\n" (exp u)))
+                (set! accepts (add1 accepts))
+                (set! last-trace tr)
+                sample-value]
+               [else
+                (when (verbose?)
+                  (eprintf "# Rejected MH step with ~s\n" (exp u)))
+                (set! mh-rejects (add1 mh-rejects))
+                (trace-value last-trace)])]
+        [(cons 'fail reason)
+         (when (verbose?)
+           (eprintf "# Rejected condition (~s)" reason))
+         (set! cond-rejects (add1 cond-rejects))
+         (trace-value last-trace)]))
+
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
       (cond [(zero? total)
@@ -209,9 +237,3 @@ depending on only choices reused w/ different params.
              (printf "Traces rejected by MH threshold: ~s, ~a%\n"
                      mh-rejects (* 100.0 (/ mh-rejects total)))]))
     ))
-
-;; pick-a-key : DB -> (U Address #f)
-;; Returns a key s.t. the value is not pinned.
-(define (pick-a-key nchoices db)
-  (and (positive? nchoices)
-       (db-nth-unpinned db (random nchoices))))
