@@ -96,28 +96,19 @@ the database as the potential energy of the entire system.
     
     (define/private (eval-definition-thunk!)
       (define delta-db (make-hash))
-      (define current-db (make-hash))
-      (define result
-        (let/ec escape
-          (parameterize ((current-stochastic-ctx
-                          (new db-stochastic-derivative-ctx%
-                               (current-db current-db)
-                               (last-db last-db)
-                               (delta-db delta-db)
-                               (spconds null)
-                               (escape escape))))
-            (begin0
-                (list 'okay 
-                      (apply/delimit thunk)
-                      current-db
-                      (get-field derivatives (current-stochastic-ctx)))
-              (when (verbose?)
-                (eprintf " (recorded derivatives are) ~e\n"
-                         (get-field derivatives (current-stochastic-ctx)))
-                (eprintf " (relevant labels were) ~e \n"
-                         (get-field relevant-labels (current-stochastic-ctx))))))))
+      (define ctx 
+        (new db-stochastic-derivative-ctx%
+             (last-db last-db)
+             (delta-db delta-db)
+             (spconds null)))
+      (define ans-db (get-field current-db ctx))
+      (define result (send ctx run thunk))
+      (define grads (get-field derivatives ctx))
+      (when (verbose?)
+        (eprintf " (recorded derivatives are) ~e\n" grads)
+        (eprintf " (relevant labels were) ~e \n" (get-field relevant-labels ctx)))
       (match result
-        [(list 'okay ans ans-db grads)
+        [(cons 'okay ans)
          (set! answer ans)
          (set! gradients grads)
          ans-db]

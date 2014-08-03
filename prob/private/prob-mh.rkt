@@ -117,24 +117,16 @@ depending on only choices reused w/ different params.
       ;; FIXME: have perturb create delta-db (immutable?)
       (define delta-db (make-hash))
       (define R-F (if key-to-change (perturb! last-db delta-db key-to-change) 0))
-      (define current-db (make-hash))
-      (define nchoices #f) ;; mutated below
-      (define ll-diff #f) ;; mutated below
+      (define ctx
+        (new db-stochastic-ctx%
+             (last-db last-db)
+             (delta-db delta-db)
+             (spconds spconds)))
       ;; Run program
-      (define result
-        (let/ec escape
-          (define ctx
-            (new db-stochastic-ctx%
-                 (current-db current-db)
-                 (last-db last-db)
-                 (delta-db delta-db)
-                 (spconds spconds)
-                 (escape escape)))
-          (parameterize ((current-stochastic-ctx ctx))
-            (define v (apply/delimit thunk))
-            (set! nchoices (get-field nchoices ctx))
-            (set! ll-diff (get-field ll-diff ctx))
-            (cons 'okay v))))
+      (define result (send ctx run thunk))
+      (define current-db (get-field current-db ctx))
+      (define nchoices (get-field nchoices ctx))
+      (define ll-diff (get-field ll-diff ctx))
       ;; Accept/reject
       (match result
         [(cons 'okay sample-value)

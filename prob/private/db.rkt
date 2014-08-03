@@ -124,14 +124,27 @@
 
 (define db-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
-    (init-field current-db  ;; mutated
-                last-db     ;; not mutated
+    (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
                 spconds
-                escape)
-    (field [nchoices 0]
+                [escape-prompt (make-continuation-prompt-tag)])
+    (field [current-db (make-hash)]
+           [nchoices 0]
            [ll-diff 0])
     (super-new)
+
+    ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
+    ;; Run a prob prog using this stochastic ctx, populate current-db, etc.
+    (define/public (run thunk)
+      (parameterize ((current-stochastic-ctx this))
+        (call-with-continuation-prompt
+         (lambda () (cons 'okay (apply/delimit thunk)))
+         escape-prompt)))
+
+    (define/public (fail reason)
+      (abort-current-continuation
+       escape-prompt
+       (lambda () (cons 'fail reason))))
 
     ;; The sample method records random choices by mutating
     ;; current-db. At the end of execution, current-db contains a
@@ -290,9 +303,6 @@
                             "\n  address: ~e")
              context))
 
-    (define/public (fail reason)
-      (escape (cons 'fail reason)))
-
     (define/public (mem f)
       (let ([context (get-context)])
         (lambda args
@@ -304,31 +314,21 @@
 
 (define db-stochastic-derivative-ctx%
   (class* db-stochastic-ctx% (stochastic-ctx<%>)
-    (init current-db
-          last-db
-          delta-db
-          spconds
-          escape)
     (field [derivatives (make-hash)]      ;; (Hashof Address Derivative)
            [relevant-labels (make-hash)]) ;; (Hashof Label Address)
-    (super-new [current-db current-db]
-               [last-db last-db]
-               [delta-db delta-db]
-               [spconds spconds]
-               [escape escape])
-    
+
     (define/override (sample dist) 
       (record-current-label)
       (record-current-derivatives)
       (super sample dist))
-    
-    (define (record-current-label)
+
+    (define/private (record-current-label)
       (define lbl (current-label))
       (when lbl
         (define context (get-context))
         (hash-set! relevant-labels lbl context)))
-    
-    (define (record-current-derivatives)
+
+    (define/private (record-current-derivatives)
       (define label-derivs (current-derivatives))
       (when label-derivs
         (define context (get-context))
@@ -337,7 +337,7 @@
                         (derivative-label->address parameter-derivative))
                       label-derivs))
         (hash-set! derivatives context address-derivs)))
-    
+
     ;; (U #f (Pair (Vector Label) DerivativeFn))
     ;; -> (U #f (Pair (Vector Address) DerivativeFn))
     ;;
