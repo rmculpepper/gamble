@@ -5,7 +5,7 @@
 #lang racket/base
 (require racket/list
          racket/class
-         racket/match
+         (rename-in racket/match [match-define defmatch])
          data/order
          "context.rkt"
          "db.rkt"
@@ -114,9 +114,7 @@ depending on only choices reused w/ different params.
           [(last) last-sample]))
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
-      ;; FIXME: have perturb create delta-db (immutable?)
-      (define delta-db (make-hash))
-      (define R-F (if key-to-change (perturb! last-db delta-db key-to-change) 0))
+      (defmatch (cons delta-db R-F) (perturb key-to-change))
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
@@ -158,16 +156,18 @@ depending on only choices reused w/ different params.
            (eprintf "# Rejected condition (~s)" fail-reason))
          (reject)]))
 
-    ;; perturb! : DB DB Address -> Real
+    ;; perturb : (U Address #f) -> (cons DB Real)
     ;; Updates db and returns (log) R-F.
-    (define/private (perturb! last-db delta-db key-to-change)
-      (match (hash-ref last-db key-to-change)
-        [(entry dist value ll #f)
-         (or (perturb!/proposal delta-db key-to-change dist value)
-             (perturb!/resample delta-db key-to-change dist value))]))
+    (define/private (perturb key-to-change)
+      (if key-to-change
+          (match (hash-ref last-db key-to-change)
+            [(entry dist value ll #f)
+             (or (perturb/proposal key-to-change dist value)
+                 (perturb/resample key-to-change dist value))])
+          (cons '#hash() 0)))
 
-    ;; perturb!/resample : DB Address Dist Any -> Real
-    (define/private (perturb!/resample delta-db key-to-change dist value)
+    ;; perturb/resample : Address Dist Any -> (cons DB Real)
+    (define/private (perturb/resample key-to-change dist value)
       ;; Fallback: Just resample from same dist.
       ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
       ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
@@ -177,21 +177,19 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-      (hash-set! delta-db key-to-change (entry dist value* F #f))
-      (- R F))
+      (cons (hash key-to-change (entry dist value* F #f)) (- R F)))
 
-    ;; perturb!/proposal : DB Address Dist Any -> (U Real #f)
+    ;; perturb/proposal : Address Dist Any -> (U (cons DB Real) #f)
     ;; If applicable proposal dist avail, updates db and returns (log) R-F,
     ;; otherwise returns #f and perturb! should just resample.
-    (define/private (perturb!/proposal delta-db key-to-change dist value)
-      ;; update! : ... -> Real
-      (define (update! R F value*)
+    (define/private (perturb/proposal key-to-change dist value)
+      ;; return : Real Real Any -> Real
+      (define (return R F value*)
         (when (verbose?)
           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
           (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
         (define ll* (dist-pdf dist value* #t))
-        (hash-set! delta-db key-to-change (entry dist value* ll* #f))
-        (- R F))
+        (cons (hash key-to-change (entry dist value* ll* #f)) (- R F)))
       (match dist
         [(normal-dist mean stddev)
          (and (memq 'normal perturb-mode)
@@ -203,7 +201,7 @@ depending on only choices reused w/ different params.
                   (normal-dist value* (/ stddev 4.0)))
                 (define R (dist-pdf backward-dist value #t))
                 (define F (dist-pdf forward-dist value* #t))
-                (update! R F value*)))]
+                (return R F value*)))]
         [_ #f]))
 
     ;; accept-threshold : ... -> Real
