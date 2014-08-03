@@ -163,7 +163,7 @@ depending on only choices reused w/ different params.
     ;; Updates db and returns (log) R-F.
     (define/private (perturb! last-db delta-db key-to-change)
       (match (hash-ref last-db key-to-change)
-        [(entry dist value #f)
+        [(entry dist value ll #f)
          (or (perturb!/proposal delta-db key-to-change dist value)
              (perturb!/resample delta-db key-to-change dist value))]))
 
@@ -178,7 +178,7 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-      (hash-set! delta-db key-to-change (entry dist value* #f))
+      (hash-set! delta-db key-to-change (entry dist value* F #f))
       (- R F))
 
     ;; perturb!/proposal : DB Address Dist Any -> (U Real #f)
@@ -190,17 +190,18 @@ depending on only choices reused w/ different params.
         (when (verbose?)
           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
           (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-        (hash-set! delta-db key-to-change (entry dist value* #f))
+        (define ll* (dist-pdf dist value* #t))
+        (hash-set! delta-db key-to-change (entry dist value* ll* #f))
         (- R F))
       (match dist
         [(normal-dist mean stddev)
          (and (memq 'normal perturb-mode)
               (let ()
                 (define forward-dist
-                  (make-normal-dist value (/ stddev 4.0)))
+                  (normal-dist value (/ stddev 4.0)))
                 (define value* (dist-sample forward-dist))
                 (define backward-dist
-                  (make-normal-dist value* (/ stddev 4.0)))
+                  (normal-dist value* (/ stddev 4.0)))
                 (define R (dist-pdf backward-dist value #t))
                 (define F (dist-pdf forward-dist value* #t))
                 (update! R F value*)))]
