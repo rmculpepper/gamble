@@ -1,7 +1,5 @@
 Tentative plans for the near future:
 
-- finish observe-at
-  - support continuous choices in rejection-sampler using dist max density?
 - add ll to entry
 - compute MH ratio components incrementally
 - catch up on docs, tests

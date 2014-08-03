@@ -92,3 +92,8 @@
 
 (define (dists-same-type? da db)
   (equal? (*type da) (*type db)))
+
+(define (dist-pdf-max d)
+  (define modes (dist-modes d))
+  (and (pair? modes)
+       (dist-pdf d (car modes))))

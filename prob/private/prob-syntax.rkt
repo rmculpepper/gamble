@@ -72,12 +72,20 @@
     (define/override (fail reason)
       (escape (cons 'fail reason)))
     (define/override (observe-at dist val)
-      (cond [(finite-dist? dist)
+      (cond [(dist-pdf-max dist)
+             => (lambda (maxpdf)
+                  (unless (< (* (random) maxpdf) (dist-pdf dist val))
+                    (fail 'observation)))]
+            [(finite-dist? dist)
              (unless (< (random) (dist-pdf dist val))
                (fail 'observation))]
             [else
-             (error 'observe-at 
-                    "observations on non-finite distributions not supported by rejection-sampler")]))
+             (error 'observe-at
+                    (string-append 
+                     "observation on distribution not supported by rejection sampler"
+                     ";\n cannot determine multiplier for distribution"
+                     "\n  distribution: ~e")
+                    dist)]))
     ))
 
 ;; ----
