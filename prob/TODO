@@ -1,7 +1,5 @@
 Tentative plans for the near future:
 
-- add ll to entry
-- compute MH ratio components incrementally
 - catch up on docs, tests
 
 - sort out labels vs zones (more changes to entry, db-ctx)
