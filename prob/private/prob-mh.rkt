@@ -138,9 +138,8 @@ depending on only choices reused w/ different params.
       ;; Accept/reject
       (match result
         [(cons 'okay sample-value)
-         (define threshold (accept-threshold R-F current-db last-db delta-db))
+         (define threshold (accept-threshold R-F nchoices last-nchoices ll-diff))
          (when (verbose?)
-           (eprintf "# ll-diff = ~s\n" ll-diff)
            (eprintf "# accept threshold = ~s\n" (exp threshold)))
          (define u (log (random)))
          (cond [(< u threshold)
@@ -217,20 +216,12 @@ depending on only choices reused w/ different params.
 
     ;; accept-threshold : ... -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/private (accept-threshold R-F current-db last-db delta-db)
-      (if (zero? (hash-count last-db))
+    (define/private (accept-threshold R-F nchoices last-nchoices ll-diff)
+      (if (zero? last-nchoices)
           +inf.0
-          (accept-threshold* R-F current-db last-db delta-db)))
+          (+ R-F (accept-threshold/nchoices nchoices last-nchoices) ll-diff)))
 
-    (define/private (accept-threshold* R-F current-db last-db delta-db)
-      (define last-ll (db-ll last-db))
-      (define current-ll (db-ll current-db))
-      (define stale-ll (db-ll/fresh last-db current-db delta-db))
-      (define fresh-ll (db-ll/fresh current-db last-db delta-db))
-      (+ R-F (accept-threshold/nchoices current-db last-db)
-         (- current-ll last-ll) (- stale-ll fresh-ll)))
-
-    (define/private (accept-threshold/nchoices current-db last-db)
+    (define/private (accept-threshold/nchoices nchoices last-nchoices)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
       ;; Note: assumes we pick uniformly from all choices.
@@ -239,8 +230,8 @@ depending on only choices reused w/ different params.
          ;; R = (log (/ 1 (hash-count current-db))) = (- (log ....))
          ;; F = (log (/ 1 (hash-count last-db)))    = (- (log ....))
          ;; convert to inexact so (log 0.0) = -inf.0
-         (define R (- (log (exact->inexact (hash-count current-db)))))
-         (define F (- (log (exact->inexact (hash-count last-db)))))
+         (define R (- (log (exact->inexact nchoices))))
+         (define F (- (log (exact->inexact last-nchoices))))
          (- R F)]
         [else 0]))
 
