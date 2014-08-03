@@ -16,6 +16,8 @@
          "prob-util.rkt")
 (provide (all-defined-out))
 
+;; A DB is (Hashof Address Entry)
+
 ;; An Entry is (entry Dist Any Real Boolean)
 ;; where the value is appropriate for the ERP denoted by the dist,
 ;; and pinned? indicates whether the value originated from a special condition
@@ -32,8 +34,6 @@
   (> ll -inf.0))
 
 ;; ------------------------------------------------------------
-
-;; A DB is (Hashof Address Entry)
 
 (define (print-db db)
   (define entries (hash-map db list))
@@ -129,6 +129,8 @@
                 delta-db    ;; not mutated
                 spconds
                 escape)
+    (field [nchoices 0]
+           [ll-diff 0])
     (super-new)
 
     ;; The sample method records random choices by mutating
@@ -148,10 +150,10 @@
                   (sample/collision dist context e))]
             [(hash-ref delta-db context #f)
              => (lambda (e)
-                  (sample/old dist context e #t))]
+                  (sample/delta dist context e))]
             [(hash-ref last-db context #f)
              => (lambda (e)
-                  (sample/old dist context e #f))]
+                  (sample/last dist context e))]
             [else (sample/new dist context #t)]))
 
     (define/private (sample/collision dist context e)
@@ -175,33 +177,27 @@
              => (lambda (e)
                   (match (cdr e)
                     [(spcond:equal value)
-                     ;; FIXME: value might not match internal dist support 
-                     ;; (eg flip vs bernoulli)
-                     (define ll (dist-pdf dist value #t))
-                     (cond [(ll-possible? ll)
-                            (when (verbose?)
-                              (when print?
-                                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-                              (eprintf "  CONDITIONED ~e = ~e\n" (current-label) value))
-                            (hash-set! current-db context (entry dist value ll #t))
-                            value]
-                           [else
-                            (fail 'observation)])]))]
+                     (observe-at* dist value context)]))]
             [else
              (define value (dist-sample dist))
              (define ll (dist-pdf dist value #t))
              (when (and print? (verbose?))
                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
              (hash-set! current-db context (entry dist value ll #f))
+             (set! nchoices (add1 nchoices))
              value]))
 
-    (define/private (sample/old dist context e in-delta?)
-      (cond [(equal? (entry-dist e) dist)
+    (define/private (sample/delta dist context e)
+      (define last-e (hash-ref last-db context #f))
+      (cond [(not last-e)
+             (sample/last dist context e)]
+            [(equal? (entry-dist e) dist)
              (when (verbose?)
-               (eprintf "- ~a ~e: ~s = ~e\n"
-                        (if in-delta? "PERTURBED" "REUSED")
+               (eprintf "- PERTURBED ~e: ~s = ~e\n"
                         dist context (entry-value e)))
              (hash-set! current-db context e)
+             (set! nchoices (add1 nchoices))
+             (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
                   (let ([new-ll (dist-pdf dist (entry-value e) #t)])
@@ -211,6 +207,32 @@
                   (when (verbose?)
                     (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
                   (hash-set! current-db context (entry dist value new-ll (entry-pinned? e)))
+                  (set! nchoices (add1 nchoices))
+                  (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
+                  value)]
+            [else
+             (when (verbose?)
+               (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
+             (sample/new dist context #f)]))
+
+    (define/private (sample/last dist context e)
+      (cond [(equal? (entry-dist e) dist)
+             (when (verbose?)
+               (eprintf "- REUSED ~e: ~s = ~e\n"
+                        dist context (entry-value e)))
+             (hash-set! current-db context e)
+             (set! nchoices (add1 nchoices))
+             (entry-value e)]
+            [(and (dists-same-type? (entry-dist e) dist)
+                  (let ([new-ll (dist-pdf dist (entry-value e) #t)])
+                    (and (ll-possible? new-ll) new-ll)))
+             => (lambda (new-ll)
+                  (define value (entry-value e))
+                  (when (verbose?)
+                    (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
+                  (hash-set! current-db context (entry dist value new-ll (entry-pinned? e)))
+                  (set! nchoices (add1 nchoices))
+                  (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
             [else
              (when (verbose?)
@@ -219,6 +241,9 @@
 
     (define/public (observe-at dist val)
       (define context (get-context))
+      (observe-at* dist val context))
+
+    (define/private (observe-at* dist val context)
       (cond [(hash-ref current-db context #f) ;; COLLISION
              => (lambda (e)
                   (cond [(mem-context? context)
@@ -242,6 +267,7 @@
                   (define ll (dist-pdf dist val #t))
                   (cond [(ll-possible? ll)
                          (hash-set! current-db context (entry dist val ll #t))
+                         (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
                         [else (fail 'observation)]))]
             [else

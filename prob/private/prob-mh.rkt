@@ -88,6 +88,7 @@ depending on only choices reused w/ different params.
     (init-field thunk
                 spconds)
     (field [last-db '#hash()]
+           [last-nchoices 0]
            [accepts 0]
            [cond-rejects 0]
            [mh-rejects 0]
@@ -103,7 +104,7 @@ depending on only choices reused w/ different params.
       (when threshold-mode* (set! threshold-mode threshold-mode*)))
 
     (define/override (sample)
-      (sample/picked-key (pick-a-key last-db)))
+      (sample/picked-key (pick-a-key last-nchoices last-db)))
 
     (define/private (sample/picked-key key-to-change)
       (define (reject)
@@ -117,23 +118,29 @@ depending on only choices reused w/ different params.
       (define delta-db (make-hash))
       (define R-F (if key-to-change (perturb! last-db delta-db key-to-change) 0))
       (define current-db (make-hash))
+      (define nchoices #f) ;; mutated below
+      (define ll-diff #f) ;; mutated below
       ;; Run program
       (define result
         (let/ec escape
-          (parameterize ((current-stochastic-ctx
-                          (new db-stochastic-ctx%
-                               (current-db current-db)
-                               (last-db last-db)
-                               (delta-db delta-db)
-                               (spconds spconds)
-                               (escape escape))))
-            (cons 'okay (apply/delimit thunk)))))
+          (define ctx
+            (new db-stochastic-ctx%
+                 (current-db current-db)
+                 (last-db last-db)
+                 (delta-db delta-db)
+                 (spconds spconds)
+                 (escape escape)))
+          (parameterize ((current-stochastic-ctx ctx))
+            (define v (apply/delimit thunk))
+            (set! nchoices (get-field nchoices ctx))
+            (set! ll-diff (get-field ll-diff ctx))
+            (cons 'okay v))))
       ;; Accept/reject
-      ;; FIXME: check condition or MH step first?
       (match result
         [(cons 'okay sample-value)
          (define threshold (accept-threshold R-F current-db last-db delta-db))
          (when (verbose?)
+           (eprintf "# ll-diff = ~s\n" ll-diff)
            (eprintf "# accept threshold = ~s\n" (exp threshold)))
          (define u (log (random)))
          (cond [(< u threshold)
@@ -143,6 +150,7 @@ depending on only choices reused w/ different params.
                   ;; If retaining, copy stale choices to current-db.
                   (db-copy-stale last-db current-db))
                 (set! last-db current-db)
+                (set! last-nchoices nchoices)
                 (set! accepts (add1 accepts))
                 (set! last-sample sample-value)
                 (when (verbose?)
@@ -219,20 +227,22 @@ depending on only choices reused w/ different params.
       (define current-ll (db-ll current-db))
       (define stale-ll (db-ll/fresh last-db current-db delta-db))
       (define fresh-ll (db-ll/fresh current-db last-db delta-db))
-      (define R-F/pick
-        ;; Account for backward and forward likelihood of picking
-        ;; the random choice to perturb that we picked.
-        ;; Note: assumes we pick uniformly from all choices.
-        (case threshold-mode
-          [(purge)
-           ;; R = (log (/ 1 (hash-count current-db))) = (- (log ....))
-           ;; F = (log (/ 1 (hash-count last-db)))    = (- (log ....))
-           ;; convert to inexact so (log 0.0) = -inf.0
-           (define R (- (log (exact->inexact (hash-count current-db)))))
-           (define F (- (log (exact->inexact (hash-count last-db)))))
-           (- R F)]
-          [else 0]))
-      (+ R-F R-F/pick (- current-ll last-ll) (- stale-ll fresh-ll)))
+      (+ R-F (accept-threshold/nchoices current-db last-db)
+         (- current-ll last-ll) (- stale-ll fresh-ll)))
+
+    (define/private (accept-threshold/nchoices current-db last-db)
+      ;; Account for backward and forward likelihood of picking
+      ;; the random choice to perturb that we picked.
+      ;; Note: assumes we pick uniformly from all choices.
+      (case threshold-mode
+        [(purge)
+         ;; R = (log (/ 1 (hash-count current-db))) = (- (log ....))
+         ;; F = (log (/ 1 (hash-count last-db)))    = (- (log ....))
+         ;; convert to inexact so (log 0.0) = -inf.0
+         (define R (- (log (exact->inexact (hash-count current-db)))))
+         (define F (- (log (exact->inexact (hash-count last-db)))))
+         (- R F)]
+        [else 0]))
 
     (define/public (info)
       (define total (+ accepts cond-rejects mh-rejects))
@@ -249,7 +259,6 @@ depending on only choices reused w/ different params.
 
 ;; pick-a-key : DB -> (U Address #f)
 ;; Returns a key s.t. the value is not pinned.
-(define (pick-a-key db)
-  (define unpinned-count (db-count-unpinned db))
-  (and (positive? unpinned-count)
-       (db-nth-unpinned db (random unpinned-count))))
+(define (pick-a-key nchoices db)
+  (and (positive? nchoices)
+       (db-nth-unpinned db (random nchoices))))
