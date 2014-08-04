@@ -67,6 +67,52 @@ depending on only choices reused w/ different params.
 ;; (the default is to simply resample)
 (define default-perturb-mode '(normal))
 
+;; ProposalMap = hash[ Zone => (listof ProposalFun) ])
+;; where ProposalFun = (Dist Value -> (U (cons Value Real) #f))
+;; The function returns a new value and the proposal's R-F.
+
+;; extend-proposal-map : ProposalMap {Zone ProposalFun}* -> ProposalMap
+(define (extend-proposal-map pm . args)
+  (unless (even? (length args))
+    (error 'extend-proposal-map "expected an even number of {zone,function} arguments"))
+  (let loop ([args args])
+    (cond [(and (pair? args) (pair? (cdr args)))
+           (extend-proposal-map1 (loop (cddr args)) (car args) (cadr args))]
+          [else pm])))
+
+;; extend-proposal-map1 : ProposalMap Zone ProposalFun -> ProposalMap
+(define (extend-proposal-map1 pm zone fun)
+  (hash-set pm zone (cons fun (hash-ref pm zone null))))
+
+;; apply-proposal-map : ProposalMap (Listof Zone) Dist Value -> (U (cons Value Real) #f)
+;; Try all functions for primary (closest enclosing) zone, then for second zone, etc.
+(define (apply-proposal-map pm zones dist val)
+  (or (apply-proposal-map* pm zones dist val)
+      (apply-proposal-map* pm '(#f) dist val)))
+
+(define (apply-proposal-map* pm zonelist dist val)
+  (for/or ([z (in-list zonelist)])
+    (for/or ([fun (in-list (hash-ref pm z null))])
+      (fun dist val))))
+
+;; proposal-map : (parameterof ProposalMap)
+(define proposal-map (make-parameter '#hash()))
+
+#|
+;; Proposal function for Normal dist
+(lambda (dist value)
+  (match dist
+    [(normal-dist mean stddev)
+     (define forward-dist
+       (normal-dist value (/ stddev 4.0)))
+     (define value* (dist-sample forward-dist))
+     (define backward-dist
+       (normal-dist value* (/ stddev 4.0)))
+     (define R (dist-pdf backward-dist value #t))
+     (define F (dist-pdf forward-dist value* #t))
+     (cons value* (- R F))]
+    [_ #f]))
+|#
 
 ;; ============================================================
 
@@ -103,7 +149,8 @@ depending on only choices reused w/ different params.
       (define ll-diff (get-field ll-diff ctx))
       (match result
         [(cons 'okay sample-value)
-         (define threshold (accept-threshold R-F nchoices last-nchoices ll-diff))
+         (define threshold
+           (accept-threshold R-F current-db nchoices last-db last-nchoices ll-diff))
          (trace sample-value current-db nchoices threshold)]
         [(cons 'fail fail-reason)
          result]))
@@ -111,18 +158,17 @@ depending on only choices reused w/ different params.
     ;; perturb : DB Nat -> (cons DB Real)
     (abstract perturb)
 
-    ;; accept-threshold : Real Nat Nat Real -> Real
+    ;; accept-threshold : Real DB Nat DB Nat Real -> Real
     (abstract accept-threshold)
     ))
 
-;; FIXME: add zone arg, only choose choice within that zone to perturb
 (define single-site-mh-transition%
   (class mh-transition-base%
-    (init-field [perturb-mode default-perturb-mode])
+    (init-field [zone #f]
+                [perturb-mode default-perturb-mode])
     (super-new)
 
     ;; perturb : DB Nat -> (cons DB Real)
-    ;; Updates db and returns (log) R-F.
     (define/override (perturb last-db last-nchoices)
       (define key-to-change (pick-a-key last-nchoices last-db))
       (when (verbose?)
@@ -148,36 +194,28 @@ depending on only choices reused w/ different params.
       (cons (hash key-to-change (entry zones dist value* F #f)) (- R F)))
 
     ;; perturb/proposal : Address Dist Any List -> (U (cons DB Real) #f)
-    ;; If applicable proposal dist avail, updates db and returns (log) R-F,
-    ;; otherwise returns #f and perturb! should just resample.
     (define/private (perturb/proposal key-to-change dist value zones)
-      ;; return : Real Real Any -> Real
-      (define (return R F value*)
-        (when (verbose?)
-          (eprintf "  PROPOSED from ~e to ~e\n" value value*)
-          (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-        (define ll* (dist-pdf dist value* #t))
-        (cons (hash key-to-change (entry zones dist value* ll* #f)) (- R F)))
-      (match dist
-        [(normal-dist mean stddev)
-         (and (memq 'normal perturb-mode)
-              (let ()
-                (define forward-dist
-                  (normal-dist value (/ stddev 4.0)))
-                (define value* (dist-sample forward-dist))
-                (define backward-dist
-                  (normal-dist value* (/ stddev 4.0)))
-                (define R (dist-pdf backward-dist value #t))
-                (define F (dist-pdf forward-dist value* #t))
-                (return R F value*)))]
-        [_ #f]))
+      (match (apply-proposal-map (proposal-map) zones dist value)
+        [(cons value* R-F)
+         (when (verbose?)
+           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
+           (eprintf "  R-F = ~s\n" R-F))
+         (define ll* (dist-pdf dist value* #t))
+         (cons (hash key-to-change (entry zones dist value* ll* #f)) R-F)]
+        [#f #f]))
 
-    ;; accept-threshold : Real Nat Nat Real -> Real
+    ;; accept-threshold : Real DB Nat DB Nat Real -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/override (accept-threshold R-F nchoices last-nchoices ll-diff)
-      (if (zero? last-nchoices)
-          +inf.0
-          (+ R-F (accept-threshold/nchoices nchoices last-nchoices) ll-diff)))
+    (define/override (accept-threshold R-F current-db nchoices last-db last-nchoices ll-diff)
+      (let ([nchoices
+             (cond [(eq? zone #f) nchoices]
+                   [else (db-count-unpinned current-db #:zone zone)])]
+            [last-nchoices
+             (cond [(eq? zone #f) last-nchoices]
+                   [else (db-count-unpinned last-db #:zone zone)])])
+        (if (zero? last-nchoices)
+            +inf.0
+            (+ R-F (accept-threshold/nchoices nchoices last-nchoices) ll-diff))))
 
     (define/private (accept-threshold/nchoices nchoices last-nchoices)
       ;; Account for backward and forward likelihood of picking
@@ -193,25 +231,29 @@ depending on only choices reused w/ different params.
     ;; pick-a-key : DB -> (U Address #f)
     ;; Returns a key s.t. the value is not pinned.
     (define/private (pick-a-key nchoices db)
-      (and (positive? nchoices)
-           (db-nth-unpinned db (random nchoices))))
+      ;; FIXME: what if zone has no choices?
+      (define nchoices/zone
+        (cond [(eq? zone #f) nchoices]
+              [else (db-count-unpinned db #:zone zone)]))
+      (and (positive? nchoices/zone)
+           (db-nth-unpinned db (random nchoices/zone) #:zone zone)))
     ))
 
-;; FIXME: add zone arg, perturb only choices in that zone
-(define all-sites-mh-transition%
+(define multi-site-mh-transition%
   (class mh-transition-base%
-    (init-field [perturb-mode default-perturb-mode])
+    (init-field [zone #f]
+                [perturb-mode default-perturb-mode])
     (super-new)
 
     ;; perturb : DB Nat -> (cons DB Real)
-    ;; Updates db and returns (log) R-F.
     (define/override (perturb last-db last-nchoices)
       (when (verbose?)
         (eprintf "# perturb: changing all sites\n"))
       (define-values (delta-db R-F)
         (for/fold ([delta-db '#hash()] [R-F 0])
             ([(key e) (in-hash last-db)]
-             #:when (not (entry-pinned? e)))
+             #:when (not (entry-pinned? e))
+             #:when (entry-in-zone? e zone))
           (match e
             [(entry zones dist value ll #f)
              (defmatch (cons e* R-F*)
@@ -234,35 +276,22 @@ depending on only choices reused w/ different params.
       (cons (entry zones dist value* F #f) (- R F)))
 
     ;; perturb/proposal : Address Dist Any List -> (U (cons Entry Real) #f)
-    ;; If applicable proposal dist avail, updates db and returns (log) R-F,
-    ;; otherwise returns #f and perturb! should just resample.
     (define/private (perturb/proposal key-to-change dist value zones)
-      ;; return : Real Real Any -> Real
-      (define (return R F value*)
-        (when (verbose?)
-          (eprintf "  PROPOSED from ~e to ~e\n" value value*)
-          (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-        (define ll* (dist-pdf dist value* #t))
-        (cons (entry zones dist value* ll* #f) (- R F)))
-      (match dist
-        [(normal-dist mean stddev)
-         (and (memq 'normal perturb-mode)
-              (let ()
-                (define forward-dist
-                  (normal-dist value (/ stddev 4.0)))
-                (define value* (dist-sample forward-dist))
-                (define backward-dist
-                  (normal-dist value* (/ stddev 4.0)))
-                (define R (dist-pdf backward-dist value #t))
-                (define F (dist-pdf forward-dist value* #t))
-                (return R F value*)))]
-        [_ #f]))
+      (match (apply-proposal-map (proposal-map) zones dist value)
+        [(cons value* R-F)
+         (when (verbose?)
+           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
+           (eprintf "  R-F = ~s\n" R-F))
+         (define ll* (dist-pdf dist value* #t))
+         (cons (entry zones dist value* ll* #f) R-F)]
+        [#f #f]))
 
     ;; accept-threshold : Real Nat Nat Real -> Real
     (define/override (accept-threshold R-F nchoices last-nchoices ll-diff)
       (if (zero? last-nchoices)
           +inf.0
           ;; FIXME: what if nchoices != last-nchoices ???
+          ;; FIXME: nchoices, last-nchoices are not zone-specific
           (+ R-F ll-diff)))
     ))
 
@@ -285,7 +314,7 @@ depending on only choices reused w/ different params.
 (define (cycle . txs)
   (new cycle-mh-transition% (transitions txs)))
 (define single-site (new single-site-mh-transition%))
-(define all-sites (new all-sites-mh-transition%))
+(define multi-site (new multi-site-mh-transition%))
 
 ;; ============================================================
 
