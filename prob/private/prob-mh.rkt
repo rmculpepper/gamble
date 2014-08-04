@@ -115,6 +115,7 @@ depending on only choices reused w/ different params.
     (abstract accept-threshold)
     ))
 
+;; FIXME: add zone arg, only choose choice within that zone to perturb
 (define single-site-mh-transition%
   (class mh-transition-base%
     (init-field [perturb-mode default-perturb-mode])
@@ -196,6 +197,95 @@ depending on only choices reused w/ different params.
            (db-nth-unpinned db (random nchoices))))
     ))
 
+;; FIXME: add zone arg, perturb only choices in that zone
+(define all-sites-mh-transition%
+  (class mh-transition-base%
+    (init-field [perturb-mode default-perturb-mode])
+    (super-new)
+
+    ;; perturb : DB Nat -> (cons DB Real)
+    ;; Updates db and returns (log) R-F.
+    (define/override (perturb last-db last-nchoices)
+      (when (verbose?)
+        (eprintf "# perturb: changing all sites\n"))
+      (define-values (delta-db R-F)
+        (for/fold ([delta-db '#hash()] [R-F 0])
+            ([(key e) (in-hash last-db)]
+             #:when (not (entry-pinned? e)))
+          (match e
+            [(entry dist value ll #f)
+             (defmatch (cons e* R-F*)
+               (or (perturb/proposal key dist value)
+                   (perturb/resample key dist value)))
+             (values (hash-set delta-db key e*) (+ R-F R-F*))])))
+      (cons delta-db R-F))
+
+    ;; perturb/resample : Address Dist Any -> (cons Entry Real)
+    (define/private (perturb/resample key-to-change dist value)
+      ;; Fallback: Just resample from same dist.
+      ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
+      ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
+      (define value* (dist-sample dist))
+      (define R (dist-pdf dist value #t))
+      (define F (dist-pdf dist value* #t))
+      (when (verbose?)
+        (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
+        (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+      (cons (entry dist value* F #f) (- R F)))
+
+    ;; perturb/proposal : Address Dist Any -> (U (cons Entry Real) #f)
+    ;; If applicable proposal dist avail, updates db and returns (log) R-F,
+    ;; otherwise returns #f and perturb! should just resample.
+    (define/private (perturb/proposal key-to-change dist value)
+      ;; return : Real Real Any -> Real
+      (define (return R F value*)
+        (when (verbose?)
+          (eprintf "  PROPOSED from ~e to ~e\n" value value*)
+          (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+        (define ll* (dist-pdf dist value* #t))
+        (cons (entry dist value* ll* #f) (- R F)))
+      (match dist
+        [(normal-dist mean stddev)
+         (and (memq 'normal perturb-mode)
+              (let ()
+                (define forward-dist
+                  (normal-dist value (/ stddev 4.0)))
+                (define value* (dist-sample forward-dist))
+                (define backward-dist
+                  (normal-dist value* (/ stddev 4.0)))
+                (define R (dist-pdf backward-dist value #t))
+                (define F (dist-pdf forward-dist value* #t))
+                (return R F value*)))]
+        [_ #f]))
+
+    ;; accept-threshold : Real Nat Nat Real -> Real
+    (define/override (accept-threshold R-F nchoices last-nchoices ll-diff)
+      (if (zero? last-nchoices)
+          +inf.0
+          ;; FIXME: what if nchoices != last-nchoices ???
+          (+ R-F ll-diff)))
+    ))
+
+;; FIXME: don't rotate if transition rejected; need communication w/ sampler
+(define cycle-mh-transition%
+  (class* object% (mh-transition<%>)
+    (init-field transitions)
+    (super-new)
+
+    (set! transitions
+          (let ([p (make-placeholder)])
+            (placeholder-set! p (append transitions p))
+            (make-reader-graph p)))
+
+    (define/public (run thunk spconds last-trace)
+      (begin0 (send (car transitions) run thunk spconds last-trace)
+        (set! transitions (cdr transitions))))
+    ))
+
+(define (cycle . txs)
+  (new cycle-mh-transition% (transitions txs)))
+(define single-site (new single-site-mh-transition%))
+(define all-sites (new all-sites-mh-transition%))
 
 ;; ============================================================
 
@@ -209,12 +299,12 @@ depending on only choices reused w/ different params.
     (field [last-trace init-trace]
            [accepts 0]
            [cond-rejects 0]
-           [mh-rejects 0])
+           [mh-rejects 0]
+           [transition single-site])
     (super-new)
 
     (define/override (sample)
-      (define tx (new single-site-mh-transition%))
-      (define tr (send tx run thunk spconds last-trace))
+      (define tr (send transition run thunk spconds last-trace))
       (match tr
         [(trace sample-value current-db nchoices threshold)
          (when (verbose?)
