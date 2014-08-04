@@ -67,10 +67,8 @@ depending on only choices reused w/ different params.
 ;; (the default is to simply resample)
 (define default-perturb-mode '(normal))
 
-;; ----
 
-(define (mh-sampler* thunk spconds)
-  (new mh-sampler% (thunk thunk) (spconds spconds)))
+;; ============================================================
 
 ;; A RunResult is one of
 ;; - Trace              -- run completed, includes threshold (not yet checked)
@@ -78,7 +76,6 @@ depending on only choices reused w/ different params.
 
 ;; A Trace is (trace Any DB Nat Real)
 (struct trace (value db nchoices ll-diff))
-
 (define init-trace (trace #f '#hash() 0 0))
 
 (define mh-transition<%>
@@ -86,18 +83,14 @@ depending on only choices reused w/ different params.
     run ;; (-> A) SPConds Trace -> RunResult
     ))
 
-(define single-site-mh-transition%
+(define mh-transition-base%
   (class* object% (mh-transition<%>)
-    (init-field [perturb-mode default-perturb-mode])
     (super-new)
 
     ;; run : (-> A) SPConds Trace -> TransitionResult
     (define/public (run thunk spconds last-trace)
       (defmatch (trace _last-sample last-db last-nchoices _last-ll-diff) last-trace)
-      (define key-to-change (pick-a-key last-nchoices last-db))
-      (when (verbose?)
-        (eprintf "# perturb: changing ~s\n" key-to-change))
-      (defmatch (cons delta-db R-F) (perturb last-db key-to-change))
+      (defmatch (cons delta-db R-F) (perturb last-db last-nchoices))
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
@@ -115,9 +108,24 @@ depending on only choices reused w/ different params.
         [(cons 'fail fail-reason)
          result]))
 
-    ;; perturb : (U Address #f) -> (cons DB Real)
+    ;; perturb : DB Nat -> (cons DB Real)
+    (abstract perturb)
+
+    ;; accept-threshold : Real Nat Nat Real -> Real
+    (abstract accept-threshold)
+    ))
+
+(define single-site-mh-transition%
+  (class mh-transition-base%
+    (init-field [perturb-mode default-perturb-mode])
+    (super-new)
+
+    ;; perturb : DB Nat -> (cons DB Real)
     ;; Updates db and returns (log) R-F.
-    (define/private (perturb last-db key-to-change)
+    (define/override (perturb last-db last-nchoices)
+      (define key-to-change (pick-a-key last-nchoices last-db))
+      (when (verbose?)
+        (eprintf "# perturb: changing ~s\n" key-to-change))
       (if key-to-change
           (match (hash-ref last-db key-to-change)
             [(entry dist value ll #f)
@@ -163,9 +171,9 @@ depending on only choices reused w/ different params.
                 (return R F value*)))]
         [_ #f]))
 
-    ;; accept-threshold : ... -> Real
+    ;; accept-threshold : Real Nat Nat Real -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/private (accept-threshold R-F nchoices last-nchoices ll-diff)
+    (define/override (accept-threshold R-F nchoices last-nchoices ll-diff)
       (if (zero? last-nchoices)
           +inf.0
           (+ R-F (accept-threshold/nchoices nchoices last-nchoices) ll-diff)))
@@ -186,9 +194,13 @@ depending on only choices reused w/ different params.
     (define/private (pick-a-key nchoices db)
       (and (positive? nchoices)
            (db-nth-unpinned db (random nchoices))))
-
     ))
 
+
+;; ============================================================
+
+(define (mh-sampler* thunk spconds)
+  (new mh-sampler% (thunk thunk) (spconds spconds)))
 
 (define mh-sampler%
   (class sampler-base%
