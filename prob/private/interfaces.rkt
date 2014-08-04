@@ -12,6 +12,8 @@
          current-stochastic-ctx
          plain-stochastic-ctx%
          current-zones
+         zone-matches?
+         some-zone-matches?
          current-label
          (struct-out spcond:equal)
          current-derivatives)
@@ -82,7 +84,20 @@
 ;; ============================================================
 ;; Zones
 
+;; A Zone is any non-false value (but typically a symbol or list with
+;; symbols and numbers).
+
+;; A ZonePattern is one of
+;; - Zone  -- matches that zone
+;; - #f    -- matches anything
+
 (define current-zones (make-parameter null))
+
+(define (zone-matches? z zp)
+  (or (not zp) (equal? z zp)))
+
+(define (some-zone-matches? zs zp)
+  (or (not zp) (for/or ([z (in-list zs)]) (equal? z zp))))
 
 ;; ============================================================
 ;; Conditions

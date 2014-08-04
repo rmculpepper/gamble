@@ -29,6 +29,10 @@
   (defmatch (entry zones dist value ll pinned?) e)
   (entry zones dist (f value) ll pinned?))
 
+;; entry-in-zone? : Entry ZonePattern -> Boolean
+(define (entry-in-zone? e zp)
+  (or (not zp) (some-zone-matches? (entry-zones e) zp)))
+
 ;; ll-possible? : Real -> Boolean
 ;; Returns #t if (exp ll) is positive (ie, non-zero).
 (define (ll-possible? ll)
@@ -44,16 +48,18 @@
     (printf "~s => ~s\n" (car entry) (cadr entry))))
 
 ;; db-count-unpinned : DB -> Nat
-(define (db-count-unpinned db)
+(define (db-count-unpinned db #:zone [zp #f])
   (for/sum ([(k v) (in-hash db)]
-            #:when (not (entry-pinned? v)))
+            #:when (not (entry-pinned? v))
+            #:when (entry-in-zone? v zp))
     1))
 
 ;; db-nth-unpinned : DB Nat -> Address
 ;; FIXME: bleh, iteration
-(define (db-nth-unpinned db index)
+(define (db-nth-unpinned db index #:zone [zp #f])
   (let loop ([iter (hash-iterate-first db)] [i index])
-    (cond [(entry-pinned? (hash-iterate-value db iter))
+    (cond [(let ([e (hash-iterate-value db iter)])
+             (or (entry-pinned? e) (not (entry-in-zone? e zp))))
            (loop (hash-iterate-next db iter) i)]
           [(zero? i)
            (hash-iterate-key db iter)]
