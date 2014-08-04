@@ -5,7 +5,7 @@
 #lang racket/base
 (require racket/list
          racket/class
-         racket/match
+         (rename-in racket/match [match-define defmatch])
          racket/vector
          data/order
          "context.rkt"
@@ -18,15 +18,16 @@
 
 ;; A DB is (Hashof Address Entry)
 
-;; An Entry is (entry Dist Any Real Boolean)
+;; An Entry is (entry (listof Zone) Dist Any Real Boolean)
 ;; where the value is appropriate for the ERP denoted by the dist,
 ;; and pinned? indicates whether the value originated from a special condition
 ;; (and thus cannot be perturbed).
-(struct entry (dist value ll pinned?) #:prefab)
+(struct entry (zones dist value ll pinned?) #:prefab)
 
 ;; modify-entry-value : (Any -> Any) Entry -> Entry
 (define (entry-value-map f e)
-  (entry (entry-dist e) (f (entry-value e)) (entry-ll e) (entry-pinned? e)))
+  (defmatch (entry zones dist value ll pinned?) e)
+  (entry zones dist (f value) ll pinned?))
 
 ;; ll-possible? : Real -> Boolean
 ;; Returns #t if (exp ll) is positive (ie, non-zero).
@@ -65,7 +66,7 @@
 (define (db-ll db)
   (for/sum ([(k v) (in-hash db)])
     (match v
-      [(entry dist value ll _)
+      [(entry _ dist value ll _)
        (when #f
          (when (verbose?)
            (eprintf "  - ~e => ~e @ ~s\n" dist value (exp ll))))
@@ -196,7 +197,8 @@
              (define ll (dist-pdf dist value #t))
              (when (and print? (verbose?))
                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-             (hash-set! current-db context (entry dist value ll #f))
+             (hash-set! current-db context
+                        (entry (current-zones) dist value ll #f))
              (set! nchoices (add1 nchoices))
              value]))
 
@@ -219,7 +221,8 @@
                   (define value (entry-value e))
                   (when (verbose?)
                     (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
-                  (hash-set! current-db context (entry dist value new-ll (entry-pinned? e)))
+                  (hash-set! current-db context
+                             (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
@@ -243,7 +246,8 @@
                   (define value (entry-value e))
                   (when (verbose?)
                     (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
-                  (hash-set! current-db context (entry dist value new-ll (entry-pinned? e)))
+                  (hash-set! current-db context
+                             (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
@@ -279,7 +283,8 @@
                     (eprintf "- OBS UPDATE ....\n"))
                   (define ll (dist-pdf dist val #t))
                   (cond [(ll-possible? ll)
-                         (hash-set! current-db context (entry dist val ll #t))
+                         (hash-set! current-db context
+                                    (entry (current-zones) dist val ll #t))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
                         [else (fail 'observation)]))]
@@ -288,7 +293,8 @@
                (eprintf "- OBS NEW ~e: ~s = ~e\n" dist context val))
              (define ll (dist-pdf dist val #t))
              (cond [(ll-possible? ll)
-                    (hash-set! current-db context (entry dist val ll #t))]
+                    (hash-set! current-db context
+                               (entry (current-zones) dist val ll #t))]
                    [else (fail 'observation)])]))
 
     (define/private (mem-context? context)

@@ -129,13 +129,13 @@ depending on only choices reused w/ different params.
         (eprintf "# perturb: changing ~s\n" key-to-change))
       (if key-to-change
           (match (hash-ref last-db key-to-change)
-            [(entry dist value ll #f)
-             (or (perturb/proposal key-to-change dist value)
-                 (perturb/resample key-to-change dist value))])
+            [(entry zones dist value ll #f)
+             (or (perturb/proposal key-to-change dist value zones)
+                 (perturb/resample key-to-change dist value zones))])
           (cons '#hash() 0)))
 
-    ;; perturb/resample : Address Dist Any -> (cons DB Real)
-    (define/private (perturb/resample key-to-change dist value)
+    ;; perturb/resample : Address Dist Any List -> (cons DB Real)
+    (define/private (perturb/resample key-to-change dist value zones)
       ;; Fallback: Just resample from same dist.
       ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
       ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
@@ -145,19 +145,19 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-      (cons (hash key-to-change (entry dist value* F #f)) (- R F)))
+      (cons (hash key-to-change (entry zones dist value* F #f)) (- R F)))
 
-    ;; perturb/proposal : Address Dist Any -> (U (cons DB Real) #f)
+    ;; perturb/proposal : Address Dist Any List -> (U (cons DB Real) #f)
     ;; If applicable proposal dist avail, updates db and returns (log) R-F,
     ;; otherwise returns #f and perturb! should just resample.
-    (define/private (perturb/proposal key-to-change dist value)
+    (define/private (perturb/proposal key-to-change dist value zones)
       ;; return : Real Real Any -> Real
       (define (return R F value*)
         (when (verbose?)
           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
           (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
         (define ll* (dist-pdf dist value* #t))
-        (cons (hash key-to-change (entry dist value* ll* #f)) (- R F)))
+        (cons (hash key-to-change (entry zones dist value* ll* #f)) (- R F)))
       (match dist
         [(normal-dist mean stddev)
          (and (memq 'normal perturb-mode)
@@ -213,15 +213,15 @@ depending on only choices reused w/ different params.
             ([(key e) (in-hash last-db)]
              #:when (not (entry-pinned? e)))
           (match e
-            [(entry dist value ll #f)
+            [(entry zones dist value ll #f)
              (defmatch (cons e* R-F*)
-               (or (perturb/proposal key dist value)
-                   (perturb/resample key dist value)))
+               (or (perturb/proposal key dist value zones)
+                   (perturb/resample key dist value zones)))
              (values (hash-set delta-db key e*) (+ R-F R-F*))])))
       (cons delta-db R-F))
 
-    ;; perturb/resample : Address Dist Any -> (cons Entry Real)
-    (define/private (perturb/resample key-to-change dist value)
+    ;; perturb/resample : Address Dist Any List -> (cons Entry Real)
+    (define/private (perturb/resample key-to-change dist value zones)
       ;; Fallback: Just resample from same dist.
       ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
       ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
@@ -231,19 +231,19 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-      (cons (entry dist value* F #f) (- R F)))
+      (cons (entry zones dist value* F #f) (- R F)))
 
-    ;; perturb/proposal : Address Dist Any -> (U (cons Entry Real) #f)
+    ;; perturb/proposal : Address Dist Any List -> (U (cons Entry Real) #f)
     ;; If applicable proposal dist avail, updates db and returns (log) R-F,
     ;; otherwise returns #f and perturb! should just resample.
-    (define/private (perturb/proposal key-to-change dist value)
+    (define/private (perturb/proposal key-to-change dist value zones)
       ;; return : Real Real Any -> Real
       (define (return R F value*)
         (when (verbose?)
           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
           (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
         (define ll* (dist-pdf dist value* #t))
-        (cons (entry dist value* ll* #f) (- R F)))
+        (cons (entry zones dist value* ll* #f) (- R F)))
       (match dist
         [(normal-dist mean stddev)
          (and (memq 'normal perturb-mode)

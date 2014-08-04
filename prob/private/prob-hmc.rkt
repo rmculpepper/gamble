@@ -214,7 +214,7 @@ the database as the potential energy of the entire system.
                                  0
                                  (dist-sample d))]
                      [pinned (entry-pinned? e)])
-                (entry d v (dist-pdf d v #t) pinned)))
+                (entry null d v (dist-pdf d v #t) pinned)))
             curr-x-db))
   (define-values (next-x-db next-p-db)
     (hmc-leapfrog-proposal epsilon L

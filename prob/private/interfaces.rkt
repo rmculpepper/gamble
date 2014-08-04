@@ -11,6 +11,7 @@
          stochastic-ctx<%>
          current-stochastic-ctx
          plain-stochastic-ctx%
+         current-zones
          current-label
          (struct-out spcond:equal)
          current-derivatives)
@@ -77,6 +78,11 @@
 
 (define current-stochastic-ctx
   (make-parameter (new plain-stochastic-ctx%)))
+
+;; ============================================================
+;; Zones
+
+(define current-zones (make-parameter null))
 
 ;; ============================================================
 ;; Conditions
