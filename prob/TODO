@@ -5,11 +5,9 @@ Tentative plans for the near future:
 - sort out labels vs zones (more changes to entry, db-ctx)
   - I think labels should be unique, maybe replace addresses 
     when available. Zones nest, like Venture's "scope-include".
-  - attach MH custom proposals to zones
   - attach special conditions and derivatives to labels
 
 - weighted-sampler -> sampler via sampling-importance-resampling
-- multi-variable MH via zones
 - slice sampling
 - simulated annealing
 - calculate effective sample size
