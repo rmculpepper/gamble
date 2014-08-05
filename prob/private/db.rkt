@@ -178,20 +178,11 @@
             [else (sample/new dist context #t)]))
 
     (define/private (sample/collision dist context e)
-      (cond [(not (equal? (entry-dist e) dist))
-             (when (verbose?)
-               (eprintf "- MISMATCH ~a ~e / ~e: ~s\n"
-                        (if (mem-context? context) "MEMOIZED" "COLLISION")
-                        (entry-dist e) dist context))
-             (collision-error context)]
-            [(mem-context? context)
-             (when (verbose?)
-               (eprintf "- MEMOIZED ~e: ~s = ~e\n" dist context (entry-value e)))
-             (entry-value e)]
-            [else
-             (when (verbose?)
-               (eprintf "- COLLISION ~e: ~s\n" dist context))
-             (collision-error context)]))
+      (when (verbose?)
+        (eprintf "- COLLISION~a ~e: ~s\n"
+                 (if (mem-context? context) " (MEM)" "")
+                 dist context))
+      (collision-error context))
 
     (define/private (sample/new dist context print?)
       (cond [(assoc (current-label) spconds)
@@ -275,15 +266,10 @@
     (define/private (observe-at* dist val context)
       (cond [(hash-ref current-db context #f) ;; COLLISION
              => (lambda (e)
-                  (cond [(mem-context? context)
-                         (when (verbose?)
-                           (eprintf "- OBS MEMOIZED ~e / ~e ~s\n"
-                                    (entry-dist e) dist context))]
-                        [else
-                         (when (verbose?)
-                           (eprintf "- OBS COLLISION ~e / ~e: ~s\n"
-                                    (entry-dist e) dist context))
-                         (collision-error context)]))]
+                  (when (verbose?)
+                    (eprintf "- OBS COLLISION ~e / ~e: ~s\n"
+                             (entry-dist e) dist context))
+                  (collision-error context))]
             [(hash-ref delta-db context #f) ;; impossible
              => (lambda (e)
                   (error 'observe-at "internal error: cannot perturb an observation"))]
@@ -324,12 +310,15 @@
              context))
 
     (define/public (mem f)
-      (let ([context (get-context)])
+      (let ([context (get-context)]
+            [memo-table (make-hash)])
         (lambda args
-          (apply/delimit
-           (lambda ()
-             (parameterize ((the-context (list (list 'mem args context))))
-               (apply f args)))))))
+          (hash-ref! memo-table args
+                     (lambda ()
+                       (apply/delimit
+                        (lambda ()
+                          (parameterize ((the-context (list (list 'mem args context))))
+                            (apply f args)))))))))
     ))
 
 (define db-stochastic-derivative-ctx%
