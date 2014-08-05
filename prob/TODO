@@ -2,12 +2,16 @@ Tentative plans for the near future:
 
 - catch up on docs, tests
 
+- custom proposals that use info from trace (via labels??)
+
 - sort out labels vs zones (more changes to entry, db-ctx)
   - I think labels should be unique, maybe replace addresses 
     when available. Zones nest, like Venture's "scope-include".
   - attach special conditions and derivatives to labels
 
 - weighted-sampler -> sampler via sampling-importance-resampling
+  - Sean is skeptical of my plans :(
+    incremental sampling (as opposed to "take N samples and done") seems hard
 - slice sampling
 - simulated annealing
 - calculate effective sample size
@@ -25,9 +29,12 @@ Longer term:
   - sample
   - expectation
   - MAP, general argmax probability
+    - argmax over {all latent vars} vs {subset of latent vars}
     - gradient-descent methods
-  - probability at point (density estimation?)
-  - probability of predicate/event
+  - (marginal) probability
+    - at point (density estimation?)
+    - of predicate/event
+    - special cases of expectations
 
 - modules/models
   - represent with semi-AST to capture known structure
