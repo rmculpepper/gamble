@@ -10,7 +10,7 @@
                      racket/class
                      (except-in pict table)
                      (only-in plot/pict plot)
-                     (except-in plot plot)
+                     (except-in plot plot density)
                      prob
                      prob/viz
                      prob/viz/multi))

@@ -3,12 +3,15 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (rename-in plot)
+(require (rename-in plot
+                    [density plot-density]
+                    )
          data/order)
 (provide hist
          hist-pict
          bin
-         bin-pict)
+         bin-pict
+         density)
 
 (define (hist xs #:invert? [invert? #f])
   (hist* xs invert? plot))
@@ -28,6 +31,9 @@
 
 (define (bin-pict xs [nbins0 #f])
   (bin* xs nbins0 plot-pict))
+
+(define (density xs)
+  (plot (plot-density xs)))
 
 ;; Alternatively, use (plot (density ...))
 (define (bin* xs nbins0 plot)
