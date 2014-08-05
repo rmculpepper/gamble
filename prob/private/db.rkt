@@ -204,7 +204,8 @@
     (define/private (sample/delta dist context e)
       (define last-e (hash-ref last-db context #f))
       (cond [(not last-e)
-             (sample/last dist context e)]
+             (error 'sample "internal error: choice in delta but not last\n  context: ~e"
+                    context)]
             [(equal? (entry-dist e) dist)
              (when (verbose?)
                (eprintf "- PERTURBED ~e: ~s = ~e\n"
@@ -220,7 +221,7 @@
              => (lambda (new-ll)
                   (define value (entry-value e))
                   (when (verbose?)
-                    (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
+                    (eprintf "- PERTURBED* ~e: ~s = ~e\n" dist context value))
                   (hash-set! current-db context
                              (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
@@ -230,7 +231,8 @@
             [else
              (when (verbose?)
                (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
-             (sample/new dist context #f)]))
+             (error 'sample "internal error: choice in delta has wrong type\n  context: ~e"
+                    context)]))
 
     (define/private (sample/last dist context e)
       (cond [(equal? (entry-dist e) dist)
@@ -359,4 +361,3 @@
         (cons (vector-map (λ (lbl) (hash-ref relevant-labels lbl)) labels)
               derivative-fn)]
        [else #f]))))
-        
