@@ -93,21 +93,25 @@ depending on only choices reused w/ different params.
 ;; proposal-map : (parameterof ProposalMap)
 (define proposal-map (make-parameter '#hash()))
 
-#|
-;; Proposal function for Normal dist
-(lambda (dist value)
-  (match dist
-    [(normal-dist mean stddev)
-     (define forward-dist
-       (normal-dist value (/ stddev 4.0)))
-     (define value* (dist-sample forward-dist))
-     (define backward-dist
-       (normal-dist value* (/ stddev 4.0)))
-     (define R (dist-pdf backward-dist value #t))
-     (define F (dist-pdf forward-dist value* #t))
-     (cons value* (- R F))]
-    [_ #f]))
-|#
+(define (make-normal-proposal stddev-factor)
+  ;; Proposal function for Normal dist
+  (lambda (dist value)
+    (match dist
+      [(normal-dist mean stddev)
+       (define forward-dist
+         (normal-dist value (* stddev stddev-factor)))
+       (define value* (dist-sample forward-dist))
+       (define backward-dist
+         (normal-dist value* (* stddev stddev-factor)))
+       (define R (dist-pdf backward-dist value #t))
+       (define F (dist-pdf forward-dist value* #t))
+       (cons value* (- R F))]
+      [_ #f])))
+
+(proposal-map
+ (extend-proposal-map
+  (proposal-map)
+  #f (make-normal-proposal 1/4)))
 
 ;; ============================================================
 
