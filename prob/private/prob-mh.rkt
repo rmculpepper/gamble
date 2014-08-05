@@ -62,11 +62,6 @@ So, need to accumulate
 depending on only choices reused w/ different params.
 |#
 
-;; default-perturb-mode : list containing some subset of the following
-;; - 'normal : use specialized proposal distribution for normal dist
-;; (the default is to simply resample)
-(define default-perturb-mode '(normal))
-
 ;; ProposalMap = hash[ Zone => (listof ProposalFun) ])
 ;; where ProposalFun = (Dist Value -> (U (cons Value Real) #f))
 ;; The function returns a new value and the proposal's R-F.
@@ -164,8 +159,7 @@ depending on only choices reused w/ different params.
 
 (define single-site-mh-transition%
   (class mh-transition-base%
-    (init-field [zone #f]
-                [perturb-mode default-perturb-mode])
+    (init-field [zone #f])
     (super-new)
 
     ;; perturb : DB Nat -> (cons DB Real)
@@ -241,8 +235,7 @@ depending on only choices reused w/ different params.
 
 (define multi-site-mh-transition%
   (class mh-transition-base%
-    (init-field [zone #f]
-                [perturb-mode default-perturb-mode])
+    (init-field [zone #f])
     (super-new)
 
     ;; perturb : DB Nat -> (cons DB Real)
