@@ -343,6 +343,7 @@
   (class* db-stochastic-ctx% (stochastic-ctx<%>)
     (field [derivatives (make-hash)]      ;; (Hashof Address Derivative)
            [relevant-labels (make-hash)]) ;; (Hashof Label Address)
+    (super-new)
 
     (define/override (sample dist) 
       (record-current-label)
