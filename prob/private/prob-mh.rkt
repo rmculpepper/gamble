@@ -115,9 +115,9 @@ depending on only choices reused w/ different params.
 ;; - Trace              -- run completed, includes threshold (not yet checked)
 ;; - (cons 'failed any) -- run failed
 
-;; A Trace is (trace Any DB Nat Real)
-(struct trace (value db nchoices ll-diff))
-(define init-trace (trace #f '#hash() 0 0))
+;; A Trace is (trace Any DB Nat Real Real)
+(struct trace (value db nchoices ll-total threshold))
+(define init-trace (trace #f '#hash() 0 0 0))
 
 (define mh-transition<%>
   (interface ()
@@ -130,7 +130,7 @@ depending on only choices reused w/ different params.
 
     ;; run : (-> A) SPConds Trace -> TransitionResult
     (define/public (run thunk spconds last-trace)
-      (defmatch (trace _last-sample last-db last-nchoices _last-ll-diff) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (defmatch (cons delta-db R-F) (perturb last-db last-nchoices))
       (define ctx
         (new db-stochastic-ctx%
@@ -141,12 +141,13 @@ depending on only choices reused w/ different params.
       (define result (send ctx run thunk))
       (define current-db (get-field current-db ctx))
       (define nchoices (get-field nchoices ctx))
+      (define ll-total (get-field ll-total ctx))
       (define ll-diff (get-field ll-diff ctx))
       (match result
         [(cons 'okay sample-value)
          (define threshold
            (accept-threshold R-F current-db nchoices last-db last-nchoices ll-diff))
-         (trace sample-value current-db nchoices threshold)]
+         (trace sample-value current-db nchoices ll-total threshold)]
         [(cons 'fail fail-reason)
          result]))
 
@@ -325,10 +326,28 @@ depending on only choices reused w/ different params.
            [transition single-site])
     (super-new)
 
+    (define/public (MAP-estimate iters)
+      (*estimate iters trace-ll-total))
+    (define/public (MLE-estimate iters)
+      (define (trace-ll-obs t)
+        (defmatch (trace _ db _ _ _) t)
+        (db-ll-pinned db))
+      (*estimate iters trace-ll-obs))
+
+    (define/private (*estimate iters get-trace-ll)
+      (void (sample))
+      (define best-trace
+        (for/fold ([best-trace last-trace]) ([n (in-range iters)])
+          (void (sample))
+          (if (> (get-trace-ll last-trace) (get-trace-ll best-trace))
+              last-trace
+              best-trace)))
+      (trace-value best-trace))
+
     (define/override (sample)
       (define tr (send transition run thunk spconds last-trace))
       (match tr
-        [(trace sample-value current-db nchoices threshold)
+        [(trace sample-value current-db nchoices _ threshold)
          (when (verbose?)
            (eprintf "# accept threshold = ~s\n" (exp threshold)))
          (define u (log (random)))

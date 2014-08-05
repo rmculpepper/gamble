@@ -72,11 +72,16 @@
 (define (db-ll db)
   (for/sum ([(k v) (in-hash db)])
     (match v
-      [(entry _ dist value ll _)
-       (when #f
-         (when (verbose?)
-           (eprintf "  - ~e => ~e @ ~s\n" dist value (exp ll))))
-       ll])))
+      [(entry _ dist value ll _) ll])))
+
+;; db-ll-pinned : DB -> Real
+;; Returns sum of log-likelihoods of all pinned choices (ie observations)
+;; in the db.
+(define (db-ll-pinned db)
+  (for/sum ([(k v) (in-hash db)])
+    (match v
+      [(entry _ dist value ll #t) ll]
+      [_ 0])))
 
 ;; db-ll/fresh : DB DB Address -> Real
 ;; Returns sum of log-likelihoods of *fresh* choices (including pinned)

@@ -281,3 +281,22 @@
    R))
 (sampler->mean+variance s-c 1000)
 |#
+
+;; ----
+
+(define (make-lr a b e n)
+  (define ys (build-vector n (lambda (x) (+ (* x a) b (normal 0 e)))))
+  (mh-sampler
+   (define A (normal 0 10))
+   (define B (normal 0 10))
+   (define E (add1 (gamma 1 1)))
+   (define (data x y)
+     (observe-at (normal-dist (+ (* A x) B) E) y))
+   (for ([x n])
+     (data x (vector-ref ys x)))
+   (list A B E)))
+(define lr (make-lr 3 12 1 20))
+
+(for ([i #e1e4]) (void (lr))) ;; burn in
+(send lr MAP-estimate #e1e3)
+(send lr MAP-estimate #e1e4)
