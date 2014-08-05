@@ -139,11 +139,19 @@
     (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
                 spconds
+                [record-obs? #t]
                 [escape-prompt (make-continuation-prompt-tag)])
+
+    ;; Optimization: if record-obs? is #f, then don't enter observations (pinned entries)
+    ;; in current-db, and don't adjust ll-diff for them. This optimization is only safe
+    ;; if the set of observations is known to be constant; we recover the full ll-diff
+    ;; by adding difference of new ll-obs and last ll-obs.
+
     (field [current-db (make-hash)]
-           [nchoices 0]
-           [ll-total 0]
-           [ll-diff 0])
+           [nchoices 0]  ;; number of unpinned entries in current-db
+           [ll-free  0]  ;; sum of ll of all unpinned entries in current-db
+           [ll-obs   0]  ;; sum of ll of all observations
+           [ll-diff  0])
     (super-new)
 
     ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
@@ -203,7 +211,7 @@
              (hash-set! current-db context
                         (entry (current-zones) dist value ll #f))
              (set! nchoices (add1 nchoices))
-             (set! ll-total (+ ll-total ll))
+             (set! ll-free (+ ll-free ll))
              value]))
 
     (define/private (sample/delta dist context e)
@@ -217,7 +225,7 @@
                         dist context (entry-value e)))
              (hash-set! current-db context e)
              (set! nchoices (add1 nchoices))
-             (set! ll-total (+ ll-total (entry-ll e)))
+             (set! ll-free (+ ll-free (entry-ll e)))
              (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
@@ -230,7 +238,7 @@
                   (hash-set! current-db context
                              (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
-                  (set! ll-total (+ ll-total new-ll))
+                  (set! ll-free (+ ll-free new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
             [else
@@ -246,7 +254,7 @@
                         dist context (entry-value e)))
              (hash-set! current-db context e)
              (set! nchoices (add1 nchoices))
-             (set! ll-total (+ ll-total (entry-ll e)))
+             (set! ll-free (+ ll-free (entry-ll e)))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
                   (let ([new-ll (dist-pdf dist (entry-value e) #t)])
@@ -258,7 +266,7 @@
                   (hash-set! current-db context
                              (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
-                  (set! ll-total (+ ll-total new-ll))
+                  (set! ll-free (+ ll-free new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
             [else
@@ -280,7 +288,7 @@
             [(hash-ref delta-db context #f) ;; impossible
              => (lambda (e)
                   (error 'observe-at "internal error: cannot perturb an observation"))]
-            [(hash-ref last-db context #f) ;; RESCORE
+            [(and record-obs? (hash-ref last-db context #f)) ;; RESCORE
              => (lambda (e)
                   ;; FIXME: better diagnostic messages. What are the
                   ;; relevant cases? Do we care if an obs value changed?
@@ -290,18 +298,21 @@
                   (cond [(ll-possible? ll)
                          (hash-set! current-db context
                                     (entry (current-zones) dist val ll #t))
-                         (set! ll-total (+ ll-total ll))
+                         (set! ll-obs (+ ll-obs ll))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
                         [else (fail 'observation)]))]
             [else
              (when (verbose?)
-               (eprintf "- OBS NEW ~e: ~s = ~e\n" dist context val))
+               (eprintf "- OBS~a ~e: ~s = ~e\n" 
+                        (if record-obs? "" " NEW")
+                        dist context val))
              (define ll (dist-pdf dist val #t))
              (cond [(ll-possible? ll)
-                    (set! ll-total (+ ll-total ll))
-                    (hash-set! current-db context
-                               (entry (current-zones) dist val ll #t))]
+                    (set! ll-obs (+ ll-obs ll))
+                    (when record-obs?
+                      (hash-set! current-db context
+                                 (entry (current-zones) dist val ll #t)))]
                    [else (fail 'observation)])]))
 
     (define/private (mem-context? context)

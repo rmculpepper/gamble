@@ -116,11 +116,11 @@ depending on only choices reused w/ different params.
 ;; ============================================================
 
 ;; A RunResult is one of
-;; - Trace              -- run completed, includes threshold (not yet checked)
+;; - (cons Real Trace)  -- run completed, includes threshold (not yet checked)
 ;; - (cons 'failed any) -- run failed
 
 ;; A Trace is (trace Any DB Nat Real Real)
-(struct trace (value db nchoices ll-total threshold))
+(struct trace (value db nchoices ll-free ll-obs))
 (define init-trace (trace #f '#hash() 0 0 0))
 
 (define mh-transition<%>
@@ -130,35 +130,40 @@ depending on only choices reused w/ different params.
 
 (define mh-transition-base%
   (class* object% (mh-transition<%>)
+    (init-field [record-obs? #t])  ;; FIXME: default #t ??
     (super-new)
 
     ;; run : (-> A) SPConds Trace -> TransitionResult
     (define/public (run thunk spconds last-trace)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (defmatch (cons delta-db R-F) (perturb last-db last-nchoices))
+      (define last-db (trace-db last-trace))
+      (defmatch (cons delta-db R-F) (perturb last-trace))
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
              (delta-db delta-db)
-             (spconds spconds)))
+             (spconds spconds)
+             (record-obs? record-obs?)))
       ;; Run program
       (define result (send ctx run thunk))
-      (define current-db (get-field current-db ctx))
-      (define nchoices (get-field nchoices ctx))
-      (define ll-total (get-field ll-total ctx))
-      (define ll-diff (get-field ll-diff ctx))
       (match result
         [(cons 'okay sample-value)
+         (define current-db (get-field current-db ctx))
+         (define nchoices (get-field nchoices ctx))
+         (define ll-free (get-field ll-free ctx))
+         (define ll-obs (get-field ll-obs ctx))
+         (define ll-diff (get-field ll-diff ctx))
+         (define current-trace
+           (trace sample-value current-db nchoices ll-free ll-obs))
          (define threshold
-           (accept-threshold R-F current-db nchoices last-db last-nchoices ll-diff))
-         (trace sample-value current-db nchoices ll-total threshold)]
+           (accept-threshold last-trace R-F current-trace ll-diff record-obs?))
+         (cons threshold current-trace)]
         [(cons 'fail fail-reason)
          result]))
 
-    ;; perturb : DB Nat -> (cons DB Real)
+    ;; perturb : Trace -> (cons DB Real)
     (abstract perturb)
 
-    ;; accept-threshold : Real DB Nat DB Nat Real -> Real
+    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     (abstract accept-threshold)
     ))
 
@@ -167,8 +172,9 @@ depending on only choices reused w/ different params.
     (init-field [zone #f])
     (super-new)
 
-    ;; perturb : DB Nat -> (cons DB Real)
-    (define/override (perturb last-db last-nchoices)
+    ;; perturb : Trace -> (cons DB Real)
+    (define/override (perturb last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (define key-to-change (pick-a-key last-nchoices last-db))
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
@@ -203,9 +209,11 @@ depending on only choices reused w/ different params.
          (cons (hash key-to-change (entry zones dist value* ll* #f)) R-F)]
         [#f #f]))
 
-    ;; accept-threshold : Real DB Nat DB Nat Real -> Real
+    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/override (accept-threshold R-F current-db nchoices last-db last-nchoices ll-diff)
+    (define/override (accept-threshold last-trace R-F current-trace ll-diff record-obs?)
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ current-db nchoices _ _) current-trace)
       (let ([nchoices
              (cond [(eq? zone #f) nchoices]
                    [else (db-count-unpinned current-db #:zone zone)])]
@@ -214,7 +222,12 @@ depending on only choices reused w/ different params.
                    [else (db-count-unpinned last-db #:zone zone)])])
         (if (zero? last-nchoices)
             +inf.0
-            (+ R-F (accept-threshold/nchoices nchoices last-nchoices) ll-diff))))
+            (let ([ll-diff-obs
+                   (if record-obs?
+                       0 ;; already in ll-diff
+                       (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))])
+              (+ R-F (accept-threshold/nchoices nchoices last-nchoices)
+                 ll-diff ll-diff-obs)))))
 
     (define/private (accept-threshold/nchoices nchoices last-nchoices)
       ;; Account for backward and forward likelihood of picking
@@ -243,8 +256,9 @@ depending on only choices reused w/ different params.
     (init-field [zone #f])
     (super-new)
 
-    ;; perturb : DB Nat -> (cons DB Real)
-    (define/override (perturb last-db last-nchoices)
+    ;; perturb : Trace -> (cons DB Real)
+    (define/override (perturb last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (when (verbose?)
         (eprintf "# perturb: changing all sites\n"))
       (define-values (delta-db R-F)
@@ -284,13 +298,18 @@ depending on only choices reused w/ different params.
          (cons (entry zones dist value* ll* #f) R-F)]
         [#f #f]))
 
-    ;; accept-threshold : Real Nat Nat Real -> Real
-    (define/override (accept-threshold R-F nchoices last-nchoices ll-diff)
+    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
+    (define/override (accept-threshold last-trace R-F current-trace ll-diff record-obs?)
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (if (zero? last-nchoices)
           +inf.0
           ;; FIXME: what if nchoices != last-nchoices ???
           ;; FIXME: nchoices, last-nchoices are not zone-specific
-          (+ R-F ll-diff)))
+          (let ([ll-diff-obs
+                 (if record-obs?
+                     0 ;; already in ll-diff
+                     (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))])
+            (+ R-F ll-diff ll-diff-obs))))
     ))
 
 ;; FIXME: don't rotate if transition rejected; need communication w/ sampler
@@ -331,11 +350,10 @@ depending on only choices reused w/ different params.
     (super-new)
 
     (define/public (MAP-estimate iters)
+      (define (trace-ll-total t)
+        (+ (trace-ll-free t) (trace-ll-obs t)))
       (*estimate iters trace-ll-total))
     (define/public (MLE-estimate iters)
-      (define (trace-ll-obs t)
-        (defmatch (trace _ db _ _ _) t)
-        (db-ll-pinned db))
       (*estimate iters trace-ll-obs))
 
     (define/private (*estimate iters get-trace-ll)
@@ -351,7 +369,7 @@ depending on only choices reused w/ different params.
     (define/override (sample)
       (define tr (send transition run thunk spconds last-trace))
       (match tr
-        [(trace sample-value current-db nchoices _ threshold)
+        [(cons (? real? threshold) trace)
          (when (verbose?)
            (eprintf "# accept threshold = ~s\n" (exp threshold)))
          (define u (log (random)))
@@ -359,8 +377,8 @@ depending on only choices reused w/ different params.
                 (when (verbose?)
                   (eprintf "# Accepted MH step with ~s\n" (exp u)))
                 (set! accepts (add1 accepts))
-                (set! last-trace tr)
-                sample-value]
+                (set! last-trace trace)
+                (trace-value trace)]
                [else
                 (when (verbose?)
                   (eprintf "# Rejected MH step with ~s\n" (exp u)))

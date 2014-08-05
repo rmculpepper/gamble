@@ -295,8 +295,8 @@
    (for ([x n])
      (data x (vector-ref ys x)))
    (list A B E)))
-(define lr (make-lr 3 12 1 20))
+(define lr (make-lr 3 12 1 100))
 
-(for ([i #e1e4]) (void (lr))) ;; burn in
-(send lr MAP-estimate #e1e3)
-(send lr MAP-estimate #e1e4)
+;;(for ([i #e1e4]) (void (lr))) ;; burn in
+;;(send lr MAP-estimate #e1e3)
+;;(send lr MAP-estimate #e1e4)
