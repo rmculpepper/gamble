@@ -137,6 +137,7 @@
                 [escape-prompt (make-continuation-prompt-tag)])
     (field [current-db (make-hash)]
            [nchoices 0]
+           [ll-total 0]
            [ll-diff 0])
     (super-new)
 
@@ -206,6 +207,7 @@
              (hash-set! current-db context
                         (entry (current-zones) dist value ll #f))
              (set! nchoices (add1 nchoices))
+             (set! ll-total (+ ll-total ll))
              value]))
 
     (define/private (sample/delta dist context e)
@@ -218,6 +220,7 @@
                         dist context (entry-value e)))
              (hash-set! current-db context e)
              (set! nchoices (add1 nchoices))
+             (set! ll-total (+ ll-total (entry-ll e)))
              (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
@@ -230,6 +233,7 @@
                   (hash-set! current-db context
                              (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
+                  (set! ll-total (+ ll-total new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
             [else
@@ -244,6 +248,7 @@
                         dist context (entry-value e)))
              (hash-set! current-db context e)
              (set! nchoices (add1 nchoices))
+             (set! ll-total (+ ll-total (entry-ll e)))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
                   (let ([new-ll (dist-pdf dist (entry-value e) #t)])
@@ -255,6 +260,7 @@
                   (hash-set! current-db context
                              (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! nchoices (add1 nchoices))
+                  (set! ll-total (+ ll-total new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
             [else
@@ -291,6 +297,7 @@
                   (cond [(ll-possible? ll)
                          (hash-set! current-db context
                                     (entry (current-zones) dist val ll #t))
+                         (set! ll-total (+ ll-total ll))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
                         [else (fail 'observation)]))]
@@ -299,6 +306,7 @@
                (eprintf "- OBS NEW ~e: ~s = ~e\n" dist context val))
              (define ll (dist-pdf dist val #t))
              (cond [(ll-possible? ll)
+                    (set! ll-total (+ ll-total ll))
                     (hash-set! current-db context
                                (entry (current-zones) dist val ll #t))]
                    [else (fail 'observation)])]))
