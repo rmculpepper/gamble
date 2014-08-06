@@ -70,6 +70,8 @@ the database as the potential energy of the entire system.
             (if (not current-db)
                 (loop)
                 (set! last-db current-db)))))
+      (when (verbose?)
+        (eprintf "# okay, have a first sample ~e\n" last-db))
       (define-values
         (last-p-db next-x-db next-p-db)
         (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)

@@ -94,19 +94,20 @@
     (raise-argument-error 'position-step "hash" 3 epsilon thunk spconds x p))
   (unless (hash? p)
     (raise-argument-error 'position-step "hash" 4 epsilon thunk spconds x p))
-  (define delta-db
-    (db-map (λ (k e)
-              (if (entry-pinned? e)
-                  e
-                  (let ([p (entry-value (hash-ref p k))])
-                    (entry-value-map (λ (x)
-                                       (+ x (* epsilon p)))
-                                     e
-                                     #f))))
-            x
-            #:with-address #t))
-  
-  ; okay, so in principle delta-db is is what we want to return - it's
+  ; key property: we must leave pinned entries out of delta-x so that
+  ; they keep their old values from x (but with updated ll).
+  (define delta-x 
+    (let ([delta-x (make-hash)])
+      (for ([(k e) (in-hash x)]
+            #:when (not (entry-pinned? e)))
+        (let* ([p (entry-value (hash-ref p k))]
+               [delta-e (entry-value-map (λ (x)
+                                           (+ x (* epsilon p)))
+                                         e)])
+          (hash-set! delta-x k delta-e)))
+      delta-x))
+            
+  ; okay, so in principle delta-x is is what we want to return - it's
   ; the updated positions.  but that's not enough: we also need to update the parameters
   ; that are embedded within each distribution object.
   ;
@@ -129,7 +130,7 @@
   (define ctx
     (new db-stochastic-ctx%
          (last-db x)
-         (delta-db delta-db)
+         (delta-db delta-x)
          (spconds spconds)))
   
   (begin
