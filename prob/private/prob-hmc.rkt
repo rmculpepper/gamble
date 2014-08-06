@@ -44,18 +44,20 @@ the database as the potential energy of the entire system.
 
 |#
 
-;; hmc-sampler* : (-> A) PositiveReal PositiveInteger -> Sampler
-(define (hmc-sampler* thunk epsilon L)
+;; hmc-sampler* : (-> A) PositiveReal PositiveInteger SPConds -> Sampler
+(define (hmc-sampler* thunk epsilon L spconds)
   (new hmc-sampler%
        [thunk   thunk]
        [epsilon epsilon]
-       [L       L]))
+       [L       L]
+       [spconds spconds]))
 
 (define hmc-sampler%
   (class sampler-base%
     (init-field thunk
                 epsilon
-                L)
+                L
+                spconds)
     (field [last-db '#hash()]
            [answer #f]
            [gradients '#hash()])
@@ -100,9 +102,9 @@ the database as the potential energy of the entire system.
         (new db-stochastic-derivative-ctx%
              (last-db last-db)
              (delta-db delta-db)
-             (spconds null)))
-      (define ans-db (get-field current-db ctx))
+             (spconds spconds)))
       (define result (send ctx run thunk))
+      (define ans-db (get-field current-db ctx))
       (define grads (get-field derivatives ctx))
       (when (verbose?)
         (eprintf " (recorded derivatives are) ~e\n" grads)
