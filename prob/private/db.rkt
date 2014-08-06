@@ -357,6 +357,11 @@
       (record-current-derivatives)
       (super sample dist))
 
+    (define/override (observe-at dist val)
+      (record-current-label)
+      (record-current-derivatives)
+      (super observe-at dist val))
+    
     (define/private (record-current-label)
       (define lbl (current-label))
       (when lbl
