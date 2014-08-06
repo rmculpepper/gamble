@@ -72,7 +72,8 @@ the database as the potential energy of the entire system.
                 (set! last-db current-db)))))
       (define-values
         (last-p-db next-x-db next-p-db)
-        (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)))
+        (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)
+                  thunk spconds))
       (define alpha
         (hmc-acceptance-threshold last-db last-p-db next-x-db next-p-db))
       (define u (log (random)))
@@ -206,7 +207,7 @@ the database as the potential energy of the entire system.
 ;;
 ;; Construct randomly an initial momentum, then run L epsilon-steps
 ;; of Hamiltonian dynamics to arrive at a new position and momentum.
-(define (hmc-step curr-x-db epsilon L grad-potential-fn)
+(define (hmc-step curr-x-db epsilon L grad-potential-fn thunk spconds)
   (define curr-p-db
     (db-map (λ (e)
               ; pinned entries have zero kinetic energy
@@ -222,20 +223,33 @@ the database as the potential energy of the entire system.
     (hmc-leapfrog-proposal epsilon L
                            grad-potential-fn
                            curr-x-db
-                           curr-p-db))
+                           curr-p-db
+                           thunk
+                           spconds))
   (values curr-p-db next-x-db next-p-db))
   
+;; kinetic-energy DB[P] -> Real
+;;
+;; The kinetic energy of a momentum is proportional to
+;; dot(transpose(p),p).
+(define (kinetic-energy momentum-db)
+  (for/sum ([e (in-hash-values momentum-db)])
+    (let ([p (entry-value e)])
+      (* p p))))
+
 ;; hmc-acceptance-threshold : DB[X] DB[P] DB[X*] DB[P*] -> Real
 ;;
 ;; Compute the acceptance ratio for a move from the given position and
 ;; momentum to a proposed position and momentum
 (define (hmc-acceptance-threshold curr-x-db curr-p-db next-x-db next-p-db)
-  (define curr-x-ll (db-ll curr-x-db))
-  (define curr-p-ll (db-ll curr-p-db))
+  ;; U(x) = -log p(x)
+  (define curr-x-U (- (db-ll curr-x-db)))
+  ;; K(p) = dot(transpose(p), p)
+  (define curr-p-K (kinetic-energy curr-p-db))
 
-  (define next-x-ll (db-ll next-x-db))
-  (define next-p-ll (db-ll next-p-db))
+  (define next-x-U (- (db-ll next-x-db)))
+  (define next-p-K (kinetic-energy next-p-db))
   
-  (+ (- curr-x-ll) next-x-ll
-     (- curr-p-ll) next-p-ll))
+  (+ (- next-x-U) curr-x-U
+     (- curr-p-K) next-p-K))
 
