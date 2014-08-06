@@ -10,7 +10,7 @@
                   vector-member)
          "context.rkt"
          "db.rkt"
-         "hmc-leapfrog.rkt"
+         "hmc/leapfrog.rkt"
          "interfaces.rkt"
          "../dist.rkt"
          (only-in "util.rkt"
