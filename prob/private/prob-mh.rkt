@@ -101,11 +101,13 @@ depending on only choices reused w/ different params.
        (define forward-dist
          (normal-dist value (* stddev stddev-factor)))
        (define value* (dist-sample forward-dist))
+       #|
        (define backward-dist
          (normal-dist value* (* stddev stddev-factor)))
        (define R (dist-pdf backward-dist value #t))
        (define F (dist-pdf forward-dist value* #t))
-       (cons value* (- R F))]
+       |#
+       (cons value* #|(- R F)|# 0)]
       [_ #f])))
 
 (proposal-map
@@ -349,6 +351,8 @@ depending on only choices reused w/ different params.
            [transition single-site])
     (super-new)
 
+    ;; Note: {MAP,MLE}-estimate is argmax over *all* unconditioned variables.
+    ;; FIXME: figure out how to do subsets.
     (define/public (MAP-estimate iters)
       (define (trace-ll-total t)
         (+ (trace-ll-free t) (trace-ll-obs t)))

@@ -6,4 +6,6 @@
 
 (define name "prob")
 
-(define scribblings '(["scribblings/prob.scrbl" (multi-page)]))
+(define scribblings
+  '(["scribblings/prob.scrbl" (multi-page)]
+    ["scribblings/internal/prob-internal.scrbl" (multi-page)]))
