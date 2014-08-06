@@ -242,7 +242,7 @@ Produces a @emph{weighted sampler}.
 ]
 }
 
-@section[#:tag "hmc-utils"]{Special utilities for Harmonic Monte Carlo}
+@section[#:tag "hmc-utils"]{Special utilities for Hamiltonian Monte Carlo}
 
 The @racket[hmc-solver] requires that all the distrubutions in the
 model are continuous.  It further requires partial derivatives of each
