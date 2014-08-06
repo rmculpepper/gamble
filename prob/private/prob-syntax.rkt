@@ -151,13 +151,15 @@
     [(hmc-sampler def:expr ... result:expr
                   (~or (~optional (~seq #:epsilon epsilon:expr))
                        (~optional (~seq #:L L:expr))
-                       (~optional (~seq #:when condition:expr)))
+                       (~optional (~seq #:when condition:expr))
+                       (~seq #:cond sp:special-condition))
                   ...)
      (template
       (hmc-sampler*
        (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
        (?? epsilon 0.01)
-       (?? L 10)))]))
+       (?? L 10)
+       (list sp.e ...)))]))
 
 ;; ----
 
