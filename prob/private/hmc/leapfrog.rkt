@@ -5,12 +5,12 @@
 #lang racket/base
 
 (require racket/contract
-         "db.rkt"
-         (only-in "util.rkt"
+         "../db.rkt"
+         (only-in "../util.rkt"
                   verbose?
                   )
          racket/class
-         (only-in "interfaces.rkt"
+         (only-in "../interfaces.rkt"
                   spcond:equal?))
 
 (provide 
