@@ -208,7 +208,8 @@
              => (lambda (e)
                   (match (cdr e)
                     [(spcond:equal value)
-                     (observe-at* dist value context)]))]
+                     (observe-at* dist value context)
+                     value]))]
             [else
              (define value (dist-sample dist))
              (define ll (dist-pdf dist value #t))
