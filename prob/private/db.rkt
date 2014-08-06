@@ -24,10 +24,16 @@
 ;; (and thus cannot be perturbed).
 (struct entry (zones dist value ll pinned?) #:prefab)
 
-;; modify-entry-value : (Any -> Any) Entry -> Entry
-(define (entry-value-map f e)
+;; entry-value-map : (Any -> Any) Entry Boolean -> Entry
+(define (entry-value-map f e [update-ll #t])
   (defmatch (entry zones dist value ll pinned?) e)
-  (entry zones dist (f value) ll pinned?))
+  (define new-value (f value))
+  (entry zones
+         dist
+         new-value
+         (if update-ll (dist-pdf dist new-value #t) ll)
+         pinned?))
+
 
 ;; entry-in-zone? : Entry ZonePattern -> Boolean
 (define (entry-in-zone? e zp)
