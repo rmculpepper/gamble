@@ -13,7 +13,7 @@
 (provide (contract-out
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
-          [observe-at (-> dist? any/c void?)])
+          [observe-at (-> dist? any/c any)])
          fail)
 
 ;; mem and sample wrappers
@@ -28,9 +28,14 @@
 (provide
  (contract-out
   [flip
-   (->* [] [probability?] boolean?)]
+   (->* [] [probability?] 
+        any)]
   [bernoulli
-   (->* [] [probability?] (or/c 1 0))]
+   (->* [] [probability?] 
+        any)]
+  [categorical
+   (-> (vectorof (>=/c 0)) 
+       any)]
   [discrete
    (-> (or/c exact-positive-integer?
              (listof (cons/c any/c (>=/c 0))))
@@ -42,19 +47,19 @@
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
   (positive?
-   (sample (make-bernoulli-dist prob))))
+   (sample (bernoulli-dist prob))))
 
+;; bernoulli : Prob -> (U 1 0)
 (define (bernoulli [prob 1/2])
-  (inexact->exact
-   (sample (make-bernoulli-dist prob))))
+  (sample (bernoulli-dist prob)))
+
+;; categorical : (Vectorof Prob) -> Nat
+(define (categorical weights)
+  (sample (categorical-dist weights)))
 
 ;; discrete : Nat -> Nat
-;; discrete : (Listof (Cons A Prob)) -> A
 (define (discrete n/dist)
-  (cond [(list? n/dist)
-         (discrete/weights 'discrete (map car n/dist) (map cdr n/dist))]
-        [else
-         (discrete-uniform n/dist)]))
+  (discrete/weights 'discrete (map car n/dist) (map cdr n/dist)))
 
 ;; discrete* : (Listof A) (Listof Prob) -> A
 (define (discrete* vals [weights #f])
@@ -71,100 +76,91 @@
 
 ;; discrete-uniform : Nat -> Nat
 (define (discrete-uniform n)
-  (inexact->exact
-   (floor
-    (sample (make-categorical-dist (make-vector n (/ n)))))))
+  (sample (categorical-dist (make-vector n (/ n)))))
 
 ;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
 (define (discrete/weights who vals probs)
   (unless (positive? (apply + probs))
     (error who "weights list sum is not positive\n  weights: ~e" probs))
   (list-ref vals (inexact->exact
-                  (sample (make-categorical-dist probs)))))
+                  (sample (categorical-dist probs)))))
 
 ;; == Countable distributions ==
 
 (provide
  (contract-out
   [geometric
-   (->* [] [probability?]
-        exact-nonnegative-integer?)]
+   (->* [] [probability?] any)]
   [poisson
-   (->* [(>/c 0)] []
-        exact-nonnegative-integer?)]
+   (-> (>/c 0) any)]
   [binomial
-   (->* [exact-nonnegative-integer? probability?] []
-        exact-nonnegative-integer?)]))
+   (-> exact-nonnegative-integer? probability? any)]))
 
 ;; binomial : Nat Prob -> Integer
 ;; FIXME: discretizable
 (define (binomial n p)
-  (inexact->exact
-   (sample (make-binomial-dist n p))))
+  (sample (binomial-dist n p)))
 
 ;; geometric : Prob -> Integer
 ;; FIXME: discretizable
 (define (geometric [p 1/2])
-  (inexact->exact
-   (sample (make-geometric-dist p))))
+  (sample (geometric-dist p)))
 
 ;; poisson : Real -> Integer
 (define (poisson mean)
-  (inexact->exact
-   (sample (make-poisson-dist mean))))
+  (sample (poisson-dist mean)))
 
 ;; == Continuous distributions ==
 
 (provide
  (contract-out
   [beta
-   (-> (>/c 0) (>/c 0)
-       real?)]
+   (-> (>/c 0) (>/c 0) any)]
   [cauchy
-   (->* [] [real? (>/c 0)]
-        real?)]
+   (->* [] [real? (>/c 0)] any)]
   [exponential
-   (->* [] [(>/c 0)]
-        real?)]
+   (->* [] [(>/c 0)] any)]
   [gamma
-   (->* [] [(>/c 0) (>/c 0)]
-        real?)]
+   (->* [] [(>/c 0) (>/c 0)] any)]
   [logistic
-   (->* [] [real? (>/c 0)]
-        real?)]
+   (->* [] [real? (>/c 0)] any)]
   [normal
-   (->* [] [real? (>/c 0)]
-        real?)]
+   (->* [] [real? (>/c 0)] any)]
+  [pareto
+   (-> (>/c 0) (>/c 0) any)]
   [uniform
-   (->* [] [real? real?]
-        real?)]
+   (->* [] [real? real?] any)]
   ))
 
 ;; beta : PositiveReal PositiveReal -> Real in [0,1]
 (define (beta a b)
-  (sample (make-beta-dist a b)))
+  (sample (beta-dist a b)))
 
 (define (cauchy [mode 0] [scale 1])
-  (sample (make-cauchy-dist mode scale)))
+  (sample (cauchy-dist mode scale)))
 
 ;; exponential : PositiveReal -> PositiveReal
 ;; NOTE: mean aka scale = 1/rate
 (define (exponential [mean 1])
-  (sample (make-exponential-dist mean)))
+  (sample (exponential-dist mean)))
 
 ;; gamma : PositiveReal PositiveReal -> Real
 ;; NOTE: scale = 1/rate
 (define (gamma [shape 1] [scale 1])
-  (sample (make-gamma-dist shape scale)))
+  (sample (gamma-dist shape scale)))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
-  (sample (make-logistic-dist mean scale)))
+  (sample (logistic-dist mean scale)))
 
 ;; normal : Real PositiveReal -> Real
 ;; NOTE: stddev = (sqrt variance)
 (define (normal [mean 0] [stddev 1])
-  (sample (make-normal-dist mean stddev)))
+  (sample (normal-dist mean stddev)))
+
+;; pareto : Real Real -> Real
+(define (pareto shape scale)
+  (sample (pareto-dist shape scale)))
 
 ;; uniform : Real Real -> Real
 (define uniform
@@ -172,12 +168,13 @@
     [() (uniform 0 1)]
     [(max) (uniform 0 max)]
     [(min max)
-     (sample (make-uniform-dist min max))]))
+     (sample (uniform-dist min max))]))
 
 ;; ========================================
 
 (provide sampler->discrete-dist
          sampler->mean+variance
+         sampler->means+covariance
          indicator/value
          indicator/predicate)
 
@@ -206,13 +203,7 @@
 
 (define (sampler->mean+variance s n [f values])
   (define-values (sum-w sum-f sum-f^2)
-    (cond [(is-a? s sampler<%>)
-           (define-values (sum-f sum-f^2)
-             (for/fold ([sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
-               (let ([v (f (send s sample))])
-                 (values (+ sum-f v) (+ sum-f^2 (* v v))))))
-           (values n sum-f sum-f^2)]
-          [(is-a? s weighted-sampler<%>)
+    (cond [(is-a? s weighted-sampler<%>)
            (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
              (let* ([v+w (send s sample/weight)]
                     [v (f (car v+w))]
@@ -222,6 +213,45 @@
   (define Ef (/ sum-f sum-w))
   (values Ef
           (- (/ sum-f^2 sum-w) (* Ef Ef))))
+
+(define (sampler->means+covariance s n [f values])
+  ;; Cov[x,y] = E[(x-E[x])(y-E[y])^T] = E[x*y^T] - E[x]*E[y]^T
+  (define sum-fs #f)
+  (define cov #f)
+  (define (check-real-vector fv)
+    (unless (and (vector? fv) (for/and ([e (in-vector fv)]) (real? e)))
+      (error 'sampler->means+covariance
+             "value is not a vector of reals\n  value: ~e" fv)))
+  (define (handle-sample fv)
+    (for ([ei (in-vector fv)] [i (in-naturals)])
+      (vector-set! sum-fs i (+ (vector-ref sum-fs i) ei))
+      (define cov_i (vector-ref cov i))
+      (for ([ej (in-vector fv)] [j (in-naturals)])
+        (vector-set! cov_i j (+ (vector-ref cov_i j) (* ei ej))))))
+  (let ([v (send s sample)])
+    (define fv (f v))
+    (check-real-vector fv)
+    (set! sum-fs (make-vector (vector-length fv)))
+    (set! cov (make-vector (vector-length fv) #f))
+    (for ([i (in-range (vector-length fv))])
+      (vector-set! cov i (make-vector (vector-length fv) 0)))
+    (handle-sample fv))
+  (for ([i (in-range (sub1 n))])
+    (define v (send s sample))
+    (define fv (f v))
+    (check-real-vector fv)
+    (unless (= (vector-length fv) (vector-length sum-fs))
+      (error 'sampler->means+covariance
+             "vector has wrong number of elements\n  expected: ~e\n  value: ~e"
+             (vector-length sum-fs) fv))
+    (handle-sample fv))
+  (for ([i (in-range (vector-length sum-fs))])
+    (vector-set! sum-fs i (/ (vector-ref sum-fs i) n)))
+  (for ([meani (in-vector sum-fs)] [i (in-naturals)])
+    (define cov_i (vector-ref cov i))
+    (for ([meanj (in-vector sum-fs)] [j (in-naturals)])
+      (vector-set! cov_i j (- (/ (vector-ref cov_i j) n) (* meani meanj)))))
+  (values sum-fs cov))
 
 (define ((indicator/value v) x)
   (if (equal? x v) 1 0))

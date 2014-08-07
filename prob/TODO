@@ -16,6 +16,7 @@ Tentative plans for the near future:
 - simulated annealing
 - calculate effective sample size
   - typically for SMC, but maybe also for importance sampler?
+- evidence softening
 
 Longer term:
 

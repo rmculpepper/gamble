@@ -21,7 +21,11 @@
          hmc-sampler
          enumerate
          enum-importance-sampler
+         cycle
+         single-site
+         multi-site
          label
+         with-zone
          derivative
          ppromise?
          pdelay
@@ -72,18 +76,14 @@
     (define/override (fail reason)
       (escape (cons 'fail reason)))
     (define/override (observe-at dist val)
-      (cond [(dist-pdf-max dist)
-             => (lambda (maxpdf)
-                  (unless (< (* (random) maxpdf) (dist-pdf dist val))
-                    (fail 'observation)))]
-            [(finite-dist? dist)
+      (cond [(or (finite-dist? dist) (integer-dist? dist))
+             ;; ie, actually have pmf
              (unless (< (random) (dist-pdf dist val))
                (fail 'observation))]
             [else
              (error 'observe-at
                     (string-append 
                      "observation on distribution not supported by rejection sampler"
-                     ";\n cannot determine multiplier for distribution"
                      "\n  distribution: ~e")
                     dist)]))
     ))
@@ -202,6 +202,11 @@
 
 (define-syntax-rule (label l e)
   (parameterize ((current-label l)) e))
+
+;; ----
+
+(define-syntax-rule (with-zone z e ...)
+  (parameterize ((current-zones (cons z (current-zones)))) e ...))
 
 ;; ----
 
