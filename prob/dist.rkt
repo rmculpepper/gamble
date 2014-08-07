@@ -282,11 +282,9 @@
   #:Denergy (lambda (x [dx 1] [dk 0] [dθ 0])
               (define k shape)
               (define θ scale)
-              (+ (lazy* dx (+ (/ (- 1 k) x)) (/ θ))
-                 (ifnz [dk dθ]
-                       (+ (* (expt θ k) (+ (* (log θ) dk) (* (/ k θ) dθ)))
-                          (lazy* dk (- (digamma k) (log x)))
-                          (lazy* dθ (- (/ x (* θ θ))))))))
+              (+ (lazy* dx (+ (/ (- 1 k) x) (/ θ)))
+                 (lazy* dk (+ (digamma k) (log θ) (- (log x))))
+                 (lazy* dθ (- (/ k θ) (/ x (* θ θ))))))
   #:conjugate (lambda (data-d data)
                 (match data-d
                   [`(poisson-dist _)
