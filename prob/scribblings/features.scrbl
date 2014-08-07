@@ -82,12 +82,7 @@ created. See @seclink["nesting"] for more discussion.
 
 
 @; ------------------------------------------------------------
-@section[#:tag "erps"]{Elementary Random Procedures}
-
-An @deftech[#:key "erp"]{elementary random procedure (ERP)} returns a
-value drawn from some distribution each time it is called.
-
-@subsection[#:tag "discrete-erps"]{Discrete ERPs}
+@section[#:tag "discrete-erps"]{Discrete ERPs}
 
 @defproc[(flip [p (real-in 0 1) 1/2])
          boolean?]{
@@ -98,20 +93,14 @@ probability @racket[(- 1 p)].
 Equivalent to @racket[(= 1 (sample (bernoulli-dist p)))].
 }
 
-@defproc*[([(discrete [n exact-positive-integer?])
-            exact-nonnegative-integer?]
-           [(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
-            any/c])]{
+@defproc[(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
+         any/c]{
 
-In the first form, returns an integer drawn uniformly from [0, @racket[n]).
+Given @racket[(discrete (list (cons _val _weight) ...))], returns a
+value drawn from the @racket[_val]s with probability proportional to
+the corresponding @racket[_weight].
 
-In the second form, @racket[(discrete (list (cons _val _weight) ...))]
-returns a value drawn from the @racket[_val]s with probability
-proportional to the corresponding @racket[_weight].
-
-Equivalent to
-@racket[(sample (make-discrete-dist (for/hash ([i n]) (values i (/ n)))))]
-and @racket[(sample (make-discrete-dist weighted-vals))], respectively.
+Equivalent to @racket[(sample (make-discrete-dist weighted-vals))].
 }
 
 @defproc[(discrete* [vals (non-empty-listof any/c)]
@@ -126,7 +115,8 @@ Equivalent to @racket[(sample (make-discrete-dist* vals weights))].
 }
 
 
-@subsection[#:tag "integer-erps"]{Integer-Valued ERPs}
+@; ------------------------------------------------------------
+@section[#:tag "integer-erps"]{Integer-Valued ERPs}
 
 @defproc[(bernoulli [p (real-in 0 1) 1/2])
          (or/c 1 0)]{
@@ -144,6 +134,21 @@ Equivalent to @racket[(sample (bernoulli-dist p))].
 Equivalent to @racket[(sample (binomial-dist count p))].
 }
 
+@defproc[(categorical [weights (vectorof (>=/c 0))])
+         exact-nonnegative-integer?]{
+
+Equivalent to @racket[(sample (categorical-dist weights))].
+}
+
+@defproc[(discrete-uniform [n exact-positive-integer?])
+         exact-nonnegative-integer?]{
+
+Returns an integer drawn uniformly from [0, @racket[n]).
+
+Equivalent to
+@racket[(sample (categorical-dist (make-vector n (/ n))))].
+}
+
 @defproc[(geometric [p (real-in 0 1) 1/2])
          exact-nonnegative-integer?]{
 
@@ -157,7 +162,8 @@ Equivalent to @racket[(sample (poisson-dist mean))].
 }
 
 
-@subsection[#:tag "real-erps"]{Real-Valued ERPs}
+@; ------------------------------------------------------------
+@section[#:tag "real-erps"]{Real-Valued ERPs}
 
 @defproc[(beta [a (>/c 0)]
                [b (>/c 0)])
@@ -198,6 +204,12 @@ Equivalent to @racket[(sample (logistic-dist mean scale))].
          real?]{
 
 Equivalent to @racket[(sample (normal-dist mean stddev))].
+}
+
+@defproc[(pareto [scale (>/c 0)] [shape (>/c 0)])
+         real?]{
+
+Equivalent to @racket[(sample (pareto-dist scale shape))].
 }
 
 @defproc*[([(uniform)

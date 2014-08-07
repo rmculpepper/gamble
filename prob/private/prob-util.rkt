@@ -28,9 +28,14 @@
 (provide
  (contract-out
   [flip
-   (->* [] [probability?] boolean?)]
+   (->* [] [probability?] 
+        any)]
   [bernoulli
-   (->* [] [probability?] (or/c 1 0))]
+   (->* [] [probability?] 
+        any)]
+  [categorical
+   (-> (vectorof (>=/c 0)) 
+       any)]
   [discrete
    (-> (or/c exact-positive-integer?
              (listof (cons/c any/c (>=/c 0))))
@@ -42,19 +47,19 @@
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
   (positive?
-   (sample (make-bernoulli-dist prob))))
+   (sample (bernoulli-dist prob))))
 
+;; bernoulli : Prob -> (U 1 0)
 (define (bernoulli [prob 1/2])
-  (inexact->exact
-   (sample (make-bernoulli-dist prob))))
+  (sample (bernoulli-dist prob)))
+
+;; categorical : (Vectorof Prob) -> Nat
+(define (categorical weights)
+  (sample (categorical-dist weights)))
 
 ;; discrete : Nat -> Nat
-;; discrete : (Listof (Cons A Prob)) -> A
 (define (discrete n/dist)
-  (cond [(list? n/dist)
-         (discrete/weights 'discrete (map car n/dist) (map cdr n/dist))]
-        [else
-         (discrete-uniform n/dist)]))
+  (discrete/weights 'discrete (map car n/dist) (map cdr n/dist)))
 
 ;; discrete* : (Listof A) (Listof Prob) -> A
 (define (discrete* vals [weights #f])
@@ -71,100 +76,91 @@
 
 ;; discrete-uniform : Nat -> Nat
 (define (discrete-uniform n)
-  (inexact->exact
-   (floor
-    (sample (make-categorical-dist (make-vector n (/ n)))))))
+  (sample (categorical-dist (make-vector n (/ n)))))
 
 ;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
 (define (discrete/weights who vals probs)
   (unless (positive? (apply + probs))
     (error who "weights list sum is not positive\n  weights: ~e" probs))
   (list-ref vals (inexact->exact
-                  (sample (make-categorical-dist probs)))))
+                  (sample (categorical-dist probs)))))
 
 ;; == Countable distributions ==
 
 (provide
  (contract-out
   [geometric
-   (->* [] [probability?]
-        exact-nonnegative-integer?)]
+   (->* [] [probability?] any)]
   [poisson
-   (->* [(>/c 0)] []
-        exact-nonnegative-integer?)]
+   (-> (>/c 0) any)]
   [binomial
-   (->* [exact-nonnegative-integer? probability?] []
-        exact-nonnegative-integer?)]))
+   (-> exact-nonnegative-integer? probability? any)]))
 
 ;; binomial : Nat Prob -> Integer
 ;; FIXME: discretizable
 (define (binomial n p)
-  (inexact->exact
-   (sample (make-binomial-dist n p))))
+  (sample (binomial-dist n p)))
 
 ;; geometric : Prob -> Integer
 ;; FIXME: discretizable
 (define (geometric [p 1/2])
-  (inexact->exact
-   (sample (make-geometric-dist p))))
+  (sample (geometric-dist p)))
 
 ;; poisson : Real -> Integer
 (define (poisson mean)
-  (inexact->exact
-   (sample (make-poisson-dist mean))))
+  (sample (poisson-dist mean)))
 
 ;; == Continuous distributions ==
 
 (provide
  (contract-out
   [beta
-   (-> (>/c 0) (>/c 0)
-       real?)]
+   (-> (>/c 0) (>/c 0) any)]
   [cauchy
-   (->* [] [real? (>/c 0)]
-        real?)]
+   (->* [] [real? (>/c 0)] any)]
   [exponential
-   (->* [] [(>/c 0)]
-        real?)]
+   (->* [] [(>/c 0)] any)]
   [gamma
-   (->* [] [(>/c 0) (>/c 0)]
-        real?)]
+   (->* [] [(>/c 0) (>/c 0)] any)]
   [logistic
-   (->* [] [real? (>/c 0)]
-        real?)]
+   (->* [] [real? (>/c 0)] any)]
   [normal
-   (->* [] [real? (>/c 0)]
-        real?)]
+   (->* [] [real? (>/c 0)] any)]
+  [pareto
+   (-> (>/c 0) (>/c 0) any)]
   [uniform
-   (->* [] [real? real?]
-        real?)]
+   (->* [] [real? real?] any)]
   ))
 
 ;; beta : PositiveReal PositiveReal -> Real in [0,1]
 (define (beta a b)
-  (sample (make-beta-dist a b)))
+  (sample (beta-dist a b)))
 
 (define (cauchy [mode 0] [scale 1])
-  (sample (make-cauchy-dist mode scale)))
+  (sample (cauchy-dist mode scale)))
 
 ;; exponential : PositiveReal -> PositiveReal
 ;; NOTE: mean aka scale = 1/rate
 (define (exponential [mean 1])
-  (sample (make-exponential-dist mean)))
+  (sample (exponential-dist mean)))
 
 ;; gamma : PositiveReal PositiveReal -> Real
 ;; NOTE: scale = 1/rate
 (define (gamma [shape 1] [scale 1])
-  (sample (make-gamma-dist shape scale)))
+  (sample (gamma-dist shape scale)))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
-  (sample (make-logistic-dist mean scale)))
+  (sample (logistic-dist mean scale)))
 
 ;; normal : Real PositiveReal -> Real
 ;; NOTE: stddev = (sqrt variance)
 (define (normal [mean 0] [stddev 1])
-  (sample (make-normal-dist mean stddev)))
+  (sample (normal-dist mean stddev)))
+
+;; pareto : Real Real -> Real
+(define (pareto shape scale)
+  (sample (pareto-dist shape scale)))
 
 ;; uniform : Real Real -> Real
 (define uniform
@@ -172,7 +168,7 @@
     [() (uniform 0 1)]
     [(max) (uniform 0 max)]
     [(min max)
-     (sample (make-uniform-dist min max))]))
+     (sample (uniform-dist min max))]))
 
 ;; ========================================
 
