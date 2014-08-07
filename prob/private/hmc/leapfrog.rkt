@@ -5,13 +5,15 @@
 #lang racket/base
 
 (require racket/contract
+         racket/class
+         "system.rkt"
          "../db.rkt"
          (only-in "../util.rkt"
                   verbose?
                   )
-         racket/class
          (only-in "../interfaces.rkt"
-                  spcond:equal?))
+                  spcond:equal?)
+         )
 
 (provide 
  (contract-out
@@ -19,11 +21,10 @@
    (-> (>/c 0)
        exact-nonnegative-integer?
        (-> any/c hash? real?)
-       hash?
-       hash?
+       hmc-system?
        (-> any/c)
        (listof (cons/c symbol? spcond:equal?))
-       (or/c (list/c 'okay hash? hash?)
+       (or/c (list/c 'okay hmc-system?)
              (list/c 'fail any/c)))]))
 
 ;; Compute an update step for Hamiltonian Monte Carlo using the leapfrog method.
@@ -34,18 +35,16 @@
 ;;  PositiveReal
 ;;  NonNegativeInteger
 ;;  (Address Position -> Momentum) ; partial derivative with respect to Address at Position
-;;  Position
-;;  Momentum
+;;  HMC-System
 ;;  (-> Any) ; model thunk
 ;;  SpConds
-;;  -> (List 'okay Position Momentum)
+;;  -> (List 'okay HMC-System)
 ;;     | (List 'fail Any)
 (define (hmc-leapfrog-proposal
          epsilon
          L
          grad-potential-fn
-         x0
-         p0
+         sys0
          thunk
          spconds)
   (let* ([half-epsilon  (/ epsilon 2.0)]
@@ -60,28 +59,27 @@
     (call-with-continuation-prompt
      (λ ()
        (let loop ([i (- L 1)]
-                  [x x0]
-                  ;; half step momentum using old position
-                  [p (P-half-step x0 p0)])
+                  ;; To start, step momentum by a half-step.  It's now
+                  ;; a half time-step ahead and will be for the next L-1 iterations.
+                  [sys (hmc-system-evolve-P sys0 P-half-step)])
          (if (zero? i)
-             (let* ([last-x
-                     ;; one last full step for the position. it's now at (* epsilon L)
-                     (X-step x p)]
-                    [last-p
-                     ;; momentum is a half epsilon behind. catch up.
-                     (P-half-step last-x p)])
-               (list 'okay last-x last-p))
-             (let* ([next-x
-                     ;; full step position
-                     (X-step x p)]
-                    [next-p
-                     ;; conceptually two half-steps: one for the end of the
-                     ;; current loop iteration, and one for the beginning
-                     ;; of the next iteration.
-                     (P-step next-x p)])
+             (let ([new-sys
+                    ;; One last full step for the position. it's now
+                    ;; at time (* epsilon L).  Then since momentum now
+                    ;; fell a half step behind, catch up.
+                     (hmc-system-evolve-P (hmc-system-evolve-X sys X-step)
+                                          P-half-step)])
+               (list 'okay new-sys))
+             (let
+                 ;; Full step position, then conceptually two
+                 ;; half-steps for momentum: one for the end of the
+                 ;; current loop iteration, and one for the beginning
+                 ;; of the next iteration.
+                 ([next-sys (hmc-system-evolve-P (hmc-system-evolve-X sys X-step)
+                                                 P-step)])
                (when (verbose?)
-                 (eprintf "    step position ~e\n    step momentum ~e\n" next-x next-p))
-               (loop (- i 1) next-x next-p)))))
+                 (eprintf "    stepped to ~e\n" next-sys))
+               (loop (- i 1) next-sys)))))
      escape-prompt)))
          
 (define ((momentum-step epsilon grad-potential-fn) x p)
