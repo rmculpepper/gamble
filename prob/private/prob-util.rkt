@@ -178,6 +178,7 @@
 
 (provide sampler->discrete-dist
          sampler->mean+variance
+         sampler->means+covariance
          indicator/value
          indicator/predicate)
 
@@ -206,13 +207,7 @@
 
 (define (sampler->mean+variance s n [f values])
   (define-values (sum-w sum-f sum-f^2)
-    (cond [(is-a? s sampler<%>)
-           (define-values (sum-f sum-f^2)
-             (for/fold ([sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
-               (let ([v (f (send s sample))])
-                 (values (+ sum-f v) (+ sum-f^2 (* v v))))))
-           (values n sum-f sum-f^2)]
-          [(is-a? s weighted-sampler<%>)
+    (cond [(is-a? s weighted-sampler<%>)
            (for/fold ([sum-w 0.0] [sum-f 0.0] [sum-f^2 0.0]) ([i (in-range n)])
              (let* ([v+w (send s sample/weight)]
                     [v (f (car v+w))]
@@ -222,6 +217,45 @@
   (define Ef (/ sum-f sum-w))
   (values Ef
           (- (/ sum-f^2 sum-w) (* Ef Ef))))
+
+(define (sampler->means+covariance s n [f values])
+  ;; Cov[x,y] = E[(x-E[x])(y-E[y])^T] = E[x*y^T] - E[x]*E[y]^T
+  (define sum-fs #f)
+  (define cov #f)
+  (define (check-real-vector fv)
+    (unless (and (vector? fv) (for/and ([e (in-vector fv)]) (real? e)))
+      (error 'sampler->means+covariance
+             "value is not a vector of reals\n  value: ~e" fv)))
+  (define (handle-sample fv)
+    (for ([ei (in-vector fv)] [i (in-naturals)])
+      (vector-set! sum-fs i (+ (vector-ref sum-fs i) ei))
+      (define cov_i (vector-ref cov i))
+      (for ([ej (in-vector fv)] [j (in-naturals)])
+        (vector-set! cov_i j (+ (vector-ref cov_i j) (* ei ej))))))
+  (let ([v (send s sample)])
+    (define fv (f v))
+    (check-real-vector fv)
+    (set! sum-fs (make-vector (vector-length fv)))
+    (set! cov (make-vector (vector-length fv) #f))
+    (for ([i (in-range (vector-length fv))])
+      (vector-set! cov i (make-vector (vector-length fv) 0)))
+    (handle-sample fv))
+  (for ([i (in-range (sub1 n))])
+    (define v (send s sample))
+    (define fv (f v))
+    (check-real-vector fv)
+    (unless (= (vector-length fv) (vector-length sum-fs))
+      (error 'sampler->means+covariance
+             "vector has wrong number of elements\n  expected: ~e\n  value: ~e"
+             (vector-length sum-fs) fv))
+    (handle-sample fv))
+  (for ([i (in-range (vector-length sum-fs))])
+    (vector-set! sum-fs i (/ (vector-ref sum-fs i) n)))
+  (for ([meani (in-vector sum-fs)] [i (in-naturals)])
+    (define cov_i (vector-ref cov i))
+    (for ([meanj (in-vector sum-fs)] [j (in-naturals)])
+      (vector-set! cov_i j (- (/ (vector-ref cov_i j) n) (* meani meanj)))))
+  (values sum-fs cov))
 
 (define ((indicator/value v) x)
   (if (equal? x v) 1 0))
