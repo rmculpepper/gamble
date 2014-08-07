@@ -72,20 +72,28 @@ the database as the potential energy of the entire system.
                 (set! last-db current-db)))))
       (when (verbose?)
         (eprintf "# okay, have a first sample ~e\n" last-db))
-      (define-values
-        (last-p-db next-x-db next-p-db)
-        (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)
-                  thunk spconds))
-      (define alpha
-        (hmc-acceptance-threshold last-db last-p-db next-x-db next-p-db))
+      (define-values (next-energy next-db alpha)
+        (match 
+            (hmc-step last-db epsilon L (hmc-gradient-potential-fn gradients)
+                      thunk spconds)
+          [(list 'okay last-p-db next-x-db next-p-db)
+           (let-values ([(next-energy alpha)
+                         (hmc-acceptance-threshold last-db last-p-db next-x-db next-p-db)])
+             (values next-energy next-x-db alpha))]
+          [(list 'fail reason)
+           (when (verbose?)
+             (eprintf "# bad proposal ~e\n" reason))
+           (values +nan.0 #f -inf.0)]))
       (define u (log (random)))
       (when (verbose?)
         (eprintf "# accept threshold = ~s\n" (exp alpha)))
       (cond [(< u alpha)
              (when (verbose?)
                (eprintf "# Accepted HMC step with ~s\n" (exp u)))
+             (when #f
+               (eprintf "(A)Energy: ~s (alpha ~s) \n" next-energy alpha))
              (let ([prev-db last-db])
-               (set! last-db next-x-db)
+               (set! last-db next-db)
                (if (not (eval-definition-thunk!))
                    (begin
                      (when (verbose?)
@@ -97,6 +105,8 @@ the database as the potential energy of the entire system.
              ;; restart
              (when (verbose?)
                (eprintf "# Rejected HMC step with ~s\n" (exp u)))
+             (when #f
+               (eprintf "(R)Energy: ~s (alpha ~s)\n" next-energy alpha))
              (sample)]))
     
     (define/private (eval-definition-thunk!)
@@ -159,8 +169,9 @@ the database as the potential energy of the entire system.
 ;;  Then ∂U(x)/∂xk = Σ{i∈I} (dist-Denergy Di (indicator i k) ∂param(i,1)/∂xk ... ∂param(i,jᵢ)/∂xk)
 (define ((hmc-gradient-potential-fn gradients) k x)
   (define (indicator i) (if (equal? k i) 1 0))
-  (when (verbose?)
-    (eprintf " computing derivative of energy with respect to ~e\n" k))
+  (when #f 
+    (when (verbose?)
+      (eprintf " computing derivative of energy with respect to ~e\n" k)))
 
   (define denergy/dk
     (for/sum ([(i xi) (in-hash x)])
@@ -184,14 +195,16 @@ the database as the potential energy of the entire system.
                        (nth-value evaluate-depends r))]
                  [else 0])))))
       (let ([denergy-i/dk (apply dist-Denergy xi-dist xi-value (indicator i) parameter-partials)])
-        (when (verbose?)
-          (eprintf "  dU(~e)/d~e = ~s\n" i k denergy-i/dk))
+        (when #f
+          (when (verbose?)
+            (eprintf "  dU(~e)/d~e = ~s\n" i k denergy-i/dk)))
         denergy-i/dk)))
   
-  (when (verbose?)
-    (eprintf " denergy/d~e = ~s\n"
-             k
-             denergy/dk))
+  (when #f
+    (when (verbose?)
+      (eprintf " denergy/d~e = ~s\n"
+               k
+               denergy/dk)))
 
   denergy/dk)
 
@@ -205,7 +218,8 @@ the database as the potential energy of the entire system.
       (list-ref results n))))
 
 ;; hmc-step : DB[X] Epsilon Positive-Integer (Address Position -> PotentialEnergy)
-;;            -> (Values DB[P] DB[X*] DB[P*])
+;;            -> (List 'okay DB[P] DB[X*] DB[P*])
+;;               | (List 'fail Any)
 ;;
 ;; Construct randomly an initial momentum, then run L epsilon-steps
 ;; of Hamiltonian dynamics to arrive at a new position and momentum.
@@ -221,23 +235,27 @@ the database as the potential energy of the entire system.
                      [pinned (entry-pinned? e)])
                 (entry null d v (dist-pdf d v #t) pinned)))
             curr-x-db))
-  (define-values (next-x-db next-p-db)
-    (hmc-leapfrog-proposal epsilon L
-                           grad-potential-fn
-                           curr-x-db
-                           curr-p-db
-                           thunk
-                           spconds))
-  (values curr-p-db next-x-db next-p-db))
+  (define step-result (hmc-leapfrog-proposal epsilon L
+                                             grad-potential-fn
+                                             curr-x-db
+                                             curr-p-db
+                                             thunk
+                                             spconds))
+  (match step-result
+    [(list 'okay next-x-db next-p-db)
+     (list 'okay curr-p-db next-x-db next-p-db)]
+    [(list 'fail reason)
+     step-result]))
   
 ;; kinetic-energy DB[P] -> Real
 ;;
 ;; The kinetic energy of a momentum is proportional to
 ;; dot(transpose(p),p).
 (define (kinetic-energy momentum-db)
-  (for/sum ([e (in-hash-values momentum-db)])
-    (let ([p (entry-value e)])
-      (* p p))))
+  (/ (for/sum ([e (in-hash-values momentum-db)])
+            (let ([p (entry-value e)])
+              (* p p)))
+     2))
 
 ;; hmc-acceptance-threshold : DB[X] DB[P] DB[X*] DB[P*] -> Real
 ;;
@@ -252,6 +270,18 @@ the database as the potential energy of the entire system.
   (define next-x-U (- (db-ll next-x-db)))
   (define next-p-K (kinetic-energy next-p-db))
   
-  (+ (- next-x-U) curr-x-U
-     (- curr-p-K) next-p-K))
+  (define next-energy (+ next-x-U next-p-K))
+  (define curr-energy (+ curr-x-U curr-p-K))
+  
+  ; (x0 + p0) - (x* + p*)
+  
+  (when #f
+    (eprintf "Before: ~s ~s\n" curr-x-U curr-p-K)
+    (eprintf "After : ~s ~s\n" next-x-U next-p-K))
+
+  (define threshold
+    ; Do I need to worry about cancellation here?
+    (- curr-energy next-energy))
+  
+  (values next-energy threshold))
 
