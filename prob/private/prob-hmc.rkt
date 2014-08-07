@@ -58,25 +58,29 @@ the database as the potential energy of the entire system.
                 epsilon
                 L
                 spconds)
-    (field [last-db '#hash()]
+    (field [last-accepted-sys #f]
            [answer #f]
            [gradients '#hash()])
     (super-new)
     
     (define/override (sample)
-      (when (or (not last-db) (hash-empty? last-db))
+      (when (not last-accepted-sys) 
         (collect-initial-sample))
       (when (verbose?)
-        (eprintf "# okay, have a first sample ~e\n" last-db))
-      (define-values (next-energy next-sys alpha)
+        (eprintf "# okay, have a first sample ~e\n"
+                 (hmc-system-X last-accepted-sys)))
+      (define-values (proposal-energy proposal-sys alpha)
         (match 
-            (hmc-step last-db epsilon L (db-Denergy gradients)
+            (hmc-step last-accepted-sys epsilon L (db-Denergy gradients)
                       thunk spconds)
-          [(list 'okay old-sys next-sys)
-           (let-values ([(next-energy alpha)
-                         (hmc-acceptance-threshold old-sys
-                                                   next-sys)])
-             (values next-energy next-sys alpha))]
+          [(list 'okay initial-sys proposal-sys)
+           ;; N.B. "initial-sys" is the starting state of the hmc step.
+           ;; it is not equal to the last-accepted-sys.  In particular, it has
+           ;; a synthesized (random) momentum. 
+           (let-values ([(proposal-energy alpha)
+                         (hmc-acceptance-threshold initial-sys
+                                                   proposal-sys)])
+             (values proposal-energy proposal-sys alpha))]
           [(list 'fail reason)
            (when (verbose?)
              (eprintf "# bad proposal ~e\n" reason))
@@ -88,14 +92,14 @@ the database as the potential energy of the entire system.
              (when (verbose?)
                (eprintf "# Accepted HMC step with ~s\n" (exp u)))
              (when #f
-               (eprintf "(A)Energy: ~s (alpha ~s) \n" next-energy alpha))
-             (let ([prev-db last-db])
-               (set! last-db (hmc-system-X next-sys))
+               (eprintf "(A)Energy: ~s (alpha ~s) \n" proposal-energy alpha))
+             (let ([prev-accepted-sys last-accepted-sys])
+               (set! last-accepted-sys proposal-sys)
                (if (not (eval-definition-thunk!))
                    (begin
                      (when (verbose?)
                        (eprintf "# ... but the condition didn't hold, rejecting!\n"))
-                     (set! last-db prev-db)
+                     (set! last-accepted-sys prev-accepted-sys)
                      (sample))
                    answer))]
             [else
@@ -103,7 +107,7 @@ the database as the potential energy of the entire system.
              (when (verbose?)
                (eprintf "# Rejected HMC step with ~s\n" (exp u)))
              (when #f
-               (eprintf "(R)Energy: ~s (alpha ~s)\n" next-energy alpha))
+               (eprintf "(R)Energy: ~s (alpha ~s)\n" proposal-energy alpha))
              (sample)]))
     
     (define/private (collect-initial-sample)
@@ -111,10 +115,13 @@ the database as the potential energy of the entire system.
         (let ([current-db (eval-definition-thunk!)])
           (if (not current-db)
               (loop)
-              (set! last-db current-db)))))
+              (set! last-accepted-sys (hmc-system current-db (make-hash)))))))
 
     (define/private (eval-definition-thunk!)
       (define delta-db (make-hash))
+      (define last-db (or (and last-accepted-sys 
+                               (hmc-system-X last-accepted-sys))
+                          (make-hash)))
       (define ctx 
         (new db-stochastic-derivative-ctx%
              (last-db last-db)
@@ -137,7 +144,7 @@ the database as the potential energy of the entire system.
          #f]))
     ))
     
-;; hmc-step : DB[X] Epsilon Positive-Integer (Address Position -> PotentialEnergy)
+;; hmc-step : HMC-System Epsilon Positive-Integer (Address Position -> PotentialEnergy)
 ;;            -> (List 'okay HMC-System HMC-System)
 ;;               | (List 'fail Any)
 ;;
@@ -146,17 +153,16 @@ the database as the potential energy of the entire system.
 ;;
 ;; Returns the initial system (with synthesized momentum) and the
 ;; final system (evolved after L epsilon-steps).
-(define (hmc-step curr-x-db epsilon L grad-potential-fn thunk spconds)
-  (define curr-p-db (synthesize-P-db curr-x-db))
-  (define old-sys (hmc-system curr-x-db curr-p-db))
+(define (hmc-step last-sys epsilon L grad-potential-fn thunk spconds)
+  (define init-sys (hmc-system-evolve-P last-sys (λ(x p) (synthesize-P-db x))))
   (define step-result
     (hmc-leapfrog-proposal epsilon L
                            grad-potential-fn
-                           old-sys
+                           init-sys
                            thunk
                            spconds))
   (match step-result
-    [(list 'okay new-sys) (list 'okay old-sys new-sys)]
+    [(list 'okay new-sys) (list 'okay init-sys new-sys)]
     [(list 'fail reason)  step-result]))
   
 
