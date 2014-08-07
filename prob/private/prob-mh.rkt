@@ -14,7 +14,10 @@
          "../dist.rkt"
          (only-in "dist.rkt" dists-same-type?)
          "prob-util.rkt")
-(provide mh-sampler*)
+(provide mh-sampler*
+         cycle
+         single-site
+         multi-site)
 
 #|
 MH Acceptance
@@ -132,7 +135,7 @@ depending on only choices reused w/ different params.
 
 (define mh-transition-base%
   (class* object% (mh-transition<%>)
-    (init-field [record-obs? #t])  ;; FIXME: default #t ??
+    (init-field [record-obs? #f])  ;; FIXME: default #t ??
     (super-new)
 
     ;; run : (-> A) SPConds Trace -> TransitionResult
@@ -332,23 +335,25 @@ depending on only choices reused w/ different params.
 
 (define (cycle . txs)
   (new cycle-mh-transition% (transitions txs)))
-(define single-site (new single-site-mh-transition%))
-(define multi-site (new multi-site-mh-transition%))
+(define (single-site [zone #f])
+  (new single-site-mh-transition% [zone zone]))
+(define (multi-site [zone #f])
+  (new multi-site-mh-transition% [zone zone]))
 
 ;; ============================================================
 
-(define (mh-sampler* thunk spconds)
-  (new mh-sampler% (thunk thunk) (spconds spconds)))
+(define (mh-sampler* thunk spconds [transition (single-site)])
+  (new mh-sampler% (thunk thunk) (spconds spconds) (transition transition)))
 
 (define mh-sampler%
   (class sampler-base%
     (init-field thunk
-                spconds)
+                spconds
+                transition)
     (field [last-trace init-trace]
            [accepts 0]
            [cond-rejects 0]
-           [mh-rejects 0]
-           [transition single-site])
+           [mh-rejects 0])
     (super-new)
 
     ;; Note: {MAP,MLE}-estimate is argmax over *all* unconditioned variables.

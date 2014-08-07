@@ -58,5 +58,6 @@
 (for ([i 10]) (test-dist cauchy-dist 2))
 (for ([i 10]) (test-dist exponential-dist 1))
 (for ([i 10]) (test-dist gamma-dist 2 (lambda () (* (random) 2))))
+(for ([i 10]) (test-dist gamma-dist 2))
 (for ([i 10]) (test-dist logistic-dist 2))
 (for ([i 10]) (test-dist normal-dist 2))

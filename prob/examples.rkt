@@ -294,7 +294,7 @@
      (observe-at (normal-dist (+ (* A x) B) E) y))
    (for ([x n])
      (data x (vector-ref ys x)))
-   (list A B E)))
+   (vector A B E)))
 (define lr (make-lr 3 12 1 100))
 
 ;;(for ([i #e1e4]) (void (lr))) ;; burn in
