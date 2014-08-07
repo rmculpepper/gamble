@@ -13,7 +13,7 @@
 (provide (contract-out
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
-          [observe-at (-> dist? any/c void?)])
+          [observe-at (-> dist? any/c any)])
          fail)
 
 ;; mem and sample wrappers
