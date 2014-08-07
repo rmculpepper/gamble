@@ -385,7 +385,7 @@
               (error 'uniform-dist
                      "lower bound is not less than upper bound\n  lower: ~e\n  upper: ~e"
                      a b))
-            (values a b)))
+            (values (exact->inexact a) (exact->inexact b))))
 
 (define-dist-type categorical
   ([weights (vectorof (>=/c 0))])
