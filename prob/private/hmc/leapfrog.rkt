@@ -55,7 +55,8 @@
                           (abort-current-continuation
                            escape-prompt
                            (λ () (list 'fail reason))))]
-         [X-step        (position-step epsilon thunk spconds bad-step)])
+         [propagate-X   (propagate-X-changes-to-model thunk spconds)]
+         [X-step        (position-step epsilon propagate-X bad-step)])
     (call-with-continuation-prompt
      (λ ()
        (let loop ([i (- L 1)]
@@ -97,30 +98,35 @@
 
 ; There ought to be a (* epsilon inv-M p) term, but
 ; we assume that M is the identity, so inv-M is 1.
-(define ((position-step epsilon thunk spconds escape) x p)
+(define ((position-step epsilon propagate-X-change-fn escape) x p)
   (unless (hash? x)
-    (raise-argument-error 'position-step "hash" 3 epsilon thunk spconds x p))
+    (raise-argument-error 'position-step "hash" 3
+                          epsilon propagate-X-change-fn escape x p))
   (unless (hash? p)
-    (raise-argument-error 'position-step "hash" 4 epsilon thunk spconds x p))
+    (raise-argument-error 'position-step "hash" 4
+                          epsilon propagate-X-change-fn escape x p))
   (define ((update-position dx) x) (+ x (* epsilon dx)))
   ; key property: we must leave pinned entries out of delta-x so that
   ; they keep their old values from x (but with updated ll).
-  (define delta-x 
-    (let ([delta-x (make-hash)])
+  (define delta-X
+    (let ([delta-X (make-hash)])
       (for ([(k e) (in-hash x)]
-            #:when (not (entry-pinned? e)))
-        (let* ([p (entry-value (hash-ref p k))]
-               [delta-e (entry-value-map (update-position p) e)])
+            #:when (not (entry-pinned? e))
+            [p     (in-value (entry-value (hash-ref p k)))])
+        (let ([delta-e (entry-value-map (update-position p) e)])
           (if (ll-possible? (entry-ll delta-e))
-              (hash-set! delta-x k delta-e)
+              (hash-set! delta-X k delta-e)
               (escape (format "~e moved from ~e (~e) to ~e (~e)"
                               k
                               (entry-value e)
                               (entry-ll e)
                               (entry-value delta-e)
                               (entry-ll delta-e))))))
-      delta-x))
+      delta-X))
             
+  (propagate-X-change-fn x delta-X))
+
+(define ((propagate-X-changes-to-model thunk spconds) x delta-X)
   ; okay, so in principle delta-x is is what we want to return - it's
   ; the updated positions.  but that's not enough: we also need to update the parameters
   ; that are embedded within each distribution object.
@@ -140,13 +146,10 @@
   ; One may wonder why do we need the updated params?  The answer is because the parameters
   ; are going to be used when we calculate the (dist-Denergy) of each distribution
   ; in order to compute gradients.
-  
-  (define ctx
-    (new db-stochastic-ctx%
-         (last-db x)
-         (delta-db delta-x)
-         (spconds spconds)))
-  
+  (define ctx (new db-stochastic-ctx%
+                   (last-db x)
+                   (delta-db delta-X)
+                   (spconds spconds)))
   (begin
     (send ctx run thunk) ; don't care about the answer
      ; but do care about the recorded choices
