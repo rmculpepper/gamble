@@ -86,19 +86,6 @@ list.
 ]
 }
 
-@defproc[(lag [thunk (-> any/c)]
-              [n exact-positive-integer?])
-         (-> any/c)]{
-
-Lags a @tech{sampler}; when the resulting thunk is called, the given
-@racket[thunk] is called @racket[n] times and only the last value is
-returned.
-
-@examples[#:eval the-eval
-(repeat (lag (let ([n 0]) (lambda () (set! n (add1 n)) n)) 10) 10)
-]
-}
-
 @defproc[(sampler->discrete-dist [sampler (-> _A)]
                                  [n exact-positive-integer?]
                                  [f (-> _A _B) (lambda (x) x)])

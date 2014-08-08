@@ -5,7 +5,6 @@
 #lang racket/base
 (provide verbose?
          repeat
-         lag
          probability?)
 
 ;; Parameters
@@ -16,9 +15,6 @@
 
 (define (repeat thunk times)
   (for/list ([i times]) (thunk)))
-
-(define (lag thunk n)
-  (lambda () (for/last ([i n]) (thunk))))
 
 ;; Predicate
 
