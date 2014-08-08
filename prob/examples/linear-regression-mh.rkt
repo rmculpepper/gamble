@@ -20,6 +20,12 @@
 (define lr (make-lr 3 12 1 100))
 
 (for ([i #e1e3]) (void (lr))) ;; burn in
-(send lr MAP-estimate #e1e3)
+(send lr info)
 
-(sampler->means+covariance lr #e1e3)
+(send lr MAP-estimate #e1e3)
+(send lr info)
+
+;;(sampler->means+covariance lr #e1e3)
+
+(sampler->statistics lr #e1e3)
+(send lr info)
