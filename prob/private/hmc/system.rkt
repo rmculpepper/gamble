@@ -1,3 +1,6 @@
+;; Copyright (c) 2014 BAE Systems, Inc.
+;; Released under the terms of the 2-clause BSD license.
+;; See the file COPYRIGHT for details.
 #lang racket/base
 
 (require racket/match
