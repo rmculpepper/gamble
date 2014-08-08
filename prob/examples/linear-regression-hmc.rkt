@@ -32,15 +32,15 @@
                                                    E)
                                       y)
                           [(A B) (λ (a b) (values x 1))]
-                          ;[(E) (λ (e) 1)]
-                          #f)))
+                          [(E) (λ (e) 1)]
+                          )))
 
      (for ([x n])
        (data x (vector-ref ys x)))
 
      (vector A B)
-     #:epsilon 0.02
-     #:L 20
+     #:epsilon 0.009
+     #:L 100
      ))
   
   (values ys model))

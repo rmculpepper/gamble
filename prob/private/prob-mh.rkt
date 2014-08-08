@@ -369,13 +369,13 @@ choices do not affect control flow through the probabilistic program).
       (match result
         [(cons 'okay ans)
          (set! gradients grads)
-         (cons 1.0 ; always accept the first sample
+         (cons 0.0 ; always accept the first sample
                (trace ans ans-db
                       (get-field nchoices ctx)
                       (get-field ll-free ctx)
                       (get-field ll-obs ctx)))]
         [(cons 'fail fail-reason)
-         result]))
+         (run/initial+gradients thunk spconds last-trace)]))
     
     (define/private (run/hmc thunk spconds last-trace)
       (define last-accepted-sys
@@ -389,6 +389,13 @@ choices do not affect control flow through the probabilistic program).
         [(list 'okay initial-sys val proposal-sys)
          (let-values ([(proposal-energy alpha)
                        (hmc-acceptance-threshold initial-sys proposal-sys)])
+           (when (verbose?)
+             (eprintf "# Previous system energy: ~e (K = ~e + U = ~e)\n" (hmc-system-energy initial-sys)
+                      (db-kinetic-energy (hmc-system-P initial-sys))
+                      (db-potential-energy (hmc-system-X initial-sys)))
+             (eprintf "# Proposal energy: ~e (K = ~e + U = ~e)\n" proposal-energy
+                      (db-kinetic-energy (hmc-system-P proposal-sys))
+                      (db-potential-energy (hmc-system-X proposal-sys)) ))
            (cons alpha (hmc-system->trace last-trace val proposal-sys)))]))
     
     (define/private (hmc-system->trace last-trace sample-value proposal-sys)

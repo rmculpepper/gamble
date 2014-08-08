@@ -103,7 +103,8 @@ variant of Metropolis-Hastings as described in @cite{Bher}.
 @defform[(hmc-sampler def/expr ... result-expr
                       maybe-epsilon-clause
                       maybe-L-clause
-                      maybe-when-clause)
+                      maybe-when-clause
+)
          #:grammar ([maybe-epsilon-clause (code:line)
                                           (code:line #:epsilon epsilon-expr)]
                     [maybe-L-clause (code:line)
@@ -131,16 +132,16 @@ may be required to achive good results.
 @examples[#:eval the-eval
 (define one-dim-loc-hmc
   (hmc-sampler
-     (define Hid (label 'Hid (derivative (normal 10 0.5) #f #f)))
-     (define Obs (derivative (normal Hid 0.01)
+     (define Hid (label 'Hid (derivative (normal 10 1) #f #f)))
+     (define Obs (label 'Obs (derivative (normal Hid 0.5)
                              [(Hid)
                               (λ (hid) 1)]
-                             #f))
+                             #f)))
      
      Hid
-     #:when (< (abs (- Obs 9.7)) 0.01)
-     #:epsilon 0.005
-     #:L 40))
+     #:cond (= Obs 9.0)
+     #:epsilon 0.01
+     #:L 90))
 
 (bin (repeat one-dim-loc-hmc 100))
 ]
