@@ -1,7 +1,8 @@
 #lang prob
 
-(require prob/viz)
-(require (prefix-in p: plot))
+(require racket/class
+         prob/viz
+         (prefix-in p: plot))
 
 #| Linear regression using Hamiltonian Monte Carlo |#
 
@@ -63,6 +64,6 @@
   (p:plot (cons (pts-rndr) rs)))
 
 (define (example)
-  ; burnin
-  ;(repeat lr 100)
-  (show-me (repeat lr 100)))
+  (begin0
+    (show-me (repeat lr 100))
+    (send lr info)))

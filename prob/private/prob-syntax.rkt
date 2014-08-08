@@ -11,7 +11,6 @@
          racket/class
          "dist.rkt"
          "prob-util.rkt"
-         "prob-hmc.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt"
          "interfaces.rkt")
@@ -155,11 +154,12 @@
                        (~seq #:cond sp:special-condition))
                   ...)
      (template
-      (hmc-sampler*
+      (mh-sampler*
        (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (?? epsilon 0.01)
-       (?? L 10)
-       (list sp.e ...)))]))
+       (list sp.e ...)
+       (hamiltonian-mc (?? epsilon 0.01)
+                       (?? L 10))))
+       ]))
 
 ;; ----
 

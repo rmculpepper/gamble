@@ -12,12 +12,17 @@
          "util.rkt"
          "interfaces.rkt"
          "../dist.rkt"
+         "hmc/system.rkt"
+         "hmc/step.rkt"
+         "hmc/acceptance-threshold.rkt"
+         "hmc/db-Denergy.rkt"
          (only-in "dist.rkt" dists-same-type?)
          "prob-util.rkt")
 (provide mh-sampler*
          cycle
          single-site
-         multi-site)
+         multi-site
+         hamiltonian-mc)
 
 #|
 MH Acceptance
@@ -122,7 +127,7 @@ depending on only choices reused w/ different params.
 
 ;; A RunResult is one of
 ;; - (cons Real Trace)  -- run completed, includes threshold (not yet checked)
-;; - (cons 'failed any) -- run failed
+;; - (cons 'fail any)   -- run failed
 
 ;; A Trace is (trace Any DB Nat Real Real)
 (struct trace (value db nchoices ll-free ll-obs))
@@ -317,6 +322,85 @@ depending on only choices reused w/ different params.
             (+ R-F ll-diff ll-diff-obs))))
     ))
 
+
+#|
+HMC - Hamiltonian Monte Carlo
+
+The usual database of random choices is now thought of as
+the "position" of a particle and an auxiliary normally
+distributed "momentum" random variable is added such that the
+quantity:
+  H(x,p) = U(x) + K(p)
+is conserved.  Where U(x) is the "potential energy" of the position
+and K(p) is the "kinetic energy" of the momentum.
+
+Limitations:
+1. All distributions in the database should be continous.
+
+2. There should be no "structural" choices.  (ie, the values of random
+choices do not affect control flow through the probabilistic program).
+|#
+(define hmc-transition%
+  (class* object% (mh-transition<%>)
+    (init-field epsilon 
+                L)
+    (field [gradients '#hash()])
+    (super-new)
+
+    (define/public (run thunk spconds last-trace)
+      (if (equal? last-trace init-trace)
+          (run/initial+gradients thunk spconds last-trace)
+          (run/hmc thunk spconds last-trace)))
+    
+    (define/private (run/initial+gradients thunk spconds last-trace)
+      (define delta-db (make-hash))
+      (define last-db (make-hash))
+      (define ctx 
+        (new db-stochastic-derivative-ctx%
+             (last-db last-db)
+             (delta-db delta-db)
+             (spconds spconds)))
+      (define result (send ctx run thunk))
+      (define ans-db (get-field current-db ctx))
+      (define grads (get-field derivatives ctx))
+      (when (verbose?)
+        (eprintf " (recorded derivatives are) ~e\n" grads)
+        (eprintf " (relevant labels were) ~e \n" (get-field relevant-labels ctx)))
+      (match result
+        [(cons 'okay ans)
+         (set! gradients grads)
+         (cons 1.0 ; always accept the first sample
+               (trace ans ans-db
+                      (get-field nchoices ctx)
+                      (get-field ll-free ctx)
+                      (get-field ll-obs ctx)))]
+        [(cons 'fail fail-reason)
+         result]))
+    
+    (define/private (run/hmc thunk spconds last-trace)
+      (define last-accepted-sys
+        (hmc-system (trace-db last-trace) (make-hash)))
+      (define step-result
+        (hmc-step last-accepted-sys epsilon L (db-Denergy gradients)
+                  thunk spconds))
+      (match step-result
+        [(list 'fail reason)
+         step-result]
+        [(list 'okay initial-sys val proposal-sys)
+         (let-values ([(proposal-energy alpha)
+                       (hmc-acceptance-threshold initial-sys proposal-sys)])
+           (cons alpha (hmc-system->trace last-trace val proposal-sys)))]))
+    
+    (define/private (hmc-system->trace last-trace sample-value proposal-sys)
+      (defmatch (trace _ _ last-nchoices _ _) last-trace)
+      (define proposal-db (hmc-system-X proposal-sys))
+      ; XXX - is this right?
+      (define ll-free 0.0)
+      (define ll-obs 0.0)
+      (trace sample-value proposal-db last-nchoices ll-free ll-obs))
+    
+    ))
+
 ;; FIXME: don't rotate if transition rejected; need communication w/ sampler
 (define cycle-mh-transition%
   (class* object% (mh-transition<%>)
@@ -339,6 +423,8 @@ depending on only choices reused w/ different params.
   (new single-site-mh-transition% [zone zone]))
 (define (multi-site [zone #f])
   (new multi-site-mh-transition% [zone zone]))
+(define (hamiltonian-mc epsilon L)
+  (new hmc-transition% [epsilon epsilon] [L L]))
 
 ;; ============================================================
 
