@@ -11,13 +11,13 @@
 (provide hmc-step)
 
 ;; hmc-step : HMC-System Epsilon Positive-Integer (Address Position -> PotentialEnergy)
-;;            -> (List 'okay HMC-System HMC-System)
+;;            -> (List 'okay HMC-System Any HMC-System)
 ;;               | (List 'fail Any)
 ;;
 ;; Construct randomly an initial momentum, then run L epsilon-steps
 ;; of Hamiltonian dynamics to arrive at a new position and momentum.
 ;;
-;; Returns the initial system (with synthesized momentum) and the
+;; Returns the initial system (with synthesized momentum), a sample value and the
 ;; final system (evolved after L epsilon-steps).
 (define (hmc-step last-sys epsilon L grad-potential-fn thunk spconds)
   (define init-sys (hmc-system-evolve-P last-sys (λ(x p) (synthesize-P-db x))))
@@ -28,7 +28,8 @@
                            thunk
                            spconds))
   (match step-result
-    [(list 'okay new-sys) (list 'okay init-sys new-sys)]
+    [(list 'okay sample-value new-sys) 
+     (list 'okay init-sys sample-value new-sys)]
     [(list 'fail reason)  step-result]))
   
 

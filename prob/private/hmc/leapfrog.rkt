@@ -5,6 +5,7 @@
 #lang racket/base
 
 (require racket/contract
+         racket/match
          racket/class
          "system.rkt"
          "../db.rkt"
@@ -24,7 +25,7 @@
        hmc-system?
        (-> any/c)
        (listof (cons/c symbol? spcond:equal?))
-       (or/c (list/c 'okay hmc-system?)
+       (or/c (list/c 'okay any/c hmc-system?)
              (list/c 'fail any/c)))]))
 
 ;; Compute an update step for Hamiltonian Monte Carlo using the leapfrog method.
@@ -38,7 +39,7 @@
 ;;  HMC-System
 ;;  (-> Any) ; model thunk
 ;;  SpConds
-;;  -> (List 'okay HMC-System)
+;;  -> (List 'okay Any HMC-System)
 ;;     | (List 'fail Any)
 (define (hmc-leapfrog-proposal
          epsilon
@@ -55,7 +56,7 @@
                           (abort-current-continuation
                            escape-prompt
                            (λ () (list 'fail reason))))]
-         [propagate-X   (propagate-X-changes-to-model thunk spconds)]
+         [propagate-X   (propagate-X-changes-to-model thunk spconds bad-step)]
          [X-step        (position-step epsilon propagate-X bad-step)])
     (call-with-continuation-prompt
      (λ ()
@@ -64,13 +65,16 @@
                   ;; a half time-step ahead and will be for the next L-1 iterations.
                   [sys (hmc-system-evolve-P sys0 P-half-step)])
          (if (zero? i)
-             (let ([new-sys
+             (let* ([ans-box (box (void))]
+                    [final-X-step (position-step epsilon propagate-X bad-step
+                                                 #:record-result ans-box)]
+                    [new-sys
                     ;; One last full step for the position. it's now
                     ;; at time (* epsilon L).  Then since momentum now
                     ;; fell a half step behind, catch up.
-                     (hmc-system-evolve-P (hmc-system-evolve-X sys X-step)
+                     (hmc-system-evolve-P (hmc-system-evolve-X sys final-X-step)
                                           P-half-step)])
-               (list 'okay new-sys))
+               (list 'okay (unbox ans-box) new-sys))
              (let
                  ;; Full step position, then conceptually two
                  ;; half-steps for momentum: one for the end of the
@@ -98,7 +102,8 @@
 
 ; There ought to be a (* epsilon inv-M p) term, but
 ; we assume that M is the identity, so inv-M is 1.
-(define ((position-step epsilon propagate-X-change-fn escape) x p)
+(define ((position-step epsilon propagate-X-change-fn escape
+                        #:record-result [record-result-box #f]) x p)
   (unless (hash? x)
     (raise-argument-error 'position-step "hash" 3
                           epsilon propagate-X-change-fn escape x p))
@@ -124,9 +129,10 @@
                               (entry-ll delta-e))))))
       delta-X))
             
-  (propagate-X-change-fn x delta-X))
+  (propagate-X-change-fn x delta-X #:record-result record-result-box))
 
-(define ((propagate-X-changes-to-model thunk spconds) x delta-X)
+(define ((propagate-X-changes-to-model thunk spconds escape) x delta-X
+         #:record-result record-result-box)
   ; okay, so in principle delta-x is is what we want to return - it's
   ; the updated positions.  but that's not enough: we also need to update the parameters
   ; that are embedded within each distribution object.
@@ -150,8 +156,11 @@
                    (last-db x)
                    (delta-db delta-X)
                    (spconds spconds)))
-  (begin
-    (send ctx run thunk) ; don't care about the answer
-     ; but do care about the recorded choices
-    (get-field current-db ctx)))
+  (define run-result (send ctx run thunk))
+  (match run-result
+    [(cons 'okay result) 
+     (when record-result-box
+       (set-box! record-result-box result))
+     (get-field current-db ctx)]
+    [(cons 'fail reason) (escape reason)]))
   
