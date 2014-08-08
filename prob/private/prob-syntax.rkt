@@ -116,7 +116,7 @@
                  (parameterize ((current-stochastic-ctx ctx))
                    (define result (thunk))
                    (define weight (get-field weight ctx))
-                   (cons 'succeed (cons (thunk) weight))))])
+                   (cons 'succeed (cons result weight))))])
         (case (car v)
           [(succeed) (cdr v)]
           [(fail) (sample/weight)])))
