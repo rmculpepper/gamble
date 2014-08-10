@@ -23,6 +23,7 @@
          cycle
          single-site
          multi-site
+         hamiltonian-mc
          label
          with-zone
          derivative
