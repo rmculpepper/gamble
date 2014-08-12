@@ -6,6 +6,7 @@
 (require racket/list
          racket/class
          (rename-in racket/match [match-define defmatch])
+         racket/math
          data/order
          "context.rkt"
          "db.rkt"
@@ -101,27 +102,70 @@ depending on only choices reused w/ different params.
 ;; proposal-map : (parameterof ProposalMap)
 (define proposal-map (make-parameter '#hash()))
 
-(define (make-normal-proposal stddev-factor)
-  ;; Proposal function for Normal dist
+(define (make-default-proposal scale-factor)
+  ;; add normal to value
+  (define (add-normal-proposal value scale)
+    (define d (normal-dist 0 (* scale-factor scale)))
+    (cons (+ value (dist-sample d)) 0))
+  ;; multiply current value by exp of normal
+  (define (mult-exp-normal-proposal value scale)
+    (define d (normal-dist 0 (* scale-factor scale)))
+    (cons (* value (exp (dist-sample d))) 0))
+  ;; asymmetric proposals
+  (define (asymmetric f value)
+    (define forward-dist (f value))
+    (define value* (dist-sample forward-dist))
+    (define backward-dist (f value*))
+    (cons value*
+          (- (dist-pdf backward-dist value #t)
+             (dist-pdf forward-dist value* #t))))
+  ;; Default proposals
   (lambda (dist value)
     (match dist
       [(normal-dist mean stddev)
-       (define forward-dist
-         (normal-dist value (* stddev stddev-factor)))
-       (define value* (dist-sample forward-dist))
+       (add-normal-proposal mean stddev)
        #|
+       (define forward-dist
+         (normal-dist value (* stddev scale-factor)))
+       (define value* (dist-sample forward-dist))
        (define backward-dist
-         (normal-dist value* (* stddev stddev-factor)))
+         (normal-dist value* (* stddev scale-factor)))
        (define R (dist-pdf backward-dist value #t))
        (define F (dist-pdf forward-dist value* #t))
-       |#
-       (cons value* #|(- R F)|# 0)]
+       (cons value* (- R F))
+       |#]
+      [(cauchy-dist mode scale)
+       (add-normal-proposal mode scale)]
+      [(logistic-dist mean scale)
+       (add-normal-proposal mean (* (/ pi (sqrt 3)) scale))]
+      [(gamma-dist shape scale)
+       (mult-exp-normal-proposal value (* scale (sqrt shape)))]
+      [(exponential-dist mean)
+       (mult-exp-normal-proposal value mean)]
+      ;; pareto maybe mult-exp-normal-proposal too?
+      [(beta-dist a b)
+       ;; mode = α / (α + β), peakedness = α + β = S (our choice)
+       ;; So if we want dist peaked at x:
+       ;;   α = S * x
+       ;;   β = S - α = S * (1 - x)
+       (define S 10) ;; "peakedness" parameter
+       (asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x)))) value)]
+      [(uniform-dist min max)
+       ;; Use beta to get proposal for Uniform(0,1), adjust.
+       (define S 10) ;; "peakedness"
+       (define (to-01 x) (/ (- x min) (- max min)))
+       (define (from-01 x) (+ (* x (- max min)) min))
+       (defmatch (cons value* R-F)
+         (asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x))))
+                     (to-01 value)))
+       (cons (from-01 value*) R-F)]
+      ;; Integer-valued dists: more difficult.
       [_ #f])))
 
 (proposal-map
  (extend-proposal-map
   (proposal-map)
-  #f (make-normal-proposal 1/4)))
+  #f (make-default-proposal 1/4)))
 
 ;; ============================================================
 
