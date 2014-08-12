@@ -140,7 +140,7 @@ depending on only choices reused w/ different params.
 
 (define mh-transition-base%
   (class* object% (mh-transition<%>)
-    (init-field [record-obs? #f])  ;; FIXME: default #t ??
+    (init-field [record-obs? #t])  ;; FIXME: default #t ??
     (super-new)
 
     ;; run : (-> A) SPConds Trace -> TransitionResult
@@ -344,17 +344,22 @@ choices do not affect control flow through the probabilistic program).
   (class* object% (mh-transition<%>)
     (init-field epsilon 
                 L)
-    (field [gradients '#hash()])
+    (field [gradients #f])
     (super-new)
 
     (define/public (run thunk spconds last-trace)
-      (if (equal? last-trace init-trace)
-          (run/initial+gradients thunk spconds last-trace)
-          (run/hmc thunk spconds last-trace)))
-    
-    (define/private (run/initial+gradients thunk spconds last-trace)
-      (define delta-db (make-hash))
-      (define last-db (make-hash))
+      (define last-trace*
+        (cond [(and gradients (not (equal? last-trace init-trace)))
+               last-trace]
+              [else
+               (run/collect-gradients thunk spconds last-trace)]))
+      (when #f
+        (eprintf "collected gradients ~e\n" gradients))
+      (run/hmc thunk spconds last-trace*))
+
+    (define/private (run/collect-gradients thunk spconds last-trace)
+      (define delta-db '#hash())
+      (define last-db (trace-db last-trace))
       (define ctx 
         (new db-stochastic-derivative-ctx%
              (last-db last-db)
@@ -365,18 +370,17 @@ choices do not affect control flow through the probabilistic program).
       (define grads (get-field derivatives ctx))
       (when (verbose?)
         (eprintf " (recorded derivatives are) ~e\n" grads)
-        (eprintf " (relevant labels were) ~e \n" (get-field relevant-labels ctx)))
+`        (eprintf " (relevant labels were) ~e \n" (get-field relevant-labels ctx)))
       (match result
         [(cons 'okay ans)
          (set! gradients grads)
-         (cons 0.0 ; always accept the first sample
-               (trace ans ans-db
-                      (get-field nchoices ctx)
-                      (get-field ll-free ctx)
-                      (get-field ll-obs ctx)))]
+         (trace ans ans-db
+                (get-field nchoices ctx)
+                (get-field ll-free ctx)
+                (get-field ll-obs ctx))]
         [(cons 'fail fail-reason)
-         (run/initial+gradients thunk spconds last-trace)]))
-    
+         (run/collect-gradients thunk spconds last-trace)]))
+
     (define/private (run/hmc thunk spconds last-trace)
       (define last-accepted-sys
         (hmc-system (trace-db last-trace) (make-hash)))

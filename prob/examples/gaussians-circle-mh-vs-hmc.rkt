@@ -35,7 +35,9 @@
                       [(x y)
                        (lambda (x y) (values (* 2 x) (* 2 y)))]
                       #f))
-   (vector x y #|(sqrt r2)|#)))
+   (vector x y #|(sqrt r2)|#)
+   #:epsilon 0.01
+   #:L 30))
 
 (void (for ([i BURN-IN]) (s)))
 (void (for ([i HBURN-IN]) (sh)))
