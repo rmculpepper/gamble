@@ -6,7 +6,7 @@
 ;; Maybe this is extreme sensitivity to starting position?
 ;; (Maybe MH then HMC would be a better strategy?)
 
-(define OBS-STDDEV 0.1)
+(define OBS-STDDEV 0.01)
 (define BURN-IN 5000)
 (define SAMPLES 5000)
 (define HBURN-IN 5000)
@@ -40,7 +40,9 @@
    #:L 30))
 
 (void (for ([i BURN-IN]) (s)))
+(set-field! transition sh (multi-site))
 (void (for ([i HBURN-IN]) (sh)))
+(set-field! transition sh (hamiltonian-mc 0.005 30))
 
 (define samples (repeat s SAMPLES))
 (define samples-h (repeat sh HSAMPLES))
