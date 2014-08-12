@@ -46,3 +46,12 @@ Longer term:
     as much as possible
 
 - testing and diagnostics
+
+----
+
+use entropy (or entropy rate) as diagnostic
+  - indicates "goodness"/"peakedness" of posterior
+  - how to estimate in general?
+
+detect special classes of models to apply specialized techniques
+  - examples?
