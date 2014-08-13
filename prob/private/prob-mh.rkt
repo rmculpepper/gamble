@@ -343,7 +343,8 @@ choices do not affect control flow through the probabilistic program).
 (define hmc-transition%
   (class* object% (mh-transition<%>)
     (init-field epsilon 
-                L)
+                L
+                [zone #f])
     (field [gradients #f])
     (super-new)
 
@@ -364,7 +365,8 @@ choices do not affect control flow through the probabilistic program).
         (new db-stochastic-derivative-ctx%
              (last-db last-db)
              (delta-db delta-db)
-             (spconds spconds)))
+             (spconds spconds)
+             ))
       (define result (send ctx run thunk))
       (define ans-db (get-field current-db ctx))
       (define grads (get-field derivatives ctx))
@@ -385,8 +387,8 @@ choices do not affect control flow through the probabilistic program).
       (define last-accepted-sys
         (hmc-system (trace-db last-trace) (make-hash)))
       (define step-result
-        (hmc-step last-accepted-sys epsilon L (db-Denergy gradients)
-                  thunk spconds))
+        (hmc-step last-accepted-sys epsilon L (db-Denergy gradients zone)
+                  thunk spconds zone))
       (match step-result
         [(list 'fail reason)
          step-result]
@@ -419,7 +421,7 @@ choices do not affect control flow through the probabilistic program).
     (super-new)
 
     (set! transitions
-          (let ([p (make-placeholder)])
+          (let ([p (make-placeholder (void))])
             (placeholder-set! p (append transitions p))
             (make-reader-graph p)))
 
@@ -434,8 +436,8 @@ choices do not affect control flow through the probabilistic program).
   (new single-site-mh-transition% [zone zone]))
 (define (multi-site [zone #f])
   (new multi-site-mh-transition% [zone zone]))
-(define (hamiltonian-mc epsilon L)
-  (new hmc-transition% [epsilon epsilon] [L L]))
+(define (hamiltonian-mc epsilon L [zone #f])
+  (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
 
 ;; ============================================================
 

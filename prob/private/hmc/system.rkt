@@ -5,6 +5,8 @@
 
 (require racket/match
          "../db.rkt"
+         (only-in "../interfaces.rkt"
+                  some-zone-matches?)
          (only-in "../../dist.rkt"
                   normal-dist)
          (only-in "../dist.rkt"
@@ -20,9 +22,13 @@
 ;; - a DB of synthetic random choices that are the momentum P of the system.
 ;;
 ;; Coherence:
-;;   - Each address k appears in both X and P.
+;;   - Each address k that appears in P also appears in both X.
+;;   - if there is some zone z such that X can be partitioned into
+;;     disjoint Xz Xnz such that all entries in Xz are in z and none
+;;     in Xnz are in z, then each address in P is in Xz and not in Xnz.
 ;;   - Corresponding entires x, p with the same address
-;;       obey: (= (entry-pinned? x) (entry-pinned? p))
+;;       obey: (and (equal? (entry-pinned? x) (entry-pinned? p))
+;;                  (equal? (entry-zones x) (entry-zones p)))
 ;;
 ;; N.B. while the system is immutable, the hashes may change.
 (struct hmc-system (X P) #:prefab)
@@ -58,25 +64,28 @@
 ;; ------------------------------------------------------------
 ;; Momentum synthesis
 
-;; synthesize-K-entry : Entry[X] -> Entry[P]
+;; synthesize-K-entry : ZonePattern -> (Entry[X] -> Entry[P])
 ;;
 ;; Given an entry, return a new entry entry representing its momentum.
 ;; The momentum value is sampled from (normal-dist 0 1) except in the case
 ;; of pinned positions which get a value of 0.0.
 ;;
 ;; Momentum entries do not have a zone.  (Should they?)
-(define (synthesize-P-entry x)
+(define ((synthesize-P-entry zone) x)
   ;; pinned entries have zero kinetic energy
   ;; and will thus not move in next-x-db.
   (let* ([d      (normal-dist 0 1)]
-         [v      (if (entry-pinned? x) 0 (dist-sample d))]
+         [v      (if (or (entry-pinned? x) 
+                         (not (some-zone-matches? (entry-zones x) zone)))
+                     0
+                     (dist-sample d))]
          [pinned (entry-pinned? x)])
-    (entry null d v (dist-pdf d v #t) pinned)))
+    (entry (entry-zones x) d v (dist-pdf d v #t) pinned)))
   
-;; synthesize-K-db : DB[X] -> DB[P]
+;; synthesize-K-db : DB[X] ZonePattern -> DB[P]
 ;;  Given a database of positions, returns a database of momenta
 ;; where the momentum of each random choice is sampled independently from (normal-dist 0 1).
-(define (synthesize-P-db x) (db-map synthesize-P-entry x))
+(define (synthesize-P-db x zone) (db-map (synthesize-P-entry zone) x))
 
 
 ;; ------------------------------------------------------------

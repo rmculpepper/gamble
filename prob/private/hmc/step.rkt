@@ -10,7 +10,11 @@
 
 (provide hmc-step)
 
-;; hmc-step : HMC-System Epsilon Positive-Integer (Address Position -> PotentialEnergy)
+;; hmc-step : HMC-System
+;;            Epsilon Positive-Integer
+;;            (Address Position -> PotentialEnergy)
+;;            (-> Any)
+;;            ZonePattern
 ;;            -> (List 'okay HMC-System Any HMC-System)
 ;;               | (List 'fail Any)
 ;;
@@ -19,14 +23,15 @@
 ;;
 ;; Returns the initial system (with synthesized momentum), a sample value and the
 ;; final system (evolved after L epsilon-steps).
-(define (hmc-step last-sys epsilon L grad-potential-fn thunk spconds)
-  (define init-sys (hmc-system-evolve-P last-sys (λ(x p) (synthesize-P-db x))))
+(define (hmc-step last-sys epsilon L grad-potential-fn thunk spconds zone)
+  (define init-sys (hmc-system-evolve-P last-sys (λ (x p) (synthesize-P-db x zone))))
   (define step-result
     (hmc-leapfrog-proposal epsilon L
                            grad-potential-fn
                            init-sys
                            thunk
-                           spconds))
+                           spconds
+                           zone))
   (match step-result
     [(list 'okay sample-value new-sys) 
      (list 'okay init-sys sample-value new-sys)]

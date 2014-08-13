@@ -13,7 +13,8 @@
                   verbose?
                   )
          (only-in "../interfaces.rkt"
-                  spcond:equal?)
+                  spcond:equal?
+                  some-zone-matches?)
          )
 
 (provide 
@@ -25,6 +26,7 @@
        hmc-system?
        (-> any/c)
        (listof (cons/c symbol? spcond:equal?))
+       any/c ;; ZonePattern
        (or/c (list/c 'okay any/c hmc-system?)
              (list/c 'fail any/c)))]))
 
@@ -39,6 +41,7 @@
 ;;  HMC-System
 ;;  (-> Any) ; model thunk
 ;;  SpConds
+;;  ZonePattern
 ;;  -> (List 'okay Any HMC-System)
 ;;     | (List 'fail Any)
 (define (hmc-leapfrog-proposal
@@ -47,7 +50,8 @@
          grad-potential-fn
          sys0
          thunk
-         spconds)
+         spconds
+         zone)
   (let* ([half-epsilon  (/ epsilon 2.0)]
          [P-half-step   (momentum-step half-epsilon grad-potential-fn)]
          [P-step        (momentum-step epsilon grad-potential-fn)]
@@ -57,7 +61,7 @@
                            escape-prompt
                            (λ () (list 'fail reason))))]
          [propagate-X   (propagate-X-changes-to-model thunk spconds bad-step)]
-         [X-step        (position-step epsilon propagate-X bad-step)])
+         [X-step        (position-step epsilon zone propagate-X bad-step)])
     (call-with-continuation-prompt
      (λ ()
        (let loop ([i (- L 1)]
@@ -66,7 +70,7 @@
                   [sys (hmc-system-evolve-P sys0 P-half-step)])
          (if (zero? i)
              (let* ([ans-box (box (void))]
-                    [final-X-step (position-step epsilon propagate-X bad-step
+                    [final-X-step (position-step epsilon zone propagate-X bad-step
                                                  #:record-result ans-box)]
                     [new-sys
                     ;; One last full step for the position. it's now
@@ -102,7 +106,7 @@
 
 ; There ought to be a (* epsilon inv-M p) term, but
 ; we assume that M is the identity, so inv-M is 1.
-(define ((position-step epsilon propagate-X-change-fn escape
+(define ((position-step epsilon zone propagate-X-change-fn escape
                         #:record-result [record-result-box #f]) x p)
   (unless (hash? x)
     (raise-argument-error 'position-step "hash" 3
@@ -117,6 +121,7 @@
     (let ([delta-X (make-hash)])
       (for ([(k e) (in-hash x)]
             #:when (not (entry-pinned? e))
+            #:when (some-zone-matches? (entry-zones e) zone)
             [p     (in-value (entry-value (hash-ref p k)))])
         (let ([delta-e (entry-value-map (update-position p) e)])
           (if (ll-possible? (entry-ll delta-e))

@@ -15,6 +15,7 @@
 (provide db-Denergy)
 
 ;; db-Denergy : (Hashof Address (Vectorof PartialDerivatives))
+;;              ZonePattern
 ;;              -> (Address DB[Position] -> PotentialEnergy)
 ;;
 ;; Computes the partial derivative of the energy U(x) of total system x with
@@ -35,7 +36,7 @@
 ;;
 ;; So to compute the ∂U(x)/∂xk, let  I = { i | i = k ∨ ∃ j . param(i,j) depends on k }
 ;;  Then ∂U(x)/∂xk = Σ{i∈I} (dist-Denergy Di (indicator i k) ∂param(i,1)/∂xk ... ∂param(i,jᵢ)/∂xk)
-(define ((db-Denergy param-partials) k x)
+(define ((db-Denergy param-partials zone) k x)
   (define (indicator i) (if (equal? k i) 1 0))
   (when #f 
     (when (verbose?)
