@@ -8,6 +8,8 @@
          "../db.rkt"
          (only-in "../dist.rkt"
                   dist-Denergy)
+         (only-in "../interfaces.rkt"
+                  some-zone-matches?)
          (only-in "../util.rkt"
                   verbose?)
          )
@@ -43,7 +45,9 @@
       (eprintf " computing derivative of energy with respect to ~e\n" k)))
 
   (define denergy/dk
-    (for/sum ([(i xi) (in-hash x)])
+    (for/sum ([(i xi) (in-hash x)]
+              #:when (some-zone-matches? (entry-zones xi) zone)
+              )
       (define xi-dist (entry-dist xi))
       (define xi-value (entry-value xi))
       (define i-param-vec (hash-ref param-partials i))
