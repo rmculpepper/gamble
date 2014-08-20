@@ -47,6 +47,9 @@ Longer term:
 
 - testing and diagnostics
 
+- more diagnostics:
+  - MH: % of steps that used custom proposal vs resample
+
 ----
 
 use entropy (or entropy rate) as diagnostic
