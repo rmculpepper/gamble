@@ -23,14 +23,13 @@
 ;;
 ;; Returns the initial system (with synthesized momentum), a sample value and the
 ;; final system (evolved after L epsilon-steps).
-(define (hmc-step last-sys epsilon L grad-potential-fn thunk spconds zone)
+(define (hmc-step last-sys epsilon L grad-potential-fn thunk zone)
   (define init-sys (hmc-system-evolve-P last-sys (λ (x p) (synthesize-P-db x zone))))
   (define step-result
     (hmc-leapfrog-proposal epsilon L
                            grad-potential-fn
                            init-sys
                            thunk
-                           spconds
                            zone))
   (match step-result
     [(list 'okay sample-value new-sys) 

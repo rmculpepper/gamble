@@ -3,7 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/match
+(require (rename-in racket/match [match-define defmatch])
          racket/class
          data/order
          unstable/markparam
@@ -16,8 +16,7 @@
          (struct-out failed)
          (struct-out weight)
          reify-tree
-         split->subtrees
-         cond->subtrees)
+         split->subtrees)
 
 ;; == mem ==
 ;;
@@ -202,29 +201,9 @@
 
 ;; ----
 
-;; split->subtrees : split Condition -> (Listof (List Prob (-> (EnumTree A))))
-(define (split->subtrees s spconds)
-  (match s
-    [(split label dist k start)
-     (cond [(assoc label spconds)
-            => (lambda (e) (cond->subtrees dist k (cdr e)))]
-           [else
-            (split->subtrees* dist k start)])]))
-
-(define (cond->subtrees dist k c)
-  (match c
-    [(spcond:equal value)
-     (define l (dist-pdf dist value))
-     (cond [(positive? l)
-            ;; Note: subtrees do not sum to 1 ... problem?
-            ;; (probably not, given that densities not bounded by 1 anyway)
-            (list (cons l (lambda () (k value))))]
-           [else
-            null])]))
-
-;; split->subtrees : Dist (-> Value (EnumTree A)) Nat/#f
-;;                -> (Listof (Cons Prob (-> (EnumTree A))))
-(define (split->subtrees* dist k start)
+;; split->subtrees : split -> (Listof (List Prob (-> (EnumTree A))))
+(define (split->subtrees s)
+  (defmatch (split _label dist k start) s)
   (define enum (dist-enum dist))
   (cond [(eq? enum #f)
          (error 'enum-ERP "cannot enumerate distribution\n  distribution: ~e" dist)]

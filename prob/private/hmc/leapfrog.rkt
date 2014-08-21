@@ -13,7 +13,6 @@
                   verbose?
                   )
          (only-in "../interfaces.rkt"
-                  spcond:equal?
                   some-zone-matches?)
          )
 
@@ -25,7 +24,6 @@
        (-> any/c hash? real?)
        hmc-system?
        (-> any/c)
-       (listof (cons/c symbol? spcond:equal?))
        any/c ;; ZonePattern
        (or/c (list/c 'okay any/c hmc-system?)
              (list/c 'fail any/c)))]))
@@ -40,7 +38,6 @@
 ;;  (Address Position -> Momentum) ; partial derivative with respect to Address at Position
 ;;  HMC-System
 ;;  (-> Any) ; model thunk
-;;  SpConds
 ;;  ZonePattern
 ;;  -> (List 'okay Any HMC-System)
 ;;     | (List 'fail Any)
@@ -50,7 +47,6 @@
          grad-potential-fn
          sys0
          thunk
-         spconds
          zone)
   (let* ([half-epsilon  (/ epsilon 2.0)]
          [P-half-step   (momentum-step half-epsilon grad-potential-fn)]
@@ -60,7 +56,7 @@
                           (abort-current-continuation
                            escape-prompt
                            (λ () (list 'fail reason))))]
-         [propagate-X   (propagate-X-changes-to-model thunk spconds bad-step)]
+         [propagate-X   (propagate-X-changes-to-model thunk bad-step)]
          [X-step        (position-step epsilon zone propagate-X bad-step)])
     (call-with-continuation-prompt
      (λ ()
@@ -136,7 +132,7 @@
             
   (propagate-X-change-fn x delta-X #:record-result record-result-box))
 
-(define ((propagate-X-changes-to-model thunk spconds escape) x delta-X
+(define ((propagate-X-changes-to-model thunk escape) x delta-X
          #:record-result record-result-box)
   ; okay, so in principle delta-x is is what we want to return - it's
   ; the updated positions.  but that's not enough: we also need to update the parameters
@@ -159,8 +155,7 @@
   ; in order to compute gradients.
   (define ctx (new db-stochastic-ctx%
                    (last-db x)
-                   (delta-db delta-X)
-                   (spconds spconds)))
+                   (delta-db delta-X)))
   (define run-result (send ctx run thunk))
   (match run-result
     [(cons 'okay result) 
@@ -168,4 +163,3 @@
        (set-box! record-result-box result))
      (get-field current-db ctx)]
     [(cons 'fail reason) (escape reason)]))
-  

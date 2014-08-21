@@ -174,21 +174,17 @@ Note: the call to @racket[mem] must happen in the dynamic extent of
 the @racket[mh-sampler]; otherwise, naive memoization will be used
 instead.
 
-Certain kinds of conditions can be enforced directly, rather than
-sampling forward and rejecting if the condition is
-unsatisfied. Indeed, for conditions on continuous random variables,
-direct enforcement is the only feasible option.
-
-(Note: the syntax below, @racket[label] and @racket[#:cond], is still
-in flux and subject to change.)
+Certain kinds of conditions can be enforced directly using
+@racket[observe-at], rather than sampling forward and rejecting if the
+condition is unsatisfied. Indeed, for conditions on continuous random
+variables, direct enforcement is the only feasible option.
 
 @interaction[#:eval the-eval
 (define (make-s-cd stddev_R)
   (mh-sampler
    (define R (normal 10 stddev_R))
-   (define S (label 'S (normal R 1)))
-   R
-   #:cond (= S 9)))
+   (observe-at (normal-dist R 1) 9)
+   R))
 (sampler->mean+variance (make-s-cd 3) 1000)
 (sampler->mean+variance (make-s-cd .5) 1000)
 ]
@@ -373,9 +369,8 @@ and produce weighted samples.
 (define (make-ws-cd stddev_R)
   (importance-sampler
    (define R (normal 10 stddev_R))
-   (define S (label 'S (normal R 1)))
-   R
-   #:cond (= S 9)))
+   (observe-at (normal-dist R 1) 9)
+   R))
 (sampler->mean+variance (make-ws-cd 1) 1000)
 (sampler->mean+variance (make-ws-cd .5) 1000)
 ]

@@ -93,21 +93,17 @@
 (define-syntax (importance-sampler stx)
   (syntax-parse stx
     [(importance-sampler def:expr ... result:expr
-                         (~optional (~seq #:when condition:expr))
-                         (~seq #:cond sp:special-condition)
-                         ...)
+                         (~optional (~seq #:when condition:expr)))
      (template
       (importance-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (list sp.e ...)))]))
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
 
-(define (importance-sampler* thunk spconds)
-  (new importance-sampler% (thunk thunk) (spconds spconds)))
+(define (importance-sampler* thunk)
+  (new importance-sampler% (thunk thunk)))
 
 (define importance-sampler%
   (class* object% (weighted-sampler<%>)
-    (init-field thunk
-                spconds)
+    (init-field thunk)
     (super-new)
 
     (define/public (sample/weight)
@@ -136,13 +132,10 @@
 (define-syntax (mh-sampler stx)
   (syntax-parse stx
     [(mh-sampler def:expr ... result:expr
-                 (~optional (~seq #:when condition:expr))
-                 (~seq #:cond sp:special-condition)
-                 ...)
+                 (~optional (~seq #:when condition:expr)))
      (template
       (mh-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (list sp.e ...)))]))
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
 
 ;; ----
 
@@ -151,16 +144,12 @@
     [(hmc-sampler def:expr ... result:expr
                   (~or (~optional (~seq #:epsilon epsilon:expr))
                        (~optional (~seq #:L L:expr))
-                       (~optional (~seq #:when condition:expr))
-                       (~seq #:cond sp:special-condition))
+                       (~optional (~seq #:when condition:expr)))
                   ...)
      (template
       (mh-sampler*
        (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (list sp.e ...)
-       (hamiltonian-mc (?? epsilon 0.01)
-                       (?? L 10))))
-       ]))
+       (hamiltonian-mc (?? epsilon 0.01) (?? L 10))))]))
 
 ;; ----
 
@@ -168,26 +157,22 @@
   (syntax-parse stx
     [(enumerate def:expr ... result:expr
                 (~or (~optional (~seq #:when condition:expr))
-                     (~seq #:cond sp:special-condition)
                      (~optional (~seq #:limit limit:expr))
                      (~optional (~seq #:normalize? normalize?)))
                 ...)
      (template
       (enumerate*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (list sp.e ...)
        (?? (?@ #:limit limit))
        (?? (?@ #:normalize? normalize?))))]))
 
 (define-syntax (enum-importance-sampler stx)
   (syntax-parse stx
     [(importance-sample def:expr ... result:expr
-                        (~optional (~seq #:when condition:expr))
-                        (~seq #:cond sp:special-condition) ...)
+                        (~optional (~seq #:when condition:expr)))
      (template
       (enum-importance-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (list sp.e ...)))]))
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
 
 ;; ----
 

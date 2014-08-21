@@ -179,7 +179,7 @@ depending on only choices reused w/ different params.
 
 (define mh-transition<%>
   (interface ()
-    run ;; (-> A) SPConds Trace -> RunResult
+    run ;; (-> A) Trace -> RunResult
     ))
 
 (define mh-transition-base%
@@ -187,15 +187,14 @@ depending on only choices reused w/ different params.
     (init-field [record-obs? #t])  ;; FIXME: default #t ??
     (super-new)
 
-    ;; run : (-> A) SPConds Trace -> TransitionResult
-    (define/public (run thunk spconds last-trace)
+    ;; run : (-> A) Trace -> TransitionResult
+    (define/public (run thunk last-trace)
       (define last-db (trace-db last-trace))
       (defmatch (cons delta-db R-F) (perturb last-trace))
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
              (delta-db delta-db)
-             (spconds spconds)
              (record-obs? record-obs?)))
       ;; Run program
       (define result (send ctx run thunk))
@@ -392,25 +391,23 @@ choices do not affect control flow through the probabilistic program).
     (field [gradients #f])
     (super-new)
 
-    (define/public (run thunk spconds last-trace)
+    (define/public (run thunk last-trace)
       (define last-trace*
         (cond [(and gradients (not (equal? last-trace init-trace)))
                last-trace]
               [else
-               (run/collect-gradients thunk spconds last-trace)]))
+               (run/collect-gradients thunk last-trace)]))
       (when #f
         (eprintf "collected gradients ~e\n" gradients))
-      (run/hmc thunk spconds last-trace*))
+      (run/hmc thunk last-trace*))
 
-    (define/private (run/collect-gradients thunk spconds last-trace)
+    (define/private (run/collect-gradients thunk last-trace)
       (define delta-db '#hash())
       (define last-db (trace-db last-trace))
       (define ctx 
         (new db-stochastic-derivative-ctx%
              (last-db last-db)
-             (delta-db delta-db)
-             (spconds spconds)
-             ))
+             (delta-db delta-db)))
       (define result (send ctx run thunk))
       (define ans-db (get-field current-db ctx))
       (define grads (get-field derivatives ctx))
@@ -425,14 +422,14 @@ choices do not affect control flow through the probabilistic program).
                 (get-field ll-free ctx)
                 (get-field ll-obs ctx))]
         [(cons 'fail fail-reason)
-         (run/collect-gradients thunk spconds last-trace)]))
+         (run/collect-gradients thunk last-trace)]))
 
-    (define/private (run/hmc thunk spconds last-trace)
+    (define/private (run/hmc thunk last-trace)
       (define last-accepted-sys
         (hmc-system (trace-db last-trace) (make-hash)))
       (define step-result
         (hmc-step last-accepted-sys epsilon L (db-Denergy gradients zone)
-                  thunk spconds zone))
+                  thunk zone))
       (match step-result
         [(list 'fail reason)
          step-result]
@@ -469,8 +466,8 @@ choices do not affect control flow through the probabilistic program).
             (placeholder-set! p (append transitions p))
             (make-reader-graph p)))
 
-    (define/public (run thunk spconds last-trace)
-      (begin0 (send (car transitions) run thunk spconds last-trace)
+    (define/public (run thunk last-trace)
+      (begin0 (send (car transitions) run thunk last-trace)
         (set! transitions (cdr transitions))))
     ))
 
@@ -485,13 +482,12 @@ choices do not affect control flow through the probabilistic program).
 
 ;; ============================================================
 
-(define (mh-sampler* thunk spconds [transition (single-site)])
-  (new mh-sampler% (thunk thunk) (spconds spconds) (transition transition)))
+(define (mh-sampler* thunk [transition (single-site)])
+  (new mh-sampler% (thunk thunk) (transition transition)))
 
 (define mh-sampler%
   (class sampler-base%
     (init-field thunk
-                spconds
                 transition)
     (field [last-trace init-trace]
            [accepts 0]
@@ -519,7 +515,7 @@ choices do not affect control flow through the probabilistic program).
       (trace-value best-trace))
 
     (define/override (sample)
-      (define tr (send transition run thunk spconds last-trace))
+      (define tr (send transition run thunk last-trace))
       (match tr
         [(cons (? real? threshold) trace)
          (when (verbose?)

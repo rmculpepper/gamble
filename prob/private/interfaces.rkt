@@ -15,7 +15,6 @@
          zone-matches?
          some-zone-matches?
          current-label
-         (struct-out spcond:equal)
          current-derivatives)
 
 ;; Defines interfaces, base classes, and parameters.
@@ -111,8 +110,22 @@
 ;; will "never" produce an acceptable sample. In those cases,
 ;; need to change how X is generated.
 
-;; Special condition:
-;; - (= X value) -- X equal to given value (if prob 0 according to natural dist, reject)
+;; Two kinds of special condition:
+;; - (observe E value), where E contains a new choice
+;;
+;;   Need to propagate value to choice in E that it can affect; ideally,
+;;   we should adjust through arithmetic, etc.
+;;   eg, (observe (+ 5 (normal 0 1)) 6.3)
+;;       => (observe (normal 0 1) 1.3)
+;;       => (observe-at (normal-dist 0 1) 1.3)
+;;
+;; - (observe X value), where X is a variable (maybe indexed??)
+;;
+;;   This is harder, in a way; the scoping of the value expr is tricky.
+;;   Need to discover these observations before evaluating X rhs,
+;;   so will probably have to be restricted to "model-top-level".
+
+;; Issues with (observe X value):
 ;; Q: What scope is value/dist eval'd in?
 ;;    eg, Is (= X (if Y 1 2)) okay? What about (= X (if Y Z W))?
 ;; A: For model-level var X, should be env of X's definition, since it
@@ -129,11 +142,6 @@
 ;; For now, use 'label' form, require programmer to write explicitly.
 
 (define current-label (make-parameter #f))
-
-;; A Condition is (cons Label SpecialCond)
-;; A Label is any value, eg symbol
-;; A SpecialCond is (spcond:equal Any)
-(struct spcond:equal (value))
 
 ;; ============================================================
 ;; Partial derivatives

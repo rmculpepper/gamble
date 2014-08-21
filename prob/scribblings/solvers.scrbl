@@ -133,13 +133,10 @@ may be required to achive good results.
 (define one-dim-loc-hmc
   (hmc-sampler
      (define Hid (label 'Hid (derivative (normal 10 1) #f #f)))
-     (define Obs (label 'Obs (derivative (normal Hid 0.5)
-                             [(Hid)
-                              (λ (hid) 1)]
-                             #f)))
-     
+     (derivative (observe-at (normal-dist Hid 0.5) 9.0)
+                 [(Hid) (λ (hid) 1)]
+                 #f)
      Hid
-     #:cond (= Obs 9.0)
      #:epsilon 0.01
      #:L 90))
 

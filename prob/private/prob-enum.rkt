@@ -39,12 +39,12 @@
 
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
-(define (enumerate* thunk spconds
+(define (enumerate* thunk
                     #:limit [limit 1e-6]
                     #:normalize? [normalize? #t])
   (define tree (reify-tree thunk))
   (define-values (table prob-unexplored prob-accepted)
-    (explore tree limit spconds))
+    (explore tree limit))
   (when (verbose?)
     (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
     (eprintf "enumerate: accept rate: ~s\n"
@@ -67,7 +67,7 @@
 ;;        -> hash[A => Prob] Prob Prob
 ;; Limit means: explore until potential accepted dist is < limit unaccounted for,
 ;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
-(define (explore tree limit spconds)
+(define (explore tree limit)
   (define prob-unexplored 1) ;; prob of all unexplored paths
   (define prob-accepted 0) ;; prob of all accepted paths
   (define table (hash)) ;; hash[A => Prob], probs are not normalized
@@ -101,7 +101,7 @@
                      (add a prob-of-tree table prob-unexplored prob-accepted)])
          (values h table prob-unexplored prob-accepted))]
       [(? split? et)
-       (define subs (split->subtrees et spconds))
+       (define subs (split->subtrees et))
        (for/fold ([h h] [table table] [prob-unexplored prob-unexplored] [prob-accepted prob-accepted])
            ([sub (in-list subs)])
          (match sub
@@ -155,15 +155,13 @@
 
 ;; enum-importance-sampler* : (-> A) -> (Cons A Positive-Real)
 ;; FIXME: can get stuck on infinitely deep path (eg, geometric)
-(define (enum-importance-sampler* thunk spconds)
+(define (enum-importance-sampler* thunk)
   (new enum-importance-sampler%
-       (tree (reify-tree thunk))
-       (spconds spconds)))
+       (tree (reify-tree thunk))))
 
 (define enum-importance-sampler%
   (class* object% (weighted-sampler<%>)
-    (init-field tree
-                spconds)
+    (init-field tree)
     (super-new)
 
     ;; cache : (listof (Cons A Positive-Real))
@@ -184,18 +182,14 @@
         [(only a)
          (list (cons a prob))]
         [(split label dist k _)
-         (cond [(assoc label spconds)
-                => (lambda (e)
-                     (define forced-subs (force-subtrees (cond->subtrees dist k (cdr e))))
-                     (get-samples/paths forced-subs prob))]
-               [(eq? (dist-enum dist) #f)
+         (cond [(eq? (dist-enum dist) #f)
                 ;; Just sample.
                 ;; FIXME: check: don't weight by pdf; implicit in sampling frequency, right?
                 ;; FIXME: generate multiple samples, "while we're here"???
                 (define forced-subs (list (cons 1 (k (dist-sample dist)))))
                 (get-samples/paths forced-subs prob)]
                [else
-                (define forced-subs (force-subtrees (split->subtrees tree null)))
+                (define forced-subs (force-subtrees (split->subtrees tree)))
                 (get-samples/paths forced-subs prob)])]
         [(weight dist val k)
          (get-samples/paths (list (cons (dist-pdf dist val) (k))))]

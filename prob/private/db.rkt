@@ -144,7 +144,6 @@
   (class* object% (stochastic-ctx<%>)
     (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
-                spconds
                 [record-obs? #t]
                 [escape-prompt (make-continuation-prompt-tag)])
 
@@ -214,19 +213,12 @@
       (collision-error context))
 
     (define/private (sample/new dist context print?)
-      (cond [(assoc (current-label) spconds)
-             => (lambda (e)
-                  (match (cdr e)
-                    [(spcond:equal value)
-                     (observe-at* dist value context)
-                     value]))]
-            [else
-             (define value (dist-sample dist))
-             (define ll (dist-pdf dist value #t))
-             (when (and print? (verbose?))
-               (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-             (db-add! context (entry (current-zones) dist value ll #f))
-             value]))
+      (define value (dist-sample dist))
+      (define ll (dist-pdf dist value #t))
+      (when (and print? (verbose?))
+        (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
+      (db-add! context (entry (current-zones) dist value ll #f))
+      value)
 
     (define/private (sample/delta dist context e)
       (define last-e (hash-ref last-db context #f))

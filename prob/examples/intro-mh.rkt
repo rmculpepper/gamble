@@ -88,20 +88,3 @@
 (dist-update-prior (normal-dist 10 1) '(normal-dist _ 1) (vector 9))
 
 (newline)
-
-;; ------------------------------------------------------------
-
-;; conditioning (syntactic sugar for observation)
-;; Note: syntax is undocumented, still in flux
-
-(define s-c
-  (mh-sampler
-   (define R (normal 10 1))
-   (define S (label 'S (normal R 1)))
-   R
-   #:cond (= S 9)))
-
-(printf "conditioning affects posterior\n")
-(sampler->mean+variance s-c 10000)
-
-(newline)
