@@ -17,8 +17,8 @@
 
 @title[#:tag "solvers"]{Samplers and Solvers}
 
-A @deftech{sampler} is a procedure that takes zero arguments, runs a
-stochastic program, and produces a single result.
+This library provides multiple kinds of samplers and solvers that can
+run probabilistic programs.
 
 The examples in the following sections use the following function
 definitions:
@@ -30,6 +30,21 @@ definitions:
   (if (flip) 0 (add1 (geom))))
 ]
 
+@defproc[(sampler? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a @deftech{sampler}, @racket[#f]
+otherwise.
+}
+
+@defproc[(weighted-sampler? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a @deftech{weighted sampler},
+@racket[#f] otherwise.
+
+Every @tech{sampler} is also a @tech{weighted sampler}; the samples it
+produces always have weight @racket[1].
+}
+
 @defform[(rejection-sampler def/expr ... result-expr maybe-when-clause)
          #:grammar ([maybe-when-clause (code:line)
                                        (code:line #:when condition-expr)])]{
@@ -38,11 +53,15 @@ Produces a @tech{sampler} that, when applied, returns a value of
 @racket[result-expr] arising from an execution where
 @racket[condition-expr], if present, was satisfied.
 
-The sampler is implemented using rejection sampling. That is, the
+The sampler is implemented using rejection sampling---specifically,
+``logic sampling''---for discrete random choices. That is, the
 @racket[def/expr]s and @racket[result-expr] are evaluated. Then
 @racket[condition-expr] is evaluated, if present; if it produces
 @racket[#t], the execution is accepted and the value of
 @racket[result-expr] is returned; otherwise, the process is repeated.
+
+The rejection sampler cannot perform observations
+(@racket[observe-at]) on continuous random variables.
 
 @examples[#:eval the-eval
 (define s-or
@@ -67,15 +86,20 @@ The sampler is implemented using rejection sampling. That is, the
          #:grammar ([maybe-when-clause (code:line)
 				       (code:line #:when condition-expr)])]{
 
-Like @racket[rejection-sampler], but returns a @emph{weighted sampler}.
+Like @racket[rejection-sampler], but returns a @emph{weighted sampler}
+that uses weights to represent the quality of a particular sample
+given the observations in the program. Thus unlike a rejection
+sampler, an importance sampler can handle observations
+(@racket[observe-at]) on continuous random variables.
 }
 
 @defform[(mh-sampler def/expr ... result-expr maybe-when-clause)
          #:grammar ([maybe-when-clause (code:line)
                                        (code:line #:when condition-expr)])]{
 
-Like @racket[rejection-sampler], but when applied repeatedly uses a
-variant of Metropolis-Hastings as described in @cite{Bher}.
+Like @racket[rejection-sampler], returns a @tech{sampler}, but
+produces samples using a variant of Metropolis-Hastings as described
+in @cite{Bher}.
 
 @examples[#:eval the-eval
 (define mh-or
@@ -103,13 +127,11 @@ variant of Metropolis-Hastings as described in @cite{Bher}.
 @defform[(hmc-sampler def/expr ... result-expr
                       maybe-epsilon-clause
                       maybe-L-clause
-                      maybe-when-clause
-)
+                      maybe-when-clause)
          #:grammar ([maybe-epsilon-clause (code:line)
                                           (code:line #:epsilon epsilon-expr)]
                     [maybe-L-clause (code:line)
                                     (code:line #:L L-expr)]
-
                     [maybe-when-clause (code:line)
                                        (code:line #:when cond-expr)])]{
 
@@ -153,12 +175,12 @@ may be required to achive good results.
                     [maybe-normalize-clause (code:line)
                                             (code:line #:normalize? normalize?-expr)])]{
 
-Returns a distribution table of the form @racket[(list (list _value
-_prob) ...)], where @racket[_value] is a value produced by
+Returns a discrete distribution of the form @racket[(discrete-dist
+[_value _prob] ...)], where @racket[_value] is a value produced by
 @racket[result-expr] and @racket[_prob] is its normalized probability
-given @racket[condition-expr]. If @racket[normalize?-expr] is given
-and evaluates to @racket[#f], then the probability is unnormalized
-instead.
+given @racket[condition-expr] and the observations in the program. If
+@racket[normalize?-expr] is given and evaluates to @racket[#f], then
+the probability is unnormalized instead.
 
 The @racket[enumerate] form works by exploring all possibilities using
 the technique described in @cite{EPP}. If @racket[limit-expr]
@@ -170,7 +192,7 @@ evalues to @racket[#f], then exploration ceases only when all paths
 have been explored; if any path is infinite, then @racket[enumerate]
 fails to terminate.
 
-Only discrete and integer-valued @tech{ERP}s can be used with
+Only discrete and integer-valued @tech{ERP}s can be sampled with
 @racket[enumerate], and infinite-range ERPs (such as
 @racket[geometric]) require the use of @racket[#:limit] to enforce
 termination.
@@ -223,15 +245,13 @@ normalizing by the acceptance rate:
          #:grammar ([maybe-when-clause (code:line)
                                        (code:line #:when condition-expr)])]{
 
-Like @racket[rejection-sampler], but uses the lazy-search tree
-mechanism of @racket[enumerate], although without exhaustively
-exploring it.
-
-Produces a @emph{weighted sampler}.
+Like @racket[importance-sampler], produces a @tech{weighted sampler},
+but uses the lazy-search tree mechanism of @racket[enumerate],
+although without exhaustively exploring it.
 
 @examples[#:eval the-eval
 (define ws
-  (importance-sampler
+  (enum-importance-sampler
     (define A (flip))
     (define B (flip))
     A
@@ -242,7 +262,7 @@ Produces a @emph{weighted sampler}.
 
 @section[#:tag "hmc-utils"]{Special utilities for Hamiltonian Monte Carlo}
 
-The @racket[hmc-solver] requires that all the distrubutions in the
+The @racket[hmc-sampler] requires that all the distrubutions in the
 model are continuous.  It further requires partial derivatives of each
 expression that mentions previously defined random variables that may
 occur in the parameters of another random variable.  Such information
@@ -252,7 +272,7 @@ may be provided using the @racket[derivative] special form.
          #:grammar ([parameter-derivative-clause (code:line [(label-ids ...) partial-fn-expr])
                                           (code:line #f)])]{
 
-Anottate the @racket[dist-expr] distribution sample expression with
+Annotate the @racket[dist-expr] distribution sample expression with
 the partial derivatives of its parameters.  There should be as many
 parameter derivative clauses as there are parameters of the underlying
 distribution.

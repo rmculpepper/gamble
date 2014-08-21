@@ -29,8 +29,8 @@ Parameter that controls whether informative messages are printed by
 solvers and ERPs.
 }
 
-@defproc[(discrete-dist-error [dist1 (listof (cons/c any/c (>=/c 0)))]
-                              [dist2 (listof (cons/c any/c (>=/c 0)))])
+@defproc[(discrete-dist-error [dist1 discrete-dist?]
+                              [dist2 discrete-dist?])
          (>=/c 0)]{
 
 Returns a measure of the difference between two discrete
@@ -39,8 +39,9 @@ be reassigned in order to transform @racket[dist1] into
 @racket[dist2].
 
 @examples[#:eval the-eval
-(discrete-dist-error '((A . 3/5) (B . 2/5))
-                     '((A . 1/2) (B . 1/2)))
+(discrete-dist-error
+ (discrete-dist ['A 3/5] ['B 2/5])
+ (discrete-dist ['A 1/2] ['B 1/2]))
 ]
 
 In the example above, @racket[1/10] of the probability mass of
@@ -48,7 +49,7 @@ In the example above, @racket[1/10] of the probability mass of
 @racket['B] to transform the first distribution into the second.
 }
 
-@defproc[(sampler->KS [sampler (-> real?)]
+@defproc[(sampler->KS [sampler sampler?]
                       [iterations exact-positive-integer?]
                       [dist dist?])
          (>=/c 0)]{
@@ -59,13 +60,13 @@ statistic} with @racket[dist]. The result is a measure of the goodness
 of fit of the samples to the distribution.
 
 @examples[#:eval the-eval
-(sampler->KS (lambda () (uniform 0 1))
+(sampler->KS (rejection-sampler (uniform 0 1))
              1000
              (uniform-dist 0 1))
-(sampler->KS (lambda () (normal 0 1))
+(sampler->KS (rejection-sampler (normal 0 1))
              1000
              (uniform-dist 0 1))
-(sampler->KS (lambda () (for/sum ([i 3]) (uniform -1 1)))
+(sampler->KS (rejection-sampler (for/sum ([i 3]) (uniform -1 1)))
              100
              (normal-dist 0 1))
 ]
@@ -86,20 +87,20 @@ list.
 ]
 }
 
-@defproc[(sampler->discrete-dist [sampler (-> _A)]
+@defproc[(sampler->discrete-dist [sampler sampler?]
                                  [n exact-positive-integer?]
-                                 [f (-> _A _B) (lambda (x) x)])
+                                 [f (-> any/c any/c) (lambda (x) x)])
          discrete-dist?]{
 
 Generates @racket[n] samples using @racket[(f (sampler))], and
 produces a list of the results with probability weights.
 
 @examples[#:eval the-eval
-(sampler->discrete-dist (lambda () (flip 1/2)) 100)
+(sampler->discrete-dist (rejection-sampler (flip 1/2)) 100)
 ]
 }
 
-@defproc[(sampler->mean+variance [sampler (-> _A)]
+@defproc[(sampler->mean+variance [sampler sampler?]
                                  [f (-> _A real?) (lambda (x) x)])
          (values real? real?)]{
 
@@ -109,7 +110,7 @@ samples, then @racket[f] must be given and must convert samples into
 real values.
 
 @examples[#:eval the-eval
-(sampler->mean+variance (lambda () (flip 1/2))
+(sampler->mean+variance (rejection-sampler (flip 1/2))
                         100
                         (indicator/value #t))
 ]

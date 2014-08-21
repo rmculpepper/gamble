@@ -7,6 +7,8 @@
          (only-in "dist.rkt" dist-sample dist-pdf))
 (provide weighted-sampler<%>
          sampler<%>
+         weighted-sampler?
+         sampler?
          sampler-base%
          stochastic-ctx<%>
          current-stochastic-ctx
@@ -34,6 +36,9 @@
               ([prop:procedure (lambda (this) (send this sample))])
     sample  ;; -> Any
     ))
+
+(define (weighted-sampler? x) (is-a? x weighted-sampler<%>))
+(define (sampler? x) (is-a? x sampler<%>))
 
 ;; Automatic impl of weighted sampler from "ordinary" sampler.
 (define sampler-base%

@@ -7,8 +7,11 @@
 
 #lang racket/base
 (require "util.rkt"
+         "interfaces.rkt"
          "prob-util.rkt"
          "prob-syntax.rkt")
 (provide (all-from-out "util.rkt")
+         weighted-sampler?
+         sampler?
          (all-from-out "prob-util.rkt")
          (all-from-out "prob-syntax.rkt"))
