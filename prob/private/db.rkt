@@ -160,6 +160,13 @@
            [ll-diff  0])
     (super-new)
 
+    ;; db-add! : Address Entry -> Void
+    ;; Add entry to current-db and update nchoices if unpinned.
+    (define/private (db-add! context entry)
+      (hash-set! current-db context entry)
+      (unless (entry-pinned? entry)
+        (set! nchoices (add1 nchoices))))
+
     ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
     ;; Run a prob prog using this stochastic ctx, populate current-db, etc.
     (define/public (run thunk)
@@ -215,9 +222,7 @@
              (define ll (dist-pdf dist value #t))
              (when (and print? (verbose?))
                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
-             (hash-set! current-db context
-                        (entry (current-zones) dist value ll #f))
-             (set! nchoices (add1 nchoices))
+             (db-add! context (entry (current-zones) dist value ll #f))
              (set! ll-free (+ ll-free ll))
              value]))
 
@@ -230,8 +235,7 @@
              (when (verbose?)
                (eprintf "- PERTURBED ~e: ~s = ~e\n"
                         dist context (entry-value e)))
-             (hash-set! current-db context e)
-             (set! nchoices (add1 nchoices))
+             (db-add! context e)
              (set! ll-free (+ ll-free (entry-ll e)))
              (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
              (entry-value e)]
@@ -242,9 +246,8 @@
                   (define value (entry-value e))
                   (when (verbose?)
                     (eprintf "- PERTURBED* ~e: ~s = ~e\n" dist context value))
-                  (hash-set! current-db context
-                             (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
-                  (set! nchoices (add1 nchoices))
+                  (db-add! context
+                           (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! ll-free (+ ll-free new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
@@ -259,8 +262,7 @@
              (when (verbose?)
                (eprintf "- REUSED ~e: ~s = ~e\n"
                         dist context (entry-value e)))
-             (hash-set! current-db context e)
-             (set! nchoices (add1 nchoices))
+             (db-add! context e)
              (set! ll-free (+ ll-free (entry-ll e)))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
@@ -270,9 +272,8 @@
                   (define value (entry-value e))
                   (when (verbose?)
                     (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
-                  (hash-set! current-db context
-                             (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
-                  (set! nchoices (add1 nchoices))
+                  (db-add! context
+                           (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! ll-free (+ ll-free new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
@@ -303,8 +304,7 @@
                     (eprintf "- OBS UPDATE ....\n"))
                   (define ll (dist-pdf dist val #t))
                   (cond [(ll-possible? ll)
-                         (hash-set! current-db context
-                                    (entry (current-zones) dist val ll #t))
+                         (db-add! context (entry (current-zones) dist val ll #t))
                          (set! ll-obs (+ ll-obs ll))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
@@ -318,8 +318,7 @@
              (cond [(ll-possible? ll)
                     (set! ll-obs (+ ll-obs ll))
                     (when record-obs?
-                      (hash-set! current-db context
-                                 (entry (current-zones) dist val ll #t)))]
+                      (db-add! context (entry (current-zones) dist val ll #t)))]
                    [else (fail 'observation)])]))
 
     (define/private (mem-context? context)
