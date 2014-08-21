@@ -34,6 +34,9 @@ definitions:
 
 Returns @racket[#t] if @racket[v] is a @deftech{sampler}, @racket[#f]
 otherwise.
+
+A sampler is also an applicable object. That is, if @racket[_s] is a
+sampler, then evaluating @racket[(_s)] generates a sample.
 }
 
 @defproc[(weighted-sampler? [v any/c]) boolean?]{
@@ -44,6 +47,22 @@ Returns @racket[#t] if @racket[v] is a @deftech{weighted sampler},
 Every @tech{sampler} is also a @tech{weighted sampler}; the samples it
 produces always have weight @racket[1].
 }
+
+@defproc[(generate-samples [s sampler?] [n exact-nonnegative-integer?])
+         (vectorof any/c)]{
+
+Generates @racket[n] samples from the sampler @racket[s].
+}
+
+@defproc[(generate-weighted-samples [s weighted-sampler?] [n exact-nonnegative-integer?])
+         (vectorof (cons/c any/c (>=/c 0)))]{
+
+Generates @racket[n] weighted samples from the @tech{weighted sampler}
+@racket[s] and returns them as a vector of value-weight pairs.
+}
+
+
+@; ------------------------------------------------------------
 
 @defform[(rejection-sampler def/expr ... result-expr maybe-when-clause)
          #:grammar ([maybe-when-clause (code:line)

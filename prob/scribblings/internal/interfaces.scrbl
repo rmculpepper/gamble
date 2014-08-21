@@ -7,7 +7,9 @@
           scribble/basic
           (for-label racket/contract
                      prob
-		     prob/private/interfaces))
+                     (only-in prob/private/interfaces
+                              weighted-sampler<%>
+                              sampler<%>)))
 
 @title[#:tag "interfaces"]{Prob Internal Interfaces}
 
