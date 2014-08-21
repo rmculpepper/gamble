@@ -161,11 +161,14 @@
     (super-new)
 
     ;; db-add! : Address Entry -> Void
-    ;; Add entry to current-db and update nchoices if unpinned.
+    ;; Add entry to current-db and update nchoices, ll-free, ll-obs.
     (define/private (db-add! context entry)
       (hash-set! current-db context entry)
-      (unless (entry-pinned? entry)
-        (set! nchoices (add1 nchoices))))
+      (cond [(entry-pinned? entry)
+             (set! ll-obs (+ ll-obs (entry-ll entry)))]
+            [else
+             (set! ll-free (+ ll-free (entry-ll entry)))
+             (set! nchoices (add1 nchoices))]))
 
     ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
     ;; Run a prob prog using this stochastic ctx, populate current-db, etc.
@@ -223,7 +226,6 @@
              (when (and print? (verbose?))
                (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
              (db-add! context (entry (current-zones) dist value ll #f))
-             (set! ll-free (+ ll-free ll))
              value]))
 
     (define/private (sample/delta dist context e)
@@ -236,7 +238,6 @@
                (eprintf "- PERTURBED ~e: ~s = ~e\n"
                         dist context (entry-value e)))
              (db-add! context e)
-             (set! ll-free (+ ll-free (entry-ll e)))
              (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
@@ -248,7 +249,6 @@
                     (eprintf "- PERTURBED* ~e: ~s = ~e\n" dist context value))
                   (db-add! context
                            (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
-                  (set! ll-free (+ ll-free new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
             [else
@@ -263,7 +263,6 @@
                (eprintf "- REUSED ~e: ~s = ~e\n"
                         dist context (entry-value e)))
              (db-add! context e)
-             (set! ll-free (+ ll-free (entry-ll e)))
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
                   (let ([new-ll (dist-pdf dist (entry-value e) #t)])
@@ -274,7 +273,6 @@
                     (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
                   (db-add! context
                            (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
-                  (set! ll-free (+ ll-free new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
             [else
@@ -305,7 +303,6 @@
                   (define ll (dist-pdf dist val #t))
                   (cond [(ll-possible? ll)
                          (db-add! context (entry (current-zones) dist val ll #t))
-                         (set! ll-obs (+ ll-obs ll))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
                         [else (fail 'observation)]))]
@@ -316,9 +313,10 @@
                         dist context val))
              (define ll (dist-pdf dist val #t))
              (cond [(ll-possible? ll)
-                    (set! ll-obs (+ ll-obs ll))
-                    (when record-obs?
-                      (db-add! context (entry (current-zones) dist val ll #t)))]
+                    (cond [record-obs?
+                           (db-add! context (entry (current-zones) dist val ll #t))]
+                          [else
+                           (set! ll-obs (+ ll-obs ll))])]
                    [else (fail 'observation)])]))
 
     (define/private (mem-context? context)
