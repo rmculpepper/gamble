@@ -123,7 +123,7 @@ depending on only choices reused w/ different params.
   (lambda (dist value)
     (match dist
       [(normal-dist mean stddev)
-       (add-normal-proposal mean stddev)
+       (add-normal-proposal value stddev)
        #|
        (define forward-dist
          (normal-dist value (* stddev scale-factor)))
@@ -135,9 +135,9 @@ depending on only choices reused w/ different params.
        (cons value* (- R F))
        |#]
       [(cauchy-dist mode scale)
-       (add-normal-proposal mode scale)]
+       (add-normal-proposal value scale)]
       [(logistic-dist mean scale)
-       (add-normal-proposal mean (* (/ pi (sqrt 3)) scale))]
+       (add-normal-proposal value (* (/ pi (sqrt 3)) scale))]
       [(gamma-dist shape scale)
        (mult-exp-normal-proposal value (* scale (sqrt shape)))]
       [(exponential-dist mean)
