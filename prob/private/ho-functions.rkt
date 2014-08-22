@@ -9,7 +9,8 @@
          andmap
          ormap
          foldr
-         foldl)
+         foldl
+         build-list)
 
 (define map
   (case-lambda
@@ -102,3 +103,9 @@
     (cond [(pair? xs)
            (loop (cdr xs) (combine (car xs) base))]
           [else base])))
+
+(define (build-list n f)
+  (let loop ([i 0])
+    (if (< i n)
+        (cons (f i) (loop (add1 i)))
+        null)))

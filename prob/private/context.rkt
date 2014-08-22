@@ -4,9 +4,17 @@
 
 #lang racket/base
 (require (for-syntax racket/base))
-(provide the-context
-         get-context
-         apply/delimit)
+(provide (all-defined-out))
+
+;; This module describes (in comments) the approaches used for
+;; address-tracking (a la Bher) and conditioning. It also defines
+;; parameters and functions used to contain that information.
+
+;; See instrument.rkt for the implementation (through rewriting of
+;; expanded modules) of the approaches described here.
+
+;; ------------------------------------------------------------
+;; Address-tracking
 
 #|
 How to represent an Address (ie, a point in evaluation, reasonably stable 
@@ -57,8 +65,6 @@ tail position. Or flip could be defined in instrumented module. But
 would contracts interfere? (Probably not, if both definition and use
 site are instrumented.)
 
----- See instrument.rkt for instrumentation ----
-
 |#
 
 ;; the-context : (Parameterof (Listof Nat))
@@ -73,3 +79,150 @@ site are instrumented.)
 (define (apply/delimit f . args)
   (parameterize ((the-context null))
     (apply f args)))
+
+
+;; ------------------------------------------------------------
+;; Observations
+
+#|
+Goal: implement (observe CC[(sample d)] v)
+             as CC[(observe-at CC^-1[v])]
+
+Conditioning contexts (CC) are defined thus:
+CC ::=                   -- CCFrame rep:
+       []
+    |  (+ v CC)          -- v
+    |  (- CC)            -- '-
+    |  (cons CC e)       -- 'car
+    |  (cons v CC)       -- 'cdr
+    |  (reverse CC)      -- 'reverse
+    |  ... more invertible functions that don't affect density
+           (eg, * is bad, I think)
+
+ConditioningContext = (list CCFrame ...)
+
+The CC is implicitly stored in the continuation mark stack under the
+obs-mark key. The value of the observation is stored in the observing?
+parameter.
+
+Note: in order to cooperate with unannotated code---ie, to detect
+uninstrumented non-conditionable frames in context---store the CC one
+frame back in the context. So in general:
+
+    at CC[e], cms(CC) = (cons 'unknown 〚CC〛)
+
+So if CC[(f)] -> CC[B[(g)]] --- B for bad frame, non-conditionable ---
+then -> CC[B[CC'[e]]], cms(CC[B[CC'[]]]) will have an internal
+'unknown frame indicating that we cannot invert the context to adjust 
+the observed value.
+
+(Need to explain this better. TODO: reread Jay's paper on serializable
+continuations for servlets, which also wants to detect bad frames.)
+
+So sample function will just overwrite top frame using WCM. Better to
+overwrite than ignore first 'unknown, since overwriting also catches
+CC[B[(observe ...)]].
+
+More challenges:
+- (let ([t conditionable-expr]) (+ v t))
+   cf laziness w/ 2 kinds of forcing contexts
+- conditions on accumulated lists (eg, for/list expansion)
+- (begin (define X conditionable-expr) (observe X v))
+- conditioning through lists/vectors/tables (indexed RVs)
+- smarter +: pick conditionable expr even if not last
+
+Optimizations:
+- limit instrumentation to functions that could be called in CC
+|#
+
+#|
+Major problem: How to check that condition is applied?
+
+Idea 1: (observe e v) also checks e evaluates to v (equal?).
+Problem: floating-point arithmetic may mean equality doesn't hold.
+
+Idea 2: check approximate numeric equality
+Problem: .... eh, maybe, but what tolerance?
+
+Idea 3: Mutable flag checked when condition used by sample.
+Problem: mutation bad for enum; given cons, can have many subconditions
+
+Idea 4: Check structure of v up to numeric leaves, then use
+  4a: approximate equality on reals
+  4b: mutable counter for reals
+|#
+
+(struct observation (value) #:prefab)
+
+(define obs-mark 'observe)
+(define obs-prompt (make-continuation-prompt-tag))
+
+(define observing? (make-parameter #f))
+
+(define (call/observe-context thunk value)
+  (call-with-continuation-prompt
+   (lambda ()
+     (parameterize ((observing? (observation value)))
+       (with-continuation-mark obs-mark 'unknown (thunk))))
+   obs-prompt))
+
+(define (get-observe-context)
+  (and (observing?)
+       (continuation-mark-set->list
+        (current-continuation-marks obs-prompt)
+        obs-mark
+        obs-prompt)))
+
+(define (get-adjusted-observation)
+  (let ([obs (observing?)])
+    (and (observation? obs)
+         (interpret-context (get-observe-context) (observation-value obs)))))
+
+(define (observe-context-adjust-value ctx obs)
+  (interpret-context ctx (observation-value obs)))
+
+(define (interpret-context ctx val)
+  (foldr interpret-frame val ctx))
+
+(define (interpret-frame frame val)
+  (cond [(real? frame)  ;; (+ frame [])
+         (- val frame)]
+        [(eq? frame 'car) ;; (cons [] e)
+         (car val)]
+        [(eq? frame 'cdr) ;; (cons v [])
+         (cdr val)]
+        [(eq? frame 'reverse) ;; (reverse [])
+         (reverse val)]
+        [(eq? frame 'ok)
+         val]
+        [(eq? frame 'unknown)
+         (error 'observe "expression is not conditionable;\n ~a"
+                "context contains unconditionable frames")]))
+
+#|
+;; Test script:
+
+(require prob/private/context)
+(begin
+  ;; f must be uninstrumented to avoid 'unknown frame!
+  (define (f x)
+    (with-continuation-mark obs-mark 'ok
+      (begin (eprintf "ctx = ~s\n" (get-observe-context))
+             (eprintf "adj = ~s\n" (get-adjusted-observation))
+             (or (get-adjusted-observation)
+                 (random 10)))))
+  (require prob))
+(begin
+  (define (g x) (let ([t (f (* 2 x))]) (+ t 23 (f x))))
+  (define (h x) (+ 17 (g x))))
+(begin
+  (define (gg x) (cons (f x) (cons (+ 1 (f x)) null)))
+  (define (hh x) (reverse (gg x))))
+
+
+(list (h 12))
+(call/observe-context (lambda () (h 12)) 0)
+
+(list (hh 1))
+(call/observe-context (lambda () (hh 1)) '(2 1))
+|#

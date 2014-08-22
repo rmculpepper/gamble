@@ -14,7 +14,8 @@
          "prob-mh.rkt"
          "prob-enum.rkt"
          "interfaces.rkt")
-(provide rejection-sampler
+(provide observe
+         rejection-sampler
          importance-sampler
          mh-sampler
          hmc-sampler
@@ -33,6 +34,13 @@
           [pforce (-> ppromise? any)])
          (rename-out [table* table])
          table?)
+
+;; ----
+
+(define-syntax (observe stx)
+  (syntax-case stx ()
+    [(observe e v)
+     #'(observe* (lambda () e) v)]))
 
 ;; ----
 

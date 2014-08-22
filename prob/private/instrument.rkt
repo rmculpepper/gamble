@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require (for-syntax racket/base
+                     racket/syntax
                      syntax/parse)
          racket/match
          "context.rkt")
@@ -69,7 +70,7 @@ distinct call-site indexes.
                     (local-expand #'(#%module-begin form ...)
                                   'module-begin
                                   null)])
-       #'(instrument e-module-body #:un))]))
+       #'(instrument e-module-body #:nt))]))
 
 (define-syntax (instrumenting-top-interaction stx)
   (syntax-case stx ()
@@ -80,7 +81,7 @@ distinct call-site indexes.
           #'(begin (instrumenting-top-interaction . form) ...)]
          [form
           (with-syntax ([e-form (local-expand #'form 'top-level null)])
-            #'(instrument e-form #:un))]))]))
+            #'(instrument e-form #:nt))]))]))
 
 (begin-for-syntax
  ;; Need privileged inspector to rewrite expanded code.
@@ -90,38 +91,25 @@ distinct call-site indexes.
 
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
-;;    #:nt   - non-tail wrt enclosing lambda
-;;    #:tail - tail wrt enclosing lambda
+;;    #:cc - maybe tail wrt conditioning context in enclosing lambda
+;;    #:nt - non-tail wrt conditioning context
 (define-syntax (instrument stx0)
   (syntax-parse stx0
     [(instrument form-to-instrument m)
      (define stx (syntax-disarm #'form-to-instrument stx-insp))
+     ;; Use recur-nt on non-tail sub-expressions of possible cc expression
+     (define/with-syntax recur-nt
+       (case (syntax->datum #'m)
+         [(#:cc) #'recur-cc-to-nt]
+         [(#:nt) #'recur-nt-to-nt]))
      (define instrumented
        (syntax-parse stx
          #:literal-sets (kernel-literals)
          ;; Fully-Expanded Programs
          ;; Rewrite applications
          [(#%plain-app) stx]
-         [(#%plain-app f:id e ...)
-          (define classification (classify-function #'f))
-          (cond [(eq? classification 'safe)
-                 ;; "safe" function: doesn't need app/call-site*
-                 ;; Benefit: for tail calls, avoid call-with-immediate-continuation-mark
-                 #'(#%plain-app f (instrument e #:nt) ...)]
-                [else
-                 ;; unsafe or unknown; use app/call-site*
-                 (when #f
-                   (when (eq? classification 'unknown)
-                     (eprintf "## ~s\n" (syntax-e #'f))))
-                 (with-syntax ([c (syntax-local-lift-expression
-                                   #`(fresh-call-site #,stx))])
-                   #'(app/call-site* m c f (instrument e #:nt) ...))])]
          [(#%plain-app f e ...)
-          (with-syntax ([c (syntax-local-lift-expression
-                            #`(fresh-call-site #,stx))])
-            (when #f
-              (eprintf "## ~s\n" (syntax->datum #'f)))
-            #'(app/call-site* m c (instrument f #:nt) (instrument e #:nt) ...))]
+          #`(instrumenting-app m #,stx)]
          ;; Just recur through all other forms
          ;; -- module body
          [(#%plain-module-begin form ...)
@@ -140,31 +128,31 @@ distinct call-site indexes.
          ;; -- expr
          [var:id #'var]
          [(#%plain-lambda formals e ... e*)
-          #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* #:tail))]
+          #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* #:cc))]
          [(case-lambda [formals e ... e*] ...)
-          #'(case-lambda [formals (instrument e #:nt) ... (instrument e* #:tail)] ...)]
+          #'(case-lambda [formals (instrument e #:nt) ... (instrument e* #:cc)] ...)]
          [(if e1 e2 e3)
-          #'(if (instrument e1 #:nt) (instrument e2 m) (instrument e3 m))]
+          #'(if (recur-nt e1) (instrument e2 m) (instrument e3 m))]
          [(begin e ... e*)
-          #'(begin (instrument e #:nt) ... (instrument e* m))]
+          #'(begin (recur-nt e) ... (instrument e* m))]
          [(begin0 e ...)
-          #'(begin0 (instrument e #:nt) ...)]
+          #'(begin0 (recur-nt e) ...)]
          [(let-values ([vars rhs] ...) body ... body*)
-          #'(let-values ([vars (instrument rhs #:nt)] ...)
-              (instrument body #:nt) ... (instrument body* m))]
+          #'(let-values ([vars (recur-nt rhs)] ...)
+              (recur-nt body) ... (instrument body* m))]
          [(letrec-values ([vars rhs] ...) body ... body*)
-          #'(letrec-values ([vars (instrument rhs #:nt)] ...)
-              (instrument body #:nt) ... (instrument body* m))]
+          #'(letrec-values ([vars (recur-nt rhs)] ...)
+              (recur-nt body) ... (instrument body* m))]
          [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ... body*)
-          #'(letrec-syntaxes+values ([svars srhs] ...) ([vvars (instrument vrhs #:nt)] ...)
-              (instrument body #:nt) ... (instrument body* m))]
+          #'(letrec-syntaxes+values ([svars srhs] ...) ([vvars (recur-nt vrhs)] ...)
+              (recur-nt body) ... (instrument body* m))]
          [(set! var e)
           ;; (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
-          #'(set! var (instrument e #:nt))]
+          #'(set! var (recur-nt e))]
          [(quote d) stx]
          [(quote-syntax s) stx]
          [(with-continuation-mark e1 e2 e3)
-          #'(with-continuation-mark (instrument e1 #:nt) (instrument e2 #:nt)
+          #'(with-continuation-mark (recur-nt e1) (recur-nt e2)
               (instrument e3 m))]
          ;; #%plain-app -- see above
          [(#%top . _) stx]
@@ -180,25 +168,100 @@ distinct call-site indexes.
                        (syntax-track-origin instrumented stx #'instrument))
                    #'form-to-instrument)]))
 
+(define-syntax (recur-cc-to-nt stx)
+  (syntax-case stx ()
+    [(_ e) #'(wrap-nt (instrument e #:nt))]))
+(define-syntax (recur-nt-to-nt stx)
+  (syntax-case stx ()
+    [(_ e) #'(instrument e #:nt)]))
+
 ;; ----
 
-(define-syntax (app/call-site* stx)
+;; App needs to do 2 transformations
+;;  - address-tracking (unless "safe" function)
+;;  - conditioning-tracking (if conditionable AND tail wrt conditioning context)
+;; Conditionable functions are a subset of safe functions,
+;; so split that way.
+
+(define-syntax (instrumenting-app iastx)
+  (define stx (syntax-case iastx () [(_ m stx) #'stx]))
+  (syntax-parse iastx
+    #:literals (#%plain-app + cons reverse)
+    ;; Conditionable functions
+    [(_ #:cc (#%plain-app + e ... eFinal))
+     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let ([tmp (wrap-nt (instrument e #:nt))] ...)
+           (with-continuation-mark obs-mark (+ tmp ...)
+             (#%plain-app + tmp ... (instrument eFinal #:cc)))))]
+    [(_ #:cc (#%plain-app cons e1 e2))
+     #'(with-continuation-mark obs-mark 'car
+         (let ([tmp1 (wrap-cc (instrument e1 #:cc))])
+           (with-continuation-mark obs-mark 'cdr
+             (let ([tmp2 (wrap-cc (instrument e2 #:cc))])
+               (#%plain-app cons tmp1 tmp2)))))]
+    [(_ #:cc (#%plain-app reverse e))
+     #'(with-continuation-mark obs-mark 'reverse
+         (#%plain-app reverse (wrap-cc (instrument e #:cc))))]
+
+    ;; Non-conditionable functions in conditionable contexts
+    [(_ #:cc (#%plain-app f:id e ...))
+     #:when (eq? (classify-function #'f) 'safe)
+     ;; "safe" function: doesn't need address tracking
+     ;; non-conditionable; need to indicate
+     #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
+    [(_ #:nt (#%plain-app f:id e ...))
+     (with-syntax ([c (lift-call-site stx)])
+       #'(app/call-site c f (instrument e #:nt) ...))]
+    [(_ #:cc (#%plain-app e ...))
+     (with-syntax ([c (lift-call-site stx)])
+       #'(app/call-site c (wrap-nt (instrument e #:nt)) ...))]
+
+    ;; Non-conditionable contexts
+    [(_ #:nt (#%plain-app f:id e ...))
+     #:when (eq? (classify-function #'f) 'safe)
+     ;; "safe" function: doesn't need address tracking
+     #'(#%plain-app f (instrument e #:nt) ...)]
+    [(_ #:nt (#%plain-app f:id e ...))
+     (with-syntax ([c (lift-call-site stx)])
+       #'(app/call-site c f (instrument e #:nt) ...))]
+    [(_ #:nt (#%plain-app e ...))
+     (with-syntax ([c (lift-call-site stx)])
+       #'(app/call-site c (instrument e #:nt) ...))]))
+
+;; wrap-cc : wrapped around CC args to CC function call
+(define-syntax (wrap-cc stx)
   (syntax-case stx ()
-    [(app/call-site* mode call-site f arg ...)
+    [(wrap-cc e)
+     (with-syntax ([unknown
+                    (format "unknown:~s:~s"
+                            (syntax-line #'e)
+                            (syntax-column #'e))])
+       #'(with-continuation-mark obs-mark 'unknown e))]))
+
+;; wrap-nt : wrapped around NT args to CC function call
+(define-syntax (wrap-nt stx)
+  (syntax-case stx ()
+    [(wrap-nt e)
+     #'(parameterize ((observing? #f)) e)]))
+
+(begin-for-syntax
+  (define (lift-call-site stx)
+    (syntax-local-lift-expression #`(fresh-call-site #,stx))))
+
+(define-syntax (app/call-site stx)
+  (syntax-case stx ()
+    [(app/call-site call-site f arg ...)
      (with-syntax ([(tmp-f)
                     (generate-temporaries #'(f))]
                    [(tmp-arg ...)
                     (generate-temporaries #'(arg ...))])
        #`(let ([c call-site] [tmp-f f] [tmp-arg arg] ...)
-           (app/call-site** mode c tmp-f tmp-arg ...)))]))
-
-(define-syntax (app/call-site** stx)
-  (syntax-case stx ()
-    [(app/call-site** m c f arg ...)
-     #'(parameterize ((the-context (cons c (the-context))))
-         (#%app f arg ...))]))
+           (parameterize ((the-context (cons c (the-context))))
+             (#%plain-app tmp-f tmp-arg ...))))]))
 
 ;; ----
+
+;; Function classification wrt Address
 
 ;; A function is "safe" if no ERP is ever executed in the context of a call
 ;; to that function. A "safe" function does not need an WCM around it for
@@ -262,3 +325,7 @@ To get list of '#%kernel exports:
           (map simplify
                (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
 |#
+
+;; ----
+
+;; Function classification wrt Conditioning

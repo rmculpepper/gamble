@@ -8,20 +8,40 @@
          data/order
          racket/dict
          "interfaces.rkt"
+         "context.rkt"
          "../dist.rkt"
          "util.rkt")
 (provide (contract-out
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
-          [observe-at (-> dist? any/c any)])
-         fail)
+          [observe-at (-> dist? any/c any)]
+          [observe* (-> (-> any) any/c any)]
+          [fail (->* [] [any/c] any)]))
 
 ;; mem and sample wrappers
 
 (define (mem f) (send (current-stochastic-ctx) mem f))
-(define (sample dist) (send (current-stochastic-ctx) sample dist))
 (define (observe-at dist val) (send (current-stochastic-ctx) observe-at dist val))
 (define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
+(define (sample* dist) (send (current-stochastic-ctx) sample dist))
+
+(define (sample dist)
+  (define obs (observing?))
+  (cond [(observation? obs)
+         (with-continuation-mark
+             obs-mark 'ok ;; overwrite this frame's 'unknown mark
+           (let ()
+             (define cc (get-observe-context))
+             (define value (observe-context-adjust-value cc obs))
+             (when (verbose?)
+               (eprintf "** sample -> condition: ~e @ ~e\n" dist value))
+             (observe-at dist value)
+             value))]
+        [else (sample* dist)]))
+
+(define (observe* thunk value)
+  (call/observe-context thunk value))
+
 
 ;; == Finite distributions ==
 
