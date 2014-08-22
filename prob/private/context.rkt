@@ -5,11 +5,8 @@
 #lang racket/base
 (require (for-syntax racket/base))
 (provide the-context
-         app/call-site
-         app/call-site*
          get-context
-         apply/delimit
-         (for-syntax classify-function))
+         apply/delimit)
 
 #|
 How to represent an Address (ie, a point in evaluation, reasonably stable 
@@ -60,33 +57,12 @@ tail position. Or flip could be defined in instrumented module. But
 would contracts interfere? (Probably not, if both definition and use
 site are instrumented.)
 
+---- See instrument.rkt for instrumentation ----
+
 |#
 
 ;; the-context : (Parameterof (Listof Nat))
 (define the-context (make-parameter null))
-
-;; ----
-
-(define-syntax (app/call-site stx)
-  (syntax-case stx ()
-    [(app/call-site call-site f arg ...)
-     #'(app/call-site* #:un call-site f arg ...)]))
-
-(define-syntax (app/call-site* stx)
-  (syntax-case stx ()
-    [(app/call-site* mode call-site f arg ...)
-     (with-syntax ([(tmp-f)
-                    (generate-temporaries #'(f))]
-                   [(tmp-arg ...)
-                    (generate-temporaries #'(arg ...))])
-       #`(let ([c call-site] [tmp-f f] [tmp-arg arg] ...)
-           (app/call-site** mode c tmp-f tmp-arg ...)))]))
-
-(define-syntax (app/call-site** stx)
-  (syntax-case stx ()
-    [(app/call-site** _ c f arg ...)
-     #'(parameterize ((the-context (cons c (the-context))))
-         (#%app f arg ...))]))
 
 (define (get-context)
   (the-context))
@@ -97,66 +73,3 @@ site are instrumented.)
 (define (apply/delimit f . args)
   (parameterize ((the-context null))
     (apply f args)))
-
-;; ----
-
-;; Many functions are "safe": okay to omit WCM around, since no ERP is
-;; executed in the context of a call to them.
-;; TODO: add common Racket functions
-;; TODO: static analysis for locally-defined functions
-(begin-for-syntax
- ;; classify-function : id -> (U 'safe 'unsafe 'unknown)
- (define (classify-function f-id)
-   (let ([b (identifier-binding f-id)])
-     (if (list? b)
-         (let ([def-mpi (car b)]
-               [def-name (cadr b)])
-           (let-values ([(def-mod def-relto) (module-path-index-split def-mpi)])
-             (if (equal? def-mod ''#%kernel)
-                 (if (memq def-name HO-kernel-procedures)
-                     'unsafe
-                     'safe)
-                 'unknown)))
-         'unknown)))
- ;; functions defined in kernel, known to be unsafe
- (define HO-kernel-procedures
-   '(;; omit indirect HO functions, like make-struct-type, chaperone-*, impersonate-*
-     apply
-     map
-     for-each
-     andmap
-     ormap
-     call-with-values
-     call-with-escape-continuation
-     call/ec
-     call-with-current-continuation
-     call/cc
-     call-with-continuation-barrier
-     call-with-continuation-prompt
-     call-with-composable-continuation
-     abort-current-continuation
-     call-with-semaphore
-     call-with-semaphore/enable-break
-     call-with-immediate-continuation-mark
-     time-apply
-     dynamic-wind
-     hash-map
-     hash-for-each
-     call-with-input-file
-     call-with-output-file
-     with-input-from-file
-     with-output-to-file
-     eval
-     eval-syntax
-     call-in-nested-thread
-     ))
- )
-
-#|
-To get list of '#%kernel exports:
-(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
-(define knames
-  (filter symbol?
-          (map simplify
-               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
-|#

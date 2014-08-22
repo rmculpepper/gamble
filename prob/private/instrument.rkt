@@ -90,10 +90,8 @@ distinct call-site indexes.
 
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
-;;    #:nt   - non-tail: definitely not in tail position wrt any WCM with CM-MARK
-;;    #:tail - tail: definitely in tail position wrt a WCM with CM-MARK
-;;    #:un   - unknown: use expansion that's safe and correct either way
-;; Non-tail mode has more efficient impl than #:tail/#:un; use when possible.
+;;    #:nt   - non-tail wrt enclosing lambda
+;;    #:tail - tail wrt enclosing lambda
 (define-syntax (instrument stx0)
   (syntax-parse stx0
     [(instrument form-to-instrument m)
@@ -113,8 +111,7 @@ distinct call-site indexes.
                 [else
                  ;; unsafe or unknown; use app/call-site*
                  (when #f
-                   (when (and (eq? classification 'unknown)
-                              (not (eq? (syntax->datum #'m) '#:nt)))
+                   (when (eq? classification 'unknown)
                      (eprintf "## ~s\n" (syntax-e #'f))))
                  (with-syntax ([c (syntax-local-lift-expression
                                    #`(fresh-call-site #,stx))])
@@ -123,17 +120,7 @@ distinct call-site indexes.
           (with-syntax ([c (syntax-local-lift-expression
                             #`(fresh-call-site #,stx))])
             (when #f
-              (when (not (eq? (syntax->datum #'m) '#:nt))
-                (eprintf "## ~s\n" (syntax->datum #'f))))
-            #|
-            ;; Use call-site-registry instead.
-            (when #f
-              (eprintf "app ~s = ~a:~a ~.s\n\n"
-                       (syntax-e #'c)
-                       (or (syntax-line stx) '?)
-                       (or (syntax-column stx) '?)
-                       (syntax->datum stx)))
-            |#
+              (eprintf "## ~s\n" (syntax->datum #'f)))
             #'(app/call-site* m c (instrument f #:nt) (instrument e #:nt) ...))]
          ;; Just recur through all other forms
          ;; -- module body
@@ -153,9 +140,9 @@ distinct call-site indexes.
          ;; -- expr
          [var:id #'var]
          [(#%plain-lambda formals e ... e*)
-          #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* #:un))]
+          #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* #:tail))]
          [(case-lambda [formals e ... e*] ...)
-          #'(case-lambda [formals (instrument e #:nt) ... (instrument e* #:un)] ...)]
+          #'(case-lambda [formals (instrument e #:nt) ... (instrument e* #:tail)] ...)]
          [(if e1 e2 e3)
           #'(if (instrument e1 #:nt) (instrument e2 m) (instrument e3 m))]
          [(begin e ... e*)
@@ -192,3 +179,86 @@ distinct call-site indexes.
                        stx
                        (syntax-track-origin instrumented stx #'instrument))
                    #'form-to-instrument)]))
+
+;; ----
+
+(define-syntax (app/call-site* stx)
+  (syntax-case stx ()
+    [(app/call-site* mode call-site f arg ...)
+     (with-syntax ([(tmp-f)
+                    (generate-temporaries #'(f))]
+                   [(tmp-arg ...)
+                    (generate-temporaries #'(arg ...))])
+       #`(let ([c call-site] [tmp-f f] [tmp-arg arg] ...)
+           (app/call-site** mode c tmp-f tmp-arg ...)))]))
+
+(define-syntax (app/call-site** stx)
+  (syntax-case stx ()
+    [(app/call-site** m c f arg ...)
+     #'(parameterize ((the-context (cons c (the-context))))
+         (#%app f arg ...))]))
+
+;; ----
+
+;; A function is "safe" if no ERP is ever executed in the context of a call
+;; to that function. A "safe" function does not need an WCM around it for
+;; address tracking.
+
+;; TODO: add common non-kernel Racket functions
+;; TODO: static analysis for locally-defined functions
+(begin-for-syntax
+ ;; classify-function : id -> (U 'safe 'unsafe 'unknown)
+ (define (classify-function f-id)
+   (let ([b (identifier-binding f-id)])
+     (if (list? b)
+         (let ([def-mpi (car b)]
+               [def-name (cadr b)])
+           (let-values ([(def-mod def-relto) (module-path-index-split def-mpi)])
+             (if (equal? def-mod ''#%kernel)
+                 (if (memq def-name HO-kernel-procedures)
+                     'unsafe
+                     'safe)
+                 'unknown)))
+         'unknown)))
+ ;; functions defined in kernel, known to be unsafe
+ (define HO-kernel-procedures
+   '(;; omit indirect HO functions, like make-struct-type, chaperone-*, impersonate-*
+     apply
+     map
+     for-each
+     andmap
+     ormap
+     call-with-values
+     call-with-escape-continuation
+     call/ec
+     call-with-current-continuation
+     call/cc
+     call-with-continuation-barrier
+     call-with-continuation-prompt
+     call-with-composable-continuation
+     abort-current-continuation
+     call-with-semaphore
+     call-with-semaphore/enable-break
+     call-with-immediate-continuation-mark
+     time-apply
+     dynamic-wind
+     hash-map
+     hash-for-each
+     call-with-input-file
+     call-with-output-file
+     with-input-from-file
+     with-output-to-file
+     eval
+     eval-syntax
+     call-in-nested-thread
+     ))
+ )
+
+#|
+To get list of '#%kernel exports:
+(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
+(define knames
+  (filter symbol?
+          (map simplify
+               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
+|#
