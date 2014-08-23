@@ -219,16 +219,10 @@ Maybe want two variants. check-observe seems more useful in second variant.
           [else (unless (equal? actual expected) (bad))])))
 
 (define (get-observe-context)
-  (and (observing?)
-       (continuation-mark-set->list
-        (current-continuation-marks obs-prompt)
-        obs-mark
-        obs-prompt)))
-
-(define (get-adjusted-observation)
-  (let ([obs (observing?)])
-    (and (observation? obs)
-         (interpret-context (get-observe-context) (observation-value obs)))))
+  (continuation-mark-set->list
+   (current-continuation-marks obs-prompt)
+   obs-mark
+   obs-prompt))
 
 (define (observe-context-adjust-value ctx obs)
   (interpret-context ctx (observation-value obs)))
@@ -254,31 +248,3 @@ Maybe want two variants. check-observe seems more useful in second variant.
          (error 'observe "expression is not conditionable;\n ~a\n  bad frame: ~e"
                 "`sample' context contains unconditionable frame"
                 frame)]))
-
-#|
-;; Test script:
-
-(require prob/private/context)
-(begin
-  ;; f must be uninstrumented to avoid 'unknown frame!
-  (define (f x)
-    (with-continuation-mark obs-mark 'ok
-      (begin (eprintf "ctx = ~s\n" (get-observe-context))
-             (eprintf "adj = ~s\n" (get-adjusted-observation))
-             (or (get-adjusted-observation)
-                 (random 10)))))
-  (require prob))
-(begin
-  (define (g x) (let ([t (f (* 2 x))]) (+ t 23 (f x))))
-  (define (h x) (+ 17 (g x))))
-(begin
-  (define (gg x) (cons (f x) (cons (+ 1 (f x)) null)))
-  (define (hh x) (reverse (gg x))))
-
-
-(list (h 12))
-(call/observe-context (lambda () (h 12)) 0)
-
-(list (hh 1))
-(call/observe-context (lambda () (hh 1)) '(2 1))
-|#
