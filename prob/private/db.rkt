@@ -327,12 +327,14 @@
       (let ([context (get-context)]
             [memo-table (make-hash)])
         (lambda args
-          (hash-ref! memo-table args
-                     (lambda ()
-                       (apply/delimit
-                        (lambda ()
-                          (parameterize ((the-context (list (list 'mem args context))))
-                            (apply f args)))))))))
+          (with-continuation-mark
+              obs-mark 'ok
+            (hash-ref! memo-table args
+                       (lambda ()
+                         (apply/delimit
+                          (lambda ()
+                            (parameterize ((the-context (list (list 'mem args context))))
+                              (apply f args))))))))))
     ))
 
 (define db-stochastic-derivative-ctx%

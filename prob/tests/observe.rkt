@@ -46,8 +46,26 @@
 
 ;; ----
 
+;; works in enumerate
 (check-equal? (enumerate (observe (+ 1 (bernoulli)) 2))
               (discrete-dist [2 1]))
+
+;; ----
+
+;; works through mem
+
+(define (mem-test)
+  (define f (mem (lambda (i) (bernoulli))))
+  (for ([i 10]) (observe (f i) 0))
+  (for/and ([i 10]) (= (f i) 0)))
+
+(check-equal? (mem-test) #t)
+(check-equal? (enumerate (mem-test))
+              (discrete-dist [#t 1]))
+(check-equal? ((mh-sampler (mem-test)))
+              #t)
+(check-equal? (send (importance-sampler (mem-test)) sample/weight)
+              (cons #t (expt 1/2 10)))
 
 ;; ----
 

@@ -8,6 +8,7 @@
          data/order
          unstable/markparam
          "interfaces.rkt"
+         (only-in "context.rkt" obs-mark)
          "dist.rkt"
          "pairingheap.rkt"
          "util.rkt")
@@ -187,15 +188,17 @@
             f args))
         (let ([b (memo-key)]
               [key (cons f-key args)])
-          (cond [(hash-has-key? (unbox b) key)
-                 (hash-ref (unbox b) key)]
-                [else
-                 ;; Call with saved activation; may be outer enumeration!
-                 (define v (mark-parameterize ((current-activation act)) (apply f args)))
-                 ;; NOTE: outer b might be stale, if f called ERP!
-                 (define b (memo-key))
-                 (set-box! b (hash-set (unbox b) key v))
-                 v])))
+          (with-continuation-mark
+              obs-mark 'ok
+            (cond [(hash-has-key? (unbox b) key)
+                   (hash-ref (unbox b) key)]
+                  [else
+                   ;; Call with saved activation; may be outer enumeration!
+                   (define v (mark-parameterize ((current-activation act)) (apply f args)))
+                   ;; NOTE: outer b might be stale, if f called ERP!
+                   (define b (memo-key))
+                   (set-box! b (hash-set (unbox b) key v))
+                   v]))))
       memoized-function)
     ))
 

@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/class
+         (only-in "context.rkt" obs-mark)
          (only-in "dist.rkt" dist-sample dist-pdf))
 (provide weighted-sampler<%>
          sampler<%>
@@ -81,7 +82,9 @@
     (define/public (mem f)
       (let ([memo-table (make-hash)])
         (define (memoized-function . args)
-          (hash-ref! memo-table args (lambda () (apply f args))))
+          (with-continuation-mark
+              obs-mark 'ok
+            (hash-ref! memo-table args (lambda () (apply f args)))))
         memoized-function))
 
     (define/public (fail reason)
