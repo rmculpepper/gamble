@@ -15,7 +15,6 @@
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
           [observe-at (-> dist? any/c any)]
-          [observe* (-> (-> any) any/c any)]
           [fail (->* [] [any/c] any)]))
 
 ;; mem and sample wrappers
@@ -39,9 +38,6 @@
              (observe-at dist value)
              value))]
         [else (sample* dist)]))
-
-(define (observe* thunk value)
-  (call/observe-context thunk value))
 
 ;; == Finite distributions ==
 

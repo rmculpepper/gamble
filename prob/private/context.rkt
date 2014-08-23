@@ -153,7 +153,14 @@ Idea 4: Check structure of v up to numeric leaves, then use
 What constitutes an unused condition?
 eg (observe (cons 1 (bernoulli)) '(1 . 1))
 The first part of the condition is "unused" but still satisfied.
+|#
 
+#|
+Observation failure: error vs fail
+- for continuous RVs, generally expect conditioning to always succeed
+- for some examples, eg PCFG, want something more like automatic
+  'fail' propoagation
+Maybe want two variants. check-observe seems more useful in second variant.
 |#
 
 (struct observation (value))
@@ -163,7 +170,7 @@ The first part of the condition is "unused" but still satisfied.
 
 (define observing? (make-parameter #f))
 
-(define (call/observe-context thunk expected)
+(define (observe* thunk expected)
   (define obs (observation expected))
   (define actual
     (call-with-continuation-prompt
@@ -173,15 +180,29 @@ The first part of the condition is "unused" but still satisfied.
      obs-prompt))
   ;; Check that result "equals" value.
   ;; FIXME: make equality approximation parameter or optional arg to observe?
-  (check-observe-result expected actual)
+  (check-observe-result 'observe expected actual)
   actual)
 
-(define (check-observe-result expected0 actual0)
+(define (check-observe* thunk)
+  (define obs (observing?))
+  (cond [obs
+         (with-continuation-mark obs-mark 'ok
+           (let ()
+             (define cc (get-observe-context))
+             (define actual (thunk))
+             (define expected (observe-context-adjust-value cc obs))
+             (check-observe-result 'check-observe expected actual)
+             actual))]
+        [else
+         ;; For consistency: thunk non-tail applied.
+         (values (thunk))]))
+
+(define (check-observe-result who expected0 actual0)
   (define (bad)
     ;; This is an error rather than a (fail) because it indicates that
     ;; a condition is being applied to a non-conditionable expr.
     ;; FIXME: statically detect conditionable exprs
-    (error 'observe "observation failed\n  expected: ~e\n  got: ~e"
+    (error who "observation failed\n  expected: ~e\n  got: ~e"
            expected0 actual0))
   (let loop ([expected expected0] [actual actual0])
     (cond [(pair? expected)

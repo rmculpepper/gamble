@@ -10,11 +10,13 @@
          racket/contract/base
          racket/class
          "dist.rkt"
+         "context.rkt"
          "prob-util.rkt"
          "prob-mh.rkt"
          "prob-enum.rkt"
          "interfaces.rkt")
 (provide observe
+         check-observe
          rejection-sampler
          importance-sampler
          mh-sampler
@@ -41,6 +43,11 @@
   (syntax-case stx ()
     [(observe e v)
      #'(observe* (lambda () e) v)]))
+
+(define-syntax (check-observe stx)
+  (syntax-case stx ()
+    [(check-observe e)
+     #'(check-observe* (lambda () e))]))
 
 ;; ----
 

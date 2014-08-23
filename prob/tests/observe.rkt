@@ -46,5 +46,29 @@
 
 ;; ----
 
+(check-equal? (enumerate (observe (+ 1 (bernoulli)) 2))
+              (discrete-dist [2 1]))
+
+;; ----
+
 ;; Non-conditionable expressions lead to relatively bad/useless error messages:
 ;; (observe (values (normal 0 1)) 0)
+
+;; ----
+
+;; check-observe -- used to check parts of expected value early
+
+(check-not-exn
+ (lambda ()
+   (observe (cons (check-observe 1)
+                  (cons (check-observe 2)
+                        null))
+            '(1 2))))
+
+(check-exn
+ #rx"check-observe:.*expected: 1.*got: 0"
+ (lambda ()
+   (observe (cons (check-observe 0) ;; !!!
+                  (cons (check-observe 2)
+                        null))
+            '(1 2))))
