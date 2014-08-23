@@ -33,7 +33,7 @@
 
 ;; ----
 
-;; conditioning on lists!
+;; conditioning on lists
 
 (define s-list
   (importance-sampler
@@ -43,3 +43,8 @@
 
 (check-equal? (send s-list sample/weight)
               '((0 0 0) . 1/8))
+
+;; ----
+
+;; Non-conditionable expressions lead to relatively bad/useless error messages:
+;; (observe (values (normal 0 1)) 0)

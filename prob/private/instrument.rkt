@@ -35,13 +35,18 @@ distinct call-site indexes.
 
 (define-syntax (fresh-call-site stx)
   (syntax-case stx ()
-    [(fresh-call-site call)
-     (with-syntax ([stx-file (syntax-source #'call)]
-                   [line (syntax-line #'call)]
-                   [col (syntax-column #'call)])
+    [(fresh-call-site info)
        #'(next-counter
           (cons (variable-reference->module-source (#%variable-reference))
-                '(stx-file line col call))))]))
+                info))]))
+
+(begin-for-syntax
+  (define (lift-call-site stx)
+    (with-syntax ([stx-file (syntax-source stx)]
+                  [line (syntax-line stx)]
+                  [col (syntax-column stx)])
+      (syntax-local-lift-expression
+       #`(fresh-call-site '(stx-file line col #,stx))))))
 
 (define (describe-all-call-sites)
   (for ([i (in-range 1 (add1 call-site-counter))])
@@ -204,17 +209,17 @@ distinct call-site indexes.
          (#%plain-app reverse (wrap-cc (instrument e #:cc))))]
 
     ;; Non-conditionable functions in conditionable contexts
+    ;; Put the function into the CC marks (for debugging).
     [(_ #:cc (#%plain-app f:id e ...))
      #:when (eq? (classify-function #'f) 'safe)
      ;; "safe" function: doesn't need address tracking
-     ;; non-conditionable; need to indicate
      #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
     [(_ #:nt (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c f (instrument e #:nt) ...))]
+       #'(app/call-site c #t f (instrument e #:nt) ...))]
     [(_ #:cc (#%plain-app e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c (wrap-nt (instrument e #:nt)) ...))]
+       #'(app/call-site c #t (wrap-nt (instrument e #:nt)) ...))]
 
     ;; Non-conditionable contexts
     [(_ #:nt (#%plain-app f:id e ...))
@@ -223,20 +228,16 @@ distinct call-site indexes.
      #'(#%plain-app f (instrument e #:nt) ...)]
     [(_ #:nt (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c f (instrument e #:nt) ...))]
-    [(_ #:nt (#%plain-app e ...))
+       #'(app/call-site c #f f (instrument e #:nt) ...))]
+    [(_ #:nt (#%plain-app f e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c (instrument e #:nt) ...))]))
+       #'(app/call-site c #f (instrument f #:nt) (instrument e #:nt) ...))]))
 
 ;; wrap-cc : wrapped around CC args to CC function call
 (define-syntax (wrap-cc stx)
   (syntax-case stx ()
     [(wrap-cc e)
-     (with-syntax ([unknown
-                    (format "unknown:~s:~s"
-                            (syntax-line #'e)
-                            (syntax-column #'e))])
-       #'(with-continuation-mark obs-mark 'unknown e))]))
+     #'(with-continuation-mark obs-mark 'unknown e)]))
 
 ;; wrap-nt : wrapped around NT args to CC function call
 (define-syntax (wrap-nt stx)
@@ -244,13 +245,10 @@ distinct call-site indexes.
     [(wrap-nt e)
      #'(parameterize ((observing? #f)) e)]))
 
-(begin-for-syntax
-  (define (lift-call-site stx)
-    (syntax-local-lift-expression #`(fresh-call-site #,stx))))
-
+;; Application w/ call-site added to context parameter.
 (define-syntax (app/call-site stx)
   (syntax-case stx ()
-    [(app/call-site call-site f arg ...)
+    [(app/call-site call-site wcm-function? f arg ...)
      (with-syntax ([(tmp-f)
                     (generate-temporaries #'(f))]
                    [(tmp-arg ...)
@@ -325,7 +323,3 @@ To get list of '#%kernel exports:
           (map simplify
                (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
 |#
-
-;; ----
-
-;; Function classification wrt Conditioning

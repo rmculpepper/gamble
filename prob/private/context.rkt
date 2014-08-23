@@ -3,7 +3,6 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base))
 (provide (all-defined-out))
 
 ;; This module describes (in comments) the approaches used for
@@ -150,21 +149,53 @@ Problem: mutation bad for enum; given cons, can have many subconditions
 Idea 4: Check structure of v up to numeric leaves, then use
   4a: approximate equality on reals
   4b: mutable counter for reals
+
+What constitutes an unused condition?
+eg (observe (cons 1 (bernoulli)) '(1 . 1))
+The first part of the condition is "unused" but still satisfied.
+
 |#
 
-(struct observation (value) #:prefab)
+(struct observation (value))
 
 (define obs-mark 'observe)
 (define obs-prompt (make-continuation-prompt-tag))
 
 (define observing? (make-parameter #f))
 
-(define (call/observe-context thunk value)
-  (call-with-continuation-prompt
-   (lambda ()
-     (parameterize ((observing? (observation value)))
-       (with-continuation-mark obs-mark 'unknown (thunk))))
-   obs-prompt))
+(define (call/observe-context thunk expected)
+  (define obs (observation expected))
+  (define actual
+    (call-with-continuation-prompt
+     (lambda ()
+       (parameterize ((observing? obs))
+         (with-continuation-mark obs-mark 'unknown (thunk))))
+     obs-prompt))
+  ;; Check that result "equals" value.
+  ;; FIXME: make equality approximation parameter or optional arg to observe?
+  (check-observe-result expected actual)
+  actual)
+
+(define (check-observe-result expected0 actual0)
+  (define (bad)
+    ;; This is an error rather than a (fail) because it indicates that
+    ;; a condition is being applied to a non-conditionable expr.
+    ;; FIXME: statically detect conditionable exprs
+    (error 'observe "observation failed\n  expected: ~e\n  got: ~e"
+           expected0 actual0))
+  (let loop ([expected expected0] [actual actual0])
+    (cond [(pair? expected)
+           (unless (pair? actual) (bad))
+           (loop (car expected) (car actual))
+           (loop (cdr expected) (cdr actual))]
+          [(rational? expected)
+           ;; FIXME: ??? better general way of checking "close-enough" for reals ???
+           (unless (rational? expected) (bad))
+           (unless (or (= actual expected)
+                       (<= (abs (- expected actual))
+                           (* 0.001 (max (abs expected) (abs actual)))))
+             (bad))]
+          [else (unless (equal? actual expected) (bad))])))
 
 (define (get-observe-context)
   (and (observing?)
@@ -197,7 +228,11 @@ Idea 4: Check structure of v up to numeric leaves, then use
          val]
         [(eq? frame 'unknown)
          (error 'observe "expression is not conditionable;\n ~a"
-                "context contains unconditionable frames")]))
+                "`sample' context contains unknown unconditionable frame")]
+        [else
+         (error 'observe "expression is not conditionable;\n ~a\n  bad frame: ~e"
+                "`sample' context contains unconditionable frame"
+                frame)]))
 
 #|
 ;; Test script:
