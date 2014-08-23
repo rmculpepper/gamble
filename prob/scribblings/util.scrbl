@@ -141,7 +141,7 @@ values accepted by the predicate @racket[pred], respectively.
 
 Delays the @racket[body] computation, producing a promise
 (@racket[ppromise?]) that can be forced with @racket[pforce].
-The @racket[pdelay] form uses @racket[mem] internally, the promises
+The @racket[pdelay] form uses @racket[mem] internally, so the promises
 cooperate with the enclosing solver/sampler context.
 
 Use @racket[pdelay] to make a random choice lazy when it may not be
@@ -170,6 +170,29 @@ Returns @racket[#t] if @racket[v] is a promise produced by
 
 Evaluates @racket[p]'s body and caches the result, if @racket[p] has
 not been previously forced, or returns the cached result otherwise.
+}
+
+@defform[(deflazy id expr)]{
+
+Similar to @racket[(define id (pdelay expr))], except that when a
+reference to @racket[id] is evaluated, it is automatically forced.
+
+@examples[#:eval the-eval
+(deflazy x (begin (printf "flipping!\n") (flip)))
+(code:comment "flip hasn't occurred yet")
+(if x 1 0)
+]
+}
+
+@defform*[[(defmem (fun-id arg-id ...) body ...+)
+           (defmem (fun-id arg-id ... . rest-arg-id) body ...+)]]{
+
+Convenience form for defining memoized functions. Equivalent to the
+following, respectively:
+@racketblock[
+(define fun-id (mem (lambda (arg-id ...) body ...)))
+(define fun-id (mem (lambda (arg-id ... . rest-arg-id) body ...)))
+]
 }
 
 

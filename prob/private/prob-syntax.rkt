@@ -6,6 +6,7 @@
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/parse/experimental/template
+                     unstable/syntax
                      syntax/name)
          racket/contract/base
          racket/class
@@ -34,6 +35,8 @@
          pdelay
          (contract-out
           [pforce (-> ppromise? any)])
+         deflazy
+         defmem
          (rename-out [table* table])
          table?)
 
@@ -198,6 +201,23 @@
 
 (define (pforce pp)
   ((ppromise-thunk pp)))
+
+(define-syntax (deflazy stx)
+  (syntax-parse stx
+    [(deflazy x:id e:expr)
+     (with-syntax ([(xtmp) (generate-temporaries #'(x))])
+       #'(begin (define xtmp (pdelay e))
+                (define-syntax x
+                  (make-variable-like-transformer
+                   #'(pforce xtmp)))))]))
+
+(define-syntax (defmem stx)
+  (define-syntax-class formals
+    (pattern (_:id ...))
+    (pattern (_:id ... . _:id)))
+  (syntax-parse stx
+    [(defmem (f:id . frm:formals) body:expr ...+)
+     #'(define f (mem (let ([f (lambda frm body ...)]) f)))]))
 
 ;; ----
 
