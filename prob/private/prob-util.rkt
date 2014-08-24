@@ -57,7 +57,7 @@
              (listof (cons/c any/c (>=/c 0))))
        any)]
   [discrete*
-   (-> list? (listof (>=/c 0))
+   (->* [list?] [(listof (>=/c 0))]
        any)]))
 
 ;; flip : Prob -> (U #t #f)
