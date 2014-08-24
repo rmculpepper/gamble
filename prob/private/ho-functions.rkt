@@ -105,6 +105,10 @@
           [else base])))
 
 (define (build-list n f)
+  (unless (exact-nonnegative-integer? n)
+    (raise-argument-error 'build-list "exact-nonnegative-integer?" 0 n f))
+  (unless (procedure? f)
+    (raise-argument-error 'build-list "procedure?" 1 n f))
   (let loop ([i 0])
     (if (< i n)
         (cons (f i) (loop (add1 i)))

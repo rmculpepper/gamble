@@ -312,7 +312,7 @@ creates it, otherwise an error is raised:
 The technique of reification and reflection discussed in @cite{EPP}
 can reduce the complexity of enumerating probabilities. Reification is
 done using @racket[enumerate] and reflection with
-@racket[discrete]. The following pair of programs shows an exponential
+@racket[sample]. The following pair of programs shows an exponential
 search tree reduced to a linear one using reification and reflection.
 
 @interaction[#:eval the-eval
