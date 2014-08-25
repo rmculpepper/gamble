@@ -11,10 +11,10 @@
    (define A (normal 0 10))
    (define B (normal 0 10))
    (define E (add1 (gamma 1 1)))
-   (define (data x y)
-     (observe-at (normal-dist (+ (* A x) B) E) y))
+   (define (f x)
+     (normal (+ (* A x) B) E))
    (for ([x n])
-     (data x (vector-ref ys x)))
+     (observe (f x) (vector-ref ys x)))
    (vector A B E)))
 
 (define lr (make-lr 3 12 1 100))
