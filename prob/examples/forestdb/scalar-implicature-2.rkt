@@ -1,19 +1,14 @@
 #lang prob
-(require prob/viz)
+(require "church-compat.rkt"
+         prob/viz)
 
 ;; Ported from http://forestdb.org/models/scalar-implicature.html
 ;; 2nd code example
 
-(define (all ls) (andmap values ls))
-(define (any ls) (ormap values ls))
 (define (call p) (p))
-(define-syntax-rule (rejection-query body ...)
-  ((rejection-sampler body ...)))
-(define (sum ls) (apply + ls))
 
 ;; Other changes:
 ;; - change sample -> call
-;; - change uniform-draw -> discrete*
 ;; - swap order of args to repeat
 
 ;; ----------------------------------------
@@ -41,7 +36,7 @@
 ;; A Sentence is (Listof Bool) -> Bool
 
 (define (sentence-prior)
-  (discrete* (list all-p some-p none-p)))
+  (uniform-draw (list all-p some-p none-p)))
 
 (define (all-p state) (all state))
 (define (some-p state) (any state))

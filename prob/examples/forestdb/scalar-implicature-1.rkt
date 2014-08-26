@@ -1,5 +1,6 @@
 #lang prob
-(require prob/viz)
+(require "church-compat.rkt"
+         prob/viz)
 
 ;; Ported from http://forestdb.org/models/scalar-implicature.html
 ;; 1st code example
@@ -13,27 +14,27 @@
 ;; A Sentence is Nat -> Bool
 
 (define (sentence-prior)
-  (discrete* (list all-sprouted some-sprouted none-sprouted)))
+  (uniform-draw (list all-sprouted some-sprouted none-sprouted)))
 
 (define (all-sprouted state) (= 3 state))
 (define (some-sprouted state) (< 0 state))
 (define (none-sprouted state) (= 0 state))
 
 (define (speaker state depth)
-  ((rejection-sampler
-    (define words (sentence-prior))
-    words
-    #:when
-    (equal? state (listener words depth)))))
+  (rejection-query
+   (define words (sentence-prior))
+   words
+   #:when
+   (equal? state (listener words depth))))
 
 (define (listener words depth)
-  ((rejection-sampler
-    (define state (state-prior))
-    state
-    #:when
-    (if (= depth 0)
-        (words state)
-        (equal? words (speaker state (- depth 1)))))))
+  (rejection-query
+   (define state (state-prior))
+   state
+   #:when
+   (if (= depth 0)
+       (words state)
+       (equal? words (speaker state (- depth 1))))))
 
 (define depth 1)
 
