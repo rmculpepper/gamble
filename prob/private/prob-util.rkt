@@ -99,7 +99,7 @@
   (unless (positive? (apply + probs))
     (error who "weights list sum is not positive\n  weights: ~e" probs))
   (list-ref vals (inexact->exact
-                  (sample (categorical-dist probs)))))
+                  (sample (categorical-dist (list->vector probs))))))
 
 ;; == Countable distributions ==
 

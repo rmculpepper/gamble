@@ -389,7 +389,7 @@
 
 (define-dist-type categorical
   ([weights (vectorof (>=/c 0))])
-  #:any #:enum (length weights)
+  #:any #:enum (vector-length weights)
   #:support (integer-range 0 (sub1 (vector-length weights)))
   #:mean (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w))
   #:modes (let-values ([(best best-w)
