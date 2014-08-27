@@ -5,7 +5,8 @@
 #lang racket/base
 (require (for-syntax racket/base
                      racket/syntax
-                     syntax/parse)
+                     syntax/parse
+                     "instrument-analysis.rkt")
          racket/match
          "context.rkt")
 (provide describe-all-call-sites
@@ -72,9 +73,11 @@ distinct call-site indexes.
   (syntax-case stx ()
     [(instrumenting-module-begin form ...)
      (with-syntax ([e-module-body
-                    (local-expand #'(#%module-begin form ...)
-                                  'module-begin
-                                  null)])
+                    (process
+                     (local-expand #'(#%module-begin form ...)
+                                   'module-begin
+                                   null))])
+       (analyze-CALLS-ERP #'e-module-body)
        #'(instrument e-module-body #:nt))]))
 
 (define-syntax (instrumenting-top-interaction stx)
@@ -85,7 +88,10 @@ distinct call-site indexes.
          [(begin form ...)
           #'(begin (instrumenting-top-interaction . form) ...)]
          [form
-          (with-syntax ([e-form (local-expand #'form 'top-level null)])
+          (with-syntax ([e-form
+                         (process
+                          (local-expand #'form 'top-level null))])
+            (analyze-CALLS-ERP #'e-form)
             #'(instrument e-form #:nt))]))]))
 
 (begin-for-syntax
@@ -165,7 +171,9 @@ distinct call-site indexes.
          [(#%expression e)
           #'(#%expression (instrument e m))]
          [_
-          (raise-syntax-error #f "unhandled syntax" stx)]
+          (eprintf "@ ~s:~s, ~s\n"
+                   (syntax-line stx) (syntax-column stx) (get-tag stx))
+          (raise-syntax-error #f "unhandled syntax in instrument" stx)]
          ))
      ;; Rearm and track result
      (let ([instrumented (relocate instrumented #'form-to-instrument)])
@@ -174,10 +182,11 @@ distinct call-site indexes.
                          (syntax-track-origin instrumented stx #'instrument))
                      #'form-to-instrument))]))
 
-(define (relocate stx loc-stx)
-  (if (identifier? stx)
-      stx
-      (datum->syntax stx (syntax-e stx) loc-stx stx)))
+(begin-for-syntax
+  (define (relocate stx loc-stx)
+    (if (identifier? stx)
+        stx
+        (datum->syntax stx (syntax-e stx) loc-stx stx))))
 
 (define-syntax (recur-cc-to-nt stx)
   (syntax-case stx ()
@@ -196,6 +205,16 @@ distinct call-site indexes.
 
 (define-syntax (instrumenting-app iastx)
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
+  (define calls-erp? (hash-ref APP-CALLS-ERP (get-tag stx) 'unknown))
+  (when #f
+    (eprintf "~a ~s:~s ~.s\n"
+             (case calls-erp?
+               [(#t) "yes"]
+               [(#f) "no "]
+               [else "???"])
+             (syntax-line stx)
+             (syntax-column stx)
+             (syntax->datum stx)))
   (syntax-parse iastx
     #:literals (#%plain-app + cons reverse)
     ;; Conditionable functions
@@ -217,20 +236,26 @@ distinct call-site indexes.
     ;; Non-conditionable functions in conditionable contexts
     ;; Put the function into the CC marks (for debugging).
     [(_ #:cc (#%plain-app f:id e ...))
-     #:when (eq? (classify-function #'f) 'safe)
+     #:when (not calls-erp?)
      ;; "safe" function: doesn't need address tracking
+     (when #f
+       (when (not (eq? (classify-function #'f) 'safe))
+         (eprintf "*** not instrumenting call to ~s\n" #'f)))
      #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
-    [(_ #:nt (#%plain-app f:id e ...))
+    [(_ #:cc (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c #t f (instrument e #:nt) ...))]
+       #'(app/call-site c #t f (wrap-nt (instrument e #:nt)) ...))]
     [(_ #:cc (#%plain-app e ...))
      (with-syntax ([c (lift-call-site stx)])
        #'(app/call-site c #t (wrap-nt (instrument e #:nt)) ...))]
 
     ;; Non-conditionable contexts
     [(_ #:nt (#%plain-app f:id e ...))
-     #:when (eq? (classify-function #'f) 'safe)
+     #:when (not calls-erp?)
      ;; "safe" function: doesn't need address tracking
+     (when #f
+       (when (not (eq? (classify-function #'f) 'safe))
+         (eprintf "*** not instrumenting call to ~s\n" #'f)))
      #'(#%plain-app f (instrument e #:nt) ...)]
     [(_ #:nt (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
@@ -262,70 +287,3 @@ distinct call-site indexes.
        #`(let ([c call-site] [tmp-f f] [tmp-arg arg] ...)
            (parameterize ((the-context (cons c (the-context))))
              (#%plain-app tmp-f tmp-arg ...))))]))
-
-;; ----
-
-;; Function classification wrt Address
-
-;; A function is "safe" if no ERP is ever executed in the context of a call
-;; to that function. A "safe" function does not need an WCM around it for
-;; address tracking.
-
-;; TODO: add common non-kernel Racket functions
-;; TODO: static analysis for locally-defined functions
-(begin-for-syntax
- ;; classify-function : id -> (U 'safe 'unsafe 'unknown)
- (define (classify-function f-id)
-   (let ([b (identifier-binding f-id)])
-     (if (list? b)
-         (let ([def-mpi (car b)]
-               [def-name (cadr b)])
-           (let-values ([(def-mod def-relto) (module-path-index-split def-mpi)])
-             (if (equal? def-mod ''#%kernel)
-                 (if (memq def-name HO-kernel-procedures)
-                     'unsafe
-                     'safe)
-                 'unknown)))
-         'unknown)))
- ;; functions defined in kernel, known to be unsafe
- (define HO-kernel-procedures
-   '(;; omit indirect HO functions, like make-struct-type, chaperone-*, impersonate-*
-     apply
-     map
-     for-each
-     andmap
-     ormap
-     call-with-values
-     call-with-escape-continuation
-     call/ec
-     call-with-current-continuation
-     call/cc
-     call-with-continuation-barrier
-     call-with-continuation-prompt
-     call-with-composable-continuation
-     abort-current-continuation
-     call-with-semaphore
-     call-with-semaphore/enable-break
-     call-with-immediate-continuation-mark
-     time-apply
-     dynamic-wind
-     hash-map
-     hash-for-each
-     call-with-input-file
-     call-with-output-file
-     with-input-from-file
-     with-output-to-file
-     eval
-     eval-syntax
-     call-in-nested-thread
-     ))
- )
-
-#|
-To get list of '#%kernel exports:
-(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
-(define knames
-  (filter symbol?
-          (map simplify
-               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
-|#
