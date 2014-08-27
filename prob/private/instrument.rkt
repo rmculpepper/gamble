@@ -168,10 +168,16 @@ distinct call-site indexes.
           (raise-syntax-error #f "unhandled syntax" stx)]
          ))
      ;; Rearm and track result
-     (syntax-rearm (if (eq? stx instrumented)
-                       stx
-                       (syntax-track-origin instrumented stx #'instrument))
-                   #'form-to-instrument)]))
+     (let ([instrumented (relocate instrumented #'form-to-instrument)])
+       (syntax-rearm (if (eq? stx instrumented)
+                         stx
+                         (syntax-track-origin instrumented stx #'instrument))
+                     #'form-to-instrument))]))
+
+(define (relocate stx loc-stx)
+  (if (identifier? stx)
+      stx
+      (datum->syntax stx (syntax-e stx) loc-stx stx)))
 
 (define-syntax (recur-cc-to-nt stx)
   (syntax-case stx ()
