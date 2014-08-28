@@ -5,7 +5,8 @@
 ;; A language for probabilistic programming
 
 #lang racket/base
-(require (for-syntax racket/base)
+(require (for-syntax racket/base
+                     "private/instrument-analysis.rkt")
          (except-in typed/racket/base #%module-begin)
          "private/instrument.rkt")
 (provide (except-out (all-from-out typed/racket/base)
@@ -17,7 +18,8 @@
   (syntax-case stx ()
     [(ti-module-begin form ...)
      (with-syntax ([e-module-body
-                    (local-expand #'(#%module-begin form ...) 'module-begin null)])
+                    (analyze
+                     (local-expand #'(#%module-begin form ...) 'module-begin null))])
        #'(instrument e-module-body #:un))]))
 
 (define-syntax (typed-instrumenting-top-interaction stx)
@@ -28,7 +30,7 @@
          [(begin form ...)
           #'(begin (instrumenting-top-interaction . form) ...)]
          [form
-          (with-syntax ([e-form (local-expand #'form 'top-level null)])
+          (with-syntax ([e-form (analyze (local-expand #'form 'top-level null))])
             #'(instrument e-form #:un))]))]))
 
 (require "private/prob-syntax.rkt")

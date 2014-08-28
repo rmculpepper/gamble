@@ -9,10 +9,8 @@
          syntax/stx
          syntax/parse
          syntax/parse/experimental/template)
-(provide get-tag
-         process
-         analyze-CALLS-ERP
-         APP-CALLS-ERP
+(provide analyze
+         app-calls-erp?
          classify-function)
 
 ;; Need privileged inspector to rewrite expanded code.
@@ -20,19 +18,31 @@
   (variable-reference->module-declaration-inspector
    (#%variable-reference)))
 
+;; ----------------------------------------
+
+;; analyze : Syntax -> Syntax
+(define (analyze stx)
+  (define tagged-stx (add-tags stx))
+  (analyze-CALLS-ERP tagged-stx)
+  tagged-stx)
+
+;; ----------------------------------------
+
 (define counter 0)
 (define tags (make-hash))
 (define (new-tag [stx #f])
   (set! counter (add1 counter))
   (hash-set! tags counter stx)
   counter)
-(define (get-tag stx) (syntax-property stx 'tag))
+(define (get-tag stx) 
+  (or (syntax-property stx 'tag)
+      (error 'get-tag "no tag for: ~a\n" (syntax-summary stx))))
 
 ;; process : Syntax -> Syntax
 ;; Add unique tags to all forms under 'tag syntax-property.
-(define (process stx0)
+(define (add-tags stx0)
   (define-template-metafunction recur
-    (syntax-parser [(recur e) (process #'e)]))
+    (syntax-parser [(recur e) (add-tags #'e)]))
   (define-syntax-rule (T tmpl)
     (relocate (template tmpl) stx0))
   (define stx (syntax-disarm stx0 stx-insp))
@@ -100,7 +110,11 @@
 (define (relocate stx loc-stx)
   (datum->syntax stx (syntax-e stx) loc-stx stx))
 
-;; ----
+;; ----------------------------------------
+
+;; app-calls-erp? : Syntax -> Boolean
+(define (app-calls-erp? stx)
+  (hash-ref APP-CALLS-ERP (get-tag stx)))
 
 ;; APP-CALLS-ERP : hash[Nat -> Boolean]
 ;; Indicates whether a function application (but not the evaluation of
@@ -254,7 +268,9 @@
     [(safe) #f]
     [else #t]))
 
-;; ----
+;; ----------------------------------------
+
+;; ========================================
 
 ;; Function classification wrt Address
 

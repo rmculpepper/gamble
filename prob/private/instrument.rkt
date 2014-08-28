@@ -73,11 +73,10 @@ distinct call-site indexes.
   (syntax-case stx ()
     [(instrumenting-module-begin form ...)
      (with-syntax ([e-module-body
-                    (process
+                    (analyze
                      (local-expand #'(#%module-begin form ...)
                                    'module-begin
                                    null))])
-       (analyze-CALLS-ERP #'e-module-body)
        #'(instrument e-module-body #:nt))]))
 
 (define-syntax (instrumenting-top-interaction stx)
@@ -89,9 +88,8 @@ distinct call-site indexes.
           #'(begin (instrumenting-top-interaction . form) ...)]
          [form
           (with-syntax ([e-form
-                         (process
+                         (analyze
                           (local-expand #'form 'top-level null))])
-            (analyze-CALLS-ERP #'e-form)
             #'(instrument e-form #:nt))]))]))
 
 (begin-for-syntax
@@ -170,10 +168,7 @@ distinct call-site indexes.
          [(#%variable-reference . _) stx]
          [(#%expression e)
           #'(#%expression (instrument e m))]
-         [_
-          (eprintf "@ ~s:~s, ~s\n"
-                   (syntax-line stx) (syntax-column stx) (get-tag stx))
-          (raise-syntax-error #f "unhandled syntax in instrument" stx)]
+         [_ (raise-syntax-error #f "unhandled syntax in instrument" stx)]
          ))
      ;; Rearm and track result
      (let ([instrumented (relocate instrumented #'form-to-instrument)])
@@ -205,13 +200,10 @@ distinct call-site indexes.
 
 (define-syntax (instrumenting-app iastx)
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
-  (define calls-erp? (hash-ref APP-CALLS-ERP (get-tag stx) 'unknown))
+  (define calls-erp? (app-calls-erp? stx))
   (when #f
     (eprintf "~a ~s:~s ~.s\n"
-             (case calls-erp?
-               [(#t) "yes"]
-               [(#f) "no "]
-               [else "???"])
+             (if calls-erp? "yes" "no ")
              (syntax-line stx)
              (syntax-column stx)
              (syntax->datum stx)))
