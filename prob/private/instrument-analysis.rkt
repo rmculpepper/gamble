@@ -23,22 +23,25 @@
 ;; analyze : Syntax -> Syntax
 (define (analyze stx)
   (define tagged-stx (add-tags stx))
+  (analyze-bindings tagged-stx)
   (analyze-CALLS-ERP tagged-stx)
   tagged-stx)
 
 ;; ----------------------------------------
 
-(define counter 0)
+;; Tagging: add integer label for each form
+
+(define tag-counter 0)
 (define tags (make-hash))
 (define (new-tag [stx #f])
-  (set! counter (add1 counter))
-  (hash-set! tags counter stx)
-  counter)
+  (set! tag-counter (add1 tag-counter))
+  (hash-set! tags tag-counter stx)
+  tag-counter)
 (define (get-tag stx) 
   (or (syntax-property stx 'tag)
       (error 'get-tag "no tag for: ~a\n" (syntax-summary stx))))
 
-;; process : Syntax -> Syntax
+;; add-tags : Syntax -> Syntax
 ;; Add unique tags to all forms under 'tag syntax-property.
 (define (add-tags stx0)
   (define-template-metafunction recur
@@ -112,6 +115,107 @@
 
 ;; ----------------------------------------
 
+;; Modification counter (used to find fixed points)
+
+(define mod-counter 0)
+
+(define (inc-mod!) (set! mod-counter (add1 mod-counter)))
+
+(define-syntax-rule (modfix e)
+  ;; repeat until mod-counter stops changing
+  (let loop ([i 0])
+    ;; (eprintf "modfix loop ~s\n" i)
+    (define old-mod-counter mod-counter)
+    (define result e)
+    (if (= mod-counter old-mod-counter)
+        result
+        (loop (add1 i)))))
+
+;; ----------------------------------------
+
+;; FUN-EXP : id-table[Nat/#f]
+;; Indicates lambda expr bound to id.
+(define FUN-EXP (make-free-id-table))
+
+(define (bind ids rhs)
+  (syntax-parse ids
+    [(x:id)
+     (when (lambda-form? rhs)
+       (free-id-table-set! FUN-EXP #'x (get-tag rhs)))]
+    [_ (void)]))
+(define (bind* bindpairs)
+  (for ([bindpair (in-list (stx->list bindpairs))])
+    (syntax-parse bindpair
+      [(ids rhs) (bind #'ids #'rhs)])))
+
+;; analyze-bindings : Syntax -> Void
+(define (analyze-bindings stx0)
+  (define (recur e) (analyze-bindings e))
+  (define (recur* es) (for-each recur (stx->list es)))
+  (define stx (syntax-disarm stx0 stx-insp))
+  (syntax-parse stx
+    #:literal-sets (kernel-literals)
+    ;; Fully-Expanded Programs
+    ;; -- module body
+    [(#%plain-module-begin form ...)
+     ;; FIXME: could do bind pass then modfix
+     (recur* #'(form ...))]
+    ;; -- module-level form
+    [(#%provide . _) (void)]
+    [(begin-for-syntax . _) (void)]
+    [(module . _) (void)]
+    ;; [(module* . _) #f]
+    ;; [(#%declare . _) #f]
+    ;; -- general top-level form
+    [(define-values ids e)
+     (bind #'ids #'e)]
+    [(define-syntaxes . _) (void)]
+    [(#%require . _) (void)]
+    ;; -- expr
+    [var:id (void)]
+    [(#%plain-lambda formals e ...)
+     (recur* #'(e ...))]
+    [(case-lambda [formals e ...] ...)
+     (recur* #'(e ... ...))]
+    [(if e1 e2 e3)
+     (recur* #'(e1 e2 e3))]
+    [(begin e ...)
+     (recur* #'(e ...))]
+    [(begin0 e ...)
+     (recur* #'(e ...))]
+    [(let-values ([vars rhs] ...) body ...)
+     (bind* #'([vars rhs] ...))
+     (recur* #'(rhs ...))
+     (recur* #'(body ...))]
+    [(letrec-values ([vars rhs] ...) body ...)
+     (bind* #'([vars rhs] ...))
+     (recur* #'(rhs ...))
+     (recur* #'(body ...))]
+    [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ...)
+     (bind* #'([vvars vrhs] ...))
+     (recur* #'(vrhs ...))
+     (recur* #'(body ...))]
+    [(set! var e)
+     (recur #'e)]
+    [(quote d) #f]
+    [(quote-syntax s) #f]
+    [(with-continuation-mark e1 e2 e3)
+     (recur* #'(e1 e2 e3))]
+    [(#%plain-app e ...)
+     (recur* #'(e ...))]
+    [(#%top . _) (void)]
+    [(#%variable-reference . _) (void)]
+    [(#%expression e)
+     (recur #'e)]
+    [_
+     (raise-syntax-error #f "unhandled syntax in analyze-bindings" stx)]
+    ))
+
+;; ----------------------------------------
+
+;; CALLS-ERP(app) is true if a call to {sample,observe-at,mem} might
+;; occur in the dynamic extent of the function call.
+
 ;; app-calls-erp? : Syntax -> Boolean
 (define (app-calls-erp? stx)
   (hash-ref APP-CALLS-ERP (get-tag stx)))
@@ -124,23 +228,6 @@
 ;; LAM-CALLS-ERP : hash[Nat -> Boolean]
 ;; Indicates if tagged lambda expr might call an ERP when applied.
 (define LAM-CALLS-ERP (make-hash))
-
-;; FUN-EXP : id-table[Nat/#f]
-;; Indicates lambda expr bound to id.
-(define FUN-EXP (make-free-id-table))
-
-;; number of modifications to *-CALLS-ERP
-(define CALLS-ERP-mod 0)
-(define (inc-mod!) (set! CALLS-ERP-mod (add1 CALLS-ERP-mod)))
-(define-syntax-rule (modfix e)
-  ;; repeat until CALLS-ERP-mod stops changing
-  (let loop ([i 0])
-    ;; (eprintf "modfix loop ~s\n" i)
-    (define old-mod CALLS-ERP-mod)
-    (define result e)
-    (if (= CALLS-ERP-mod old-mod)
-        result
-        (loop (add1 i)))))
 
 (define (set-APP-CALLS-ERP! stx val)
   (define tag (get-tag stx))
@@ -160,16 +247,6 @@
 (define (analyze-CALLS-ERP stx0)
   (define (recur e) (analyze-CALLS-ERP e))
   (define (recur* es) (strict-ormap recur (stx->list es)))
-  (define (bind ids rhs)
-    (syntax-parse ids
-      [(x:id)
-       (when (lambda-form? rhs)
-         (free-id-table-set! FUN-EXP #'x (get-tag rhs)))]
-      [_ (void)]))
-  (define (bind* bindpairs)
-    (for ([bindpair (in-list (stx->list bindpairs))])
-      (syntax-parse bindpair
-        [(ids rhs) (bind #'ids #'rhs)])))
   (define stx (syntax-disarm stx0 stx-insp))
   (define result
     (syntax-parse stx
@@ -267,8 +344,6 @@
   (case (classify-function f-id)
     [(safe) #f]
     [else #t]))
-
-;; ----------------------------------------
 
 ;; ========================================
 
