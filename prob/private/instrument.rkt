@@ -16,8 +16,8 @@
          instrument)
 
 (begin-for-syntax
-  (define DEBUG-CALLS-ERP? #t)
-  (define DEBUG-COND-CTX? #t))
+  ;; display with: PLTSTDERR="info@instr" racket ....
+  (define-logger instr))
 
 #|
 A CallSite is a Nat.
@@ -141,15 +141,15 @@ distinct call-site indexes.
          ;; -- expr
          [var:id #'var]
          [(#%plain-lambda formals e ... e*)
-          (when DEBUG-COND-CTX?
-            (unless (lam-cond-ctx? stx)
-              (eprintf "*** not CC: ~s: ~a\n" (get-tag stx) (syntax-summary stx))))
+          (unless (lam-cond-ctx? stx)
+            (log-instr-info "*** not CC: ~s: ~a"
+                            (get-tag stx) (syntax-summary stx)))
           (with-syntax ([mode (if (lam-cond-ctx? stx) '#:cc '#:nt)])
             #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* mode)))]
          [(case-lambda [formals e ... e*] ...)
-          (when DEBUG-COND-CTX?
-            (unless (lam-cond-ctx? stx)
-              (eprintf "*** not CC: ~s: ~a\n" (get-tag stx) (syntax-summary stx))))
+          (unless (lam-cond-ctx? stx)
+            (log-instr-info "*** not CC: ~s: ~a"
+                            (get-tag stx) (syntax-summary stx)))
           (with-syntax ([mode (if (lam-cond-ctx? stx) '#:cc '#:nt)])
             #'(case-lambda [formals (instrument e #:nt) ... (instrument e* mode)] ...))]
          [(if e1 e2 e3)
@@ -242,9 +242,8 @@ distinct call-site indexes.
     [(_ #:cc (#%plain-app f:id e ...))
      #:when (not calls-erp?)
      ;; "safe" function: doesn't need address tracking
-     (when DEBUG-CALLS-ERP?
-       (when (not (eq? (classify-function #'f) 'safe))
-         (eprintf "*** no calls-erp: ~a\n" (syntax-summary #'f))))
+     (when (not (eq? (classify-function #'f) 'safe))
+       (log-instr-info "*** no calls-erp: ~a" (syntax-summary #'f)))
      #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
     [(_ #:cc (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
@@ -257,9 +256,8 @@ distinct call-site indexes.
     [(_ #:nt (#%plain-app f:id e ...))
      #:when (not calls-erp?)
      ;; "safe" function: doesn't need address tracking
-     (when DEBUG-CALLS-ERP?
-       (when (not (eq? (classify-function #'f) 'safe))
-         (eprintf "*** no calls-erp: ~a\n" (syntax-summary #'f))))
+     (when (not (eq? (classify-function #'f) 'safe))
+       (log-instr-info "*** no calls-erp: ~a" (syntax-summary #'f)))
      #'(#%plain-app f (instrument e #:nt) ...)]
     [(_ #:nt (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
