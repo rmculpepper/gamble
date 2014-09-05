@@ -14,8 +14,10 @@
          generate-weighted-samples
          sampler-base%
          stochastic-ctx<%>
+         stochastic-ctx/run<%>
          current-stochastic-ctx
          plain-stochastic-ctx%
+         plain-stochastic-ctx/run%
          current-zones
          zone-matches?
          some-zone-matches?
@@ -67,6 +69,11 @@
     mem     ;; Function -> Function
     ))
 
+(define stochastic-ctx/run<%>
+  (interface (stochastic-ctx<%>)
+    run     ;; (-> A) -> (U (cons 'okay A) (cons 'fail Any))
+    ))
+
 (define plain-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
     (super-new)
@@ -91,6 +98,23 @@
       (if reason
           (error 'fail "failed\n  reason: ~s" reason)
           (error 'fail "failed")))
+    ))
+
+(define plain-stochastic-ctx/run%
+  (class* plain-stochastic-ctx% (stochastic-ctx/run<%>)
+    (init-field [escape-prompt (make-continuation-prompt-tag)])
+    (super-new)
+
+    (define/public (run thunk)
+      (parameterize ((current-stochastic-ctx this))
+        (call-with-continuation-prompt
+         (lambda () (cons 'okay (thunk)))
+         escape-prompt)))
+
+    (define/override (fail reason)
+      (abort-current-continuation
+       escape-prompt
+       (lambda () (cons 'fail reason))))
     ))
 
 (define current-stochastic-ctx

@@ -141,7 +141,7 @@
 ;; ============================================================
 
 (define db-stochastic-ctx%
-  (class* object% (stochastic-ctx<%>)
+  (class* object% (stochastic-ctx/run<%>)
     (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
                 [record-obs? #t]
@@ -338,7 +338,7 @@
     ))
 
 (define db-stochastic-derivative-ctx%
-  (class* db-stochastic-ctx% (stochastic-ctx<%>)
+  (class* db-stochastic-ctx% (stochastic-ctx/run<%>)
     (field [derivatives (make-hash)]      ;; (Hashof Address Derivative)
            [relevant-labels (make-hash)]) ;; (Hashof Label Address)
     (super-new)

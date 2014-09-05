@@ -77,22 +77,17 @@
     (init-field thunk)
     (super-new)
     (define/override (sample)
-      (let ([v (let/ec escape
-                 (parameterize ((current-stochastic-ctx
-                                 (new rejection-stochastic-ctx%
-                                      (escape escape))))
-                   (cons 'succeed (thunk))))])
-        (case (car v)
-          [(succeed) (cdr v)]
-          [(fail) (sample)])))
+      (define ctx (new rejection-stochastic-ctx%))
+      (define v (send ctx run thunk))
+      (case (car v)
+        [(okay) (cdr v)]
+        [(fail) (sample)]))
     ))
 
 (define rejection-stochastic-ctx%
-  (class plain-stochastic-ctx%
-    (init-field escape)
+  (class plain-stochastic-ctx/run%
+    (inherit fail)
     (super-new)
-    (define/override (fail reason)
-      (escape (cons 'fail reason)))
     (define/override (observe-at dist val)
       (cond [(or (finite-dist? dist) (integer-dist? dist))
              ;; ie, actually have pmf
@@ -125,15 +120,11 @@
     (super-new)
 
     (define/public (sample/weight)
-      (let ([v (let/ec escape
-                 (define ctx (new importance-stochastic-ctx% (escape escape)))
-                 (parameterize ((current-stochastic-ctx ctx))
-                   (define result (thunk))
-                   (define weight (get-field weight ctx))
-                   (cons 'succeed (cons result weight))))])
-        (case (car v)
-          [(succeed) (cdr v)]
-          [(fail) (sample/weight)])))
+      (define ctx (new importance-stochastic-ctx%))
+      (define v (send ctx run thunk))
+      (case (car v)
+        [(okay) (cons (cdr v) (get-field weight ctx))]
+        [(fail) (sample/weight)]))
     ))
 
 (define importance-stochastic-ctx%
@@ -142,7 +133,10 @@
     (inherit fail)
     (super-new)
     (define/override (observe-at dist val)
-      (set! weight (* weight (dist-pdf dist val))))
+      (define l (dist-pdf dist val))
+      (if (positive? l)
+          (set! weight (* weight l))
+          (fail 'observation)))
     ))
 
 ;; ----
