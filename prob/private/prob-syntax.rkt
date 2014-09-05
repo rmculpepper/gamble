@@ -38,7 +38,9 @@
          deflazy
          defmem
          (rename-out [table* table])
-         table?)
+         table?
+
+         importance-stochastic-ctx%)
 
 ;; ----
 

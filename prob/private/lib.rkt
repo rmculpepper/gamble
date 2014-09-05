@@ -20,4 +20,5 @@
           [generate-weighted-samples
            (-> weighted-sampler? exact-nonnegative-integer? any)])
          (all-from-out "prob-util.rkt")
-         (all-from-out "prob-syntax.rkt"))
+         (except-out (all-from-out "prob-syntax.rkt")
+                     importance-stochastic-ctx%))
