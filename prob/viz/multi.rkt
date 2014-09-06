@@ -12,21 +12,30 @@
          multi-viz-widget%
          make-multi-viz-frame)
 
+(define canvas/size-callback%
+  (class canvas%
+    (init-field size-callback)
+    (super-new)
+    (define/override (on-size w h)
+      (size-callback w h))))
+
 ;; TODO: auto play, pause, framerate
 ;; TODO: scoll w/ scroll wheel (grr, complicated?!)
 
 (define ZOOM-LEVELS
-  '(["10%"  1/10]
+  '(["Auto fit" #f]
+    ["10%"  1/10]
     ["25%"  1/4]
     ["50%"  1/2]
     ["100%" 1]
+    ["150%" 3/2]
     ["200%" 2]
     ["300%" 3]
     ["400%" 4]
     ["500%" 5]
     ["10x"  10]))
 
-(define DEFAULT-ZOOM "100%")
+(define DEFAULT-ZOOM "Auto fit")
 
 ;; ----
 
@@ -44,8 +53,9 @@
     ;; == Window elements ==
 
     (define-notify zoom-label (new notify-box% (value DEFAULT-ZOOM)))
-    (define-notify zoom (new notify-box% (value 1)))
+    (define-notify zoom (new notify-box% (value #f)))
     (listen-zoom-label (lambda (zl) (set-zoom (cadr (assoc zl ZOOM-LEVELS)))))
+    (listen-zoom (lambda _ (update-view)))
 
     (define top-bar
       (new horizontal-pane%
@@ -104,10 +114,15 @@
            (label "End ->|")
            (callback (lambda (b ce) (set-index (sub1 (get-contents-length)))))))
     (define canvas
-      (new canvas%
+      (new canvas/size-callback%
            (parent main-area)
            (style '(hscroll vscroll))
-           (paint-callback (lambda (c dc) (paint c dc)))))
+           (paint-callback (lambda (c dc) (paint c dc)))
+           (size-callback (lambda (w h) (on-canvas-resize)))))
+
+    (define/private (on-canvas-resize)
+      (when (eq? (get-zoom) #f) ;; Auto
+        (update-view)))
 
     (define/private (navbar-update)
       (navbar-update* (> (get-index) 0)
@@ -140,19 +155,17 @@
       (send index listen on-index-change)
       (send contents-length listen on-index-change))
 
+    ;; == Zoom State ==
+
+    (define/private (get-auto-zoom p)
+      (define-values (cw ch) (send canvas get-client-size))
+      (min (/ cw (pict-width p))
+           (/ ch (pict-height p))))
+
     ;; == Pict State ==
 
     (define-notify current-pict (new notify-box% (value #f)))
-    (define-notify current-scaled-pict (new notify-box% (value #f)))
-
-    (listen-current-pict
-     (lambda (p)
-       (set-current-scaled-pict (and p (scale p (get-zoom))))))
-    (listen-zoom
-     (lambda (z)
-       (define p (get-current-pict))
-       (set-current-scaled-pict (and p (scale p z)))))
-    (listen-current-scaled-pict (lambda _ (update-view)))
+    (listen-current-pict (lambda _ (update-view)))
 
     (define/public (add-pict p)
       (gvector-add! contents p)
@@ -160,9 +173,14 @@
 
     ;; == Drawing ==
 
+    (define/private (get-current-scaled-pict)
+      (define p (get-current-pict))
+      (and p (scale p (or (get-zoom) (get-auto-zoom p)))))
+
     (define/private (update-view)
       (define p (get-current-scaled-pict))
-      (send canvas init-auto-scrollbars (pict-width p) (pict-height p) 0 0)
+      (send canvas init-auto-scrollbars
+            (ceiling (pict-width p)) (ceiling (pict-height p)) 0 0)
       (send canvas refresh))
 
     (define/private (paint _c dc)
