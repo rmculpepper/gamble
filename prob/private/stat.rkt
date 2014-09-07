@@ -17,24 +17,20 @@
 (define (sampler->statistics* s n)
   (define v (s))
   (check-real-vector 'sampler->statistics v)
-  (define L (vector-length v))
-  (do-stats s n L))
+  (define dim (vector-length v))
+  (do-stats s n dim))
 
-(define (do-stats s n L)
+(define (do-stats s n dim)
   ;; After step k:
-  ;; M2[i] = Σ{a=1..k} (s_a[i] - mean[i])^2
   ;; mean[i] = 1/k * Σ{a=1..k} s_a[i]
   ;; cov[i,j] = Σ{a=1..k} (s_a[i] - mean[i])*(s_a[j] - mean[j])
-  ;; Note: M2 is redundant w/ diagonal of cov
-  (define M2 (make-vector L 0))
-  (define mean (make-vector L 0))
-  (define cov (make-vector L #f))
-  (for ([i (in-range L)])
-    (vector-set! cov i (make-vector L 0)))
+  (define mean (make-vector dim 0))
+  (define cov (make-vector dim #f))
+  (for ([i (in-range dim)])
+    (vector-set! cov i (make-vector dim 0)))
 
   (define (handle-sample k v)
     ;; Note: don't reorder; update cov before mean is overwritten!
-    ;; FIXME: only need to update cov[i,j] where i != j, because cov[i,i] = M2[i]
     ;; FIXME: could only update triangle, since symmetric
     (for ([ei (in-vector v)] [meani (in-vector mean)] [i (in-naturals)])
       (define covi (vector-ref cov i))
@@ -47,19 +43,16 @@
                            (- ej meanj))))))
     (for ([ei (in-vector v)] [meani (in-vector mean)] [i (in-naturals)])
       ;; μ' = μ + (v - μ)/(k+1)
-      (vector-set! mean i (+ meani (/ (- ei meani) (add1 k))))
-      ;; M2 = M2 + (v - μ)*(v - μ')
-      (vector-set! M2 i (+ (vector-ref M2 i)
-                           (* (- ei meani) (- ei (vector-ref mean i))))))
+      (vector-set! mean i (+ meani (/ (- ei meani) (add1 k)))))
     (set! k (add1 k)))
 
   (for ([k (in-range n)])
     (define v (s))
     (check-real-vector 'sampler->statistics v)
-    (unless (= (vector-length v) L)
+    (unless (= (vector-length v) dim)
       (error 'sampler->statistics
              "vector has wrong number of elements\n  expected: ~e\n  value: ~e"
-             L v))
+             dim v))
     (handle-sample k v))
 
   ;; likewise for covariance, cov
@@ -68,7 +61,7 @@
     (for ([covij (in-vector covi)] [j (in-naturals)])
       (vector-set! covi j (/ covij (sub1 n)))))
 
-  (statistics L n mean cov))
+  (statistics dim n mean cov))
 
 (define (check-real-vector who fv)
     (unless (and (vector? fv) (for/and ([e (in-vector fv)]) (real? e)))
