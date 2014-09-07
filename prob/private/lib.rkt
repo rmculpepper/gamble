@@ -10,6 +10,7 @@
          "util.rkt"
          "interfaces.rkt"
          "prob-util.rkt"
+         "stat.rkt"
          "prob-syntax.rkt")
 (provide (all-from-out "util.rkt")
          weighted-sampler?
@@ -20,5 +21,6 @@
           [generate-weighted-samples
            (-> weighted-sampler? exact-nonnegative-integer? any)])
          (all-from-out "prob-util.rkt")
+         (all-from-out "stat.rkt")
          (except-out (all-from-out "prob-syntax.rkt")
                      importance-stochastic-ctx%))
