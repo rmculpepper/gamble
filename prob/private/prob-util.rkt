@@ -371,7 +371,7 @@
      ;; a U b = a U (b - a)   --- membership means positive pdf
      (+ (for/sum ([aval (in-vector (discrete-dist-values a))])
           (define aweight (dist-pdf a aval))
-          (define bweight (dist-pdf b aval 0))
+          (define bweight (dist-pdf b aval))
           (if (positive? aweight)
               (abs (- aweight bweight))
               0))

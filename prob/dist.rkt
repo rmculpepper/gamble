@@ -640,10 +640,12 @@
 ;; -- Weights are not normalized
 
 (define (raw*discrete-pdf vs ws wsum x log?)
-  (or (for/or ([v (in-vector vs)]
-               [w (in-vector ws)])
-        (and (equal? x v) (/ w wsum)))
-      0))
+  (define p
+    (or (for/or ([v (in-vector vs)]
+                 [w (in-vector ws)])
+          (and (equal? x v) (/ w wsum)))
+        0))
+  (convert-p p log? #f))
 (define (raw*discrete-cdf vs ws wsum x log? 1-p?)
   (error 'discrete-dist:cdf "undefined"))
 (define (raw*discrete-inv-cdf vs ws wsum x log? 1-p?)
@@ -678,10 +680,12 @@
 ;; ============================================================
 ;; Dirichlet distribution
 
-(define (rawdirichlet-pdf alpha x)
-  (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
-     ;; FIXME: cache multinomial-beta, since fixed!
-     (multinomial-beta alpha)))
+(define (rawdirichlet-pdf alpha x log?)
+  (define p
+    (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
+       ;; FIXME: cache multinomial-beta, since fixed!
+       (multinomial-beta alpha)))
+  (convert-p p log? #f))
 (define (multinomial-beta alpha)
   (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
      (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
@@ -704,16 +708,19 @@
 ;; ============================================================
 ;; Pareto distribution
 
-(define (m:flpareto-pdf scale shape x)
-  (if (>= x scale)
-      (/ (* shape (expt scale shape))
-         (expt x (add1 shape)))
-      0.0))
-(define (m:flpareto-cdf scale shape p log? 1-p?)
-  (define p* (unconvert-p p log? 1-p?))
-  (if (> p* scale)
-      (- 1 (expt (/ scale p*) shape))
-      0.0))
+(define (m:flpareto-pdf scale shape x log?)
+  (define p
+    (if (>= x scale)
+        (/ (* shape (expt scale shape))
+           (expt x (add1 shape)))
+        0.0))
+  (convert-p p log? #f))
+(define (m:flpareto-cdf scale shape x log? 1-p?)
+  (define p
+    (if (> x scale)
+        (- 1.0 (expt (/ scale x) shape))
+        0.0))
+  (convert-p p log? 1-p?))
 (define (m:flpareto-inv-cdf scale shape p log? 1-p?)
   (define p* (unconvert-p p log? 1-p?))
   (* scale (expt p* (- (/ shape)))))
