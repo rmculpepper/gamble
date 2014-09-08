@@ -55,7 +55,11 @@
                (>=/c 0))]
           [repeat
            (-> (-> any) exact-nonnegative-integer? 
-               list?)])
+               list?)]
+          [resample
+           (->* [vector? vector?] 
+                [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
+                vector?)])
          probability?
          ;; The following stochastic procedures have codomain contract of any
          ;; so that their internal call to sample is in tail position (no

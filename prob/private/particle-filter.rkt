@@ -9,6 +9,7 @@
          racket/math
          racket/vector
          "../dist.rkt"
+         (only-in "prob-util.rkt" [resample u:resample])
          "prob-syntax.rkt")
 (provide
  particles?
@@ -25,7 +26,7 @@
         particles?)]
   [particles-resample
    (->* [particles?]
-        [exact-nonnegative-integer? #:resample (or/c #f 'multinomial 'residual)]
+        [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
         particles?)]
   [particles-effective-count
    (-> particles? real?)]
@@ -53,11 +54,8 @@
   (send ps update f iters))
 
 (define (particles-resample ps [count (particles-count ps)]
-                            #:resample [technique 'multinomial])
-  (case technique
-    [(multinomial #f) (send ps resample count)]
-    [(residual) (send ps resample/residual count)]
-    [else (error 'particles-resample "bad algorithm\n  given: ~e" technique)]))
+                            #:alg [alg #f])
+  (send ps resample count alg))
 
 (define (particles-effective-count ps)
   (send ps effective-sample-size))
@@ -146,38 +144,8 @@
       (/ (sqr (for/sum ([w (in-vector weights)]) w))
          (for/sum ([w (in-vector weights)]) (sqr w))))
 
-    (define/public (resample [count* (vector-length states)])
-      (define d (make-discrete-dist* states weights #:normalize? #f))
-      (define states* (make-vector count* #f))
-      (define weights* (make-vector count* 1))
-      (for ([i (in-range count*)])
-        (vector-set! states* i (dist-sample d)))
-      (new particles% (states states*) (weights weights*)))
-
-    (define/public (resample/residual [count* (vector-length states)])
-      (define states* (make-vector count* #f))
-      (define wsum (for/sum ([w (in-vector weights)]) w))
-      ;; Conceptually, rweights is first scaled s.t. sum is count*,
-      ;; then whole parts are taken out, leaving fractions (residuals).
-      ;; Actually done in one loop.
-      (define rweights (make-vector (vector-length weights) #f))
-      (define next-statej
-        (for/fold ([statej 0]) ;; next avail index into states*
-                  ([wi (in-vector weights)]
-                   [si (in-vector states)]
-                   [i (in-naturals)])
-          (define scaled (* (/ wi wsum) count*))
-          (define whole (inexact->exact (floor scaled)))
-          (define residual (- scaled (floor scaled)))
-          (vector-set! rweights i residual)
-          (for ([j (in-range whole)])
-            (vector-set! states* (+ statej j) si))
-          (+ statej whole)))
-      ;; (eprintf "-- ~s guaranteed, ~s residual\n" next-statej (- count* next-statej))
-      ;; Now fill in (count* - state-nextj) final elements of states*.
-      (define d (make-discrete-dist* states rweights #:normalize? #f))
-      (for ([i (in-range next-statej count*)])
-        (vector-set! states* i (dist-sample d)))
+    (define/public (resample count* alg)
+      (define states* (u:resample states weights count* #:alg alg))
       (define weights* (make-vector count* 1))
       (new particles% (states states*) (weights weights*)))
     ))

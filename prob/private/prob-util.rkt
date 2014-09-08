@@ -181,6 +181,48 @@
 
 ;; ----------------------------------------
 
+;; Resampling
+
+(define (resample vs ws count #:alg [alg 'multinomial])
+  (case alg
+    [(multinomial #f) (resample-multinomial vs ws count)]
+    [(residual) (resample-residual vs ws count)]
+    [else (error 'resample "bad resampling algorithm\n  got: ~e" alg)]))
+
+(define (resample-multinomial vs ws count)
+  (define d (make-discrete-dist* vs ws #:normalize? #f))
+  (define r (make-vector count #f))
+  (for ([i (in-range count)])
+    (vector-set! r i (dist-sample d)))
+  r)
+
+(define (resample-residual vs ws count)
+  (define r (make-vector count #f))
+  (define wsum (for/sum ([w (in-vector ws)]) w))
+  ;; Conceptually, rweights is first scaled s.t. sum is count*,
+  ;; then whole parts are taken out, leaving fractions (residuals).
+  ;; Actually done in one loop.
+  (define rweights (make-vector (vector-length ws) #f))
+  (define nextj
+    (for/fold ([j 0]) ;; next avail index into r
+              ([wi (in-vector ws)]
+               [si (in-vector vs)]
+               [i (in-naturals)])
+      (define scaled (* (/ wi wsum) count))
+      (define whole (inexact->exact (floor scaled)))
+      (define residual (- scaled (floor scaled)))
+      (vector-set! rweights i residual)
+      (for ([joffset (in-range whole)])
+        (vector-set! r (+ j joffset) si))
+      (+ j whole)))
+  ;; Now fill in (count* - nextj) final elements of states*.
+  (define d (make-discrete-dist* vs ws #:normalize? #f))
+  (for ([j (in-range nextj count)])
+    (vector-set! r j (dist-sample d)))
+  r)
+
+;; ----------------------------------------
+
 ;; Misc utils
 
 (define (repeat thunk times)
