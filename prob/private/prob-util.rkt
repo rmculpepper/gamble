@@ -227,10 +227,7 @@
  (contract-out
   [discrete-dist-error
    (-> discrete-dist? discrete-dist?
-       (>=/c 0))]
-  [sampler->KS
-   (-> (-> real?) exact-positive-integer? dist?
-       real?)]))
+       (>=/c 0))]))
 
 ;; discrete-dist-error : (Discrete-Dist A) (Discrete-Dist A) -> Real
 (define (discrete-dist-error a b)
@@ -249,27 +246,3 @@
                   #:when (zero? (dist-pdf a bval)))
           (define bweight (dist-pdf b bval))
           (abs bweight)))))
-
-;; sampler->KS : Sampler Nat Dist -> Real
-;; Compute Kolmogorov–Smirnov statistic for samples and dist.
-(define (sampler->KS sampler iters dist)
-  (define v (list->vector (sort (repeat sampler iters) <)))
-  (KS/samples v (lambda (x) (dist-cdf dist x))))
-
-;; KS/samples : (Vectorof Real) (Real -> Real) Boolean -> Real
-;; pre: v is sorted ascending, cdf is monotone nondecreasing w/ onto (0,1)
-;; Note: need continuity to calculate sup_{x in (xa,xb)} cdf(x) = cdf(xb)
-(define (KS/samples v cdf)
-  (define continuous? #f)
-  (define n (vector-length v))
-  (define (cdf_i i) (cdf (vector-ref v i)))
-  (define (ecdf_i i) (/ (add1 i) n)) ;; note, (ecdf_i -1) = 0
-  (max (for/fold ([acc 0]) ([i (in-range n)])
-         (max acc
-              (abs (- (cdf_i i) (ecdf_i i)))
-              (if continuous?
-                  (abs (- (cdf_i i) (ecdf_i (sub1 i))))
-                  0)))
-       (if continuous? 
-           (abs (- (cdf_i (sub1 n)) 1))
-           0)))

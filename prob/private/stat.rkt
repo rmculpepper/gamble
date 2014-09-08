@@ -2,9 +2,13 @@
 (require racket/class
          racket/vector
          (rename-in racket/match [match-define defmatch])
-         "interfaces.rkt")
+         "interfaces.rkt"
+         "dist.rkt")
 (provide (struct-out statistics)
-         sampler->statistics)
+         sampler->statistics
+         samples->statistics
+         sampler->KS
+         samples->KS)
 
 ;; Reference: "Numerically Stable, Single-Pass, Parallel Statistics
 ;; Algorithms" by Bennett et al.
@@ -50,6 +54,8 @@
 
 ;; samples->statistics : (Vectorof (Vectorof Real)) -> Statistics
 (define (samples->statistics vs)
+  (unless (vector? vs)
+    (raise-argument-error 'samples->statistics "vector?" 0 vs))
   (define n (vector-length vs))
   (when (zero? n)
     (error 'samples->statistics "empty sample set"))
@@ -154,6 +160,44 @@
   (define m (make-vector len))
   (for ([i (in-range len)])
     (vector-set! m i (make-vector len fill))))
+
+;; ============================================================
+;; Kolmogorov-Smirov statistic
+
+;; sampler->KS : Sampler Nat Dist -> Real
+(define (sampler->KS sampler iters dist)
+  (define v0 (for/list ([i (in-range iters)]) (sampler)))
+  (for ([x (in-list v0)])
+    (unless (real? x)
+      (error 'sampler->KS "sampler produced non-real value\n  got: ~e" x)))
+  (define v (list->vector (sort v0 <)))
+  (KS v (lambda (x) (dist-cdf dist x))))
+
+;; samples->KS : (Vectorof Real) Dist -> Real
+(define (samples->KS v0 dist)
+  (for ([x (in-vector v0)])
+    (unless (real? x)
+      (raise-argument-error 'samples->KS "(vectorof real?)" 0 v0 dist)))
+  (define v (list->vector (sort (vector->list v0) <)))
+  (KS v (lambda (x) (dist-cdf dist x))))
+
+;; KS : (Vectorof Real) (Real -> Real) Boolean -> Real
+;; pre: v is sorted ascending, cdf is monotone nondecreasing w/ onto (0,1)
+;; Note: need continuity to calculate sup_{x in (xa,xb)} cdf(x) = cdf(xb)
+(define (KS v cdf)
+  (define continuous? #f)
+  (define n (vector-length v))
+  (define (cdf_i i) (cdf (vector-ref v i)))
+  (define (ecdf_i i) (/ (add1 i) n)) ;; note, (ecdf_i -1) = 0
+  (max (for/fold ([acc 0]) ([i (in-range n)])
+         (max acc
+              (abs (- (cdf_i i) (ecdf_i i)))
+              (if continuous?
+                  (abs (- (cdf_i i) (ecdf_i (sub1 i))))
+                  0)))
+       (if continuous?
+           (abs (- (cdf_i (sub1 n)) 1))
+           0)))
 
 
 ;; ============================================================
