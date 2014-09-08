@@ -25,16 +25,9 @@
 (require "dist.rkt")
 (provide (all-from-out "dist.rkt"))
 
-(require "private/util.rkt")
-(provide probability?
-         verbose?
-         (contract-out
-          [repeat
-           (-> (-> any) exact-nonnegative-integer? 
-               list?)]))
-
 (require "private/interfaces.rkt")
-(provide weighted-sampler?
+(provide verbose?
+         weighted-sampler?
          sampler?
          (contract-out
           [generate-samples
@@ -59,7 +52,11 @@
           ;; ----
           [discrete-dist-error
            (-> discrete-dist? discrete-dist?
-               (>=/c 0))])
+               (>=/c 0))]
+          [repeat
+           (-> (-> any) exact-nonnegative-integer? 
+               list?)])
+         probability?
          ;; The following stochastic procedures have codomain contract of any
          ;; so that their internal call to sample is in tail position (no
          ;; result check frame). (Except for flip, FIXME.)

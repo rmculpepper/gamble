@@ -9,7 +9,6 @@
          racket/vector
          data/order
          "context.rkt"
-         "util.rkt"
          "interfaces.rkt"
          "../dist.rkt"
          (only-in "dist.rkt" dists-same-type?))

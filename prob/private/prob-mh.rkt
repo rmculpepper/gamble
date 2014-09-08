@@ -7,7 +7,6 @@
          (rename-in racket/match [match-define defmatch])
          racket/math
          "db.rkt"
-         "util.rkt"
          "interfaces.rkt"
          "../dist.rkt"
          "hmc/system.rkt"

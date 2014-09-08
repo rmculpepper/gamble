@@ -9,10 +9,8 @@
          (only-in "../dist.rkt"
                   dist-Denergy)
          (only-in "../interfaces.rkt"
-                  some-zone-matches?)
-         (only-in "../util.rkt"
-                  verbose?)
-         )
+                  verbose?
+                  some-zone-matches?))
 
 (provide db-Denergy)
 

@@ -9,12 +9,9 @@
          racket/class
          "system.rkt"
          "../db.rkt"
-         (only-in "../util.rkt"
-                  verbose?
-                  )
          (only-in "../interfaces.rkt"
-                  some-zone-matches?)
-         )
+                  verbose?
+                  some-zone-matches?))
 
 (provide 
  (contract-out

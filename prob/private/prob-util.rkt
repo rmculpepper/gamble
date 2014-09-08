@@ -6,8 +6,7 @@
 (require racket/class
          "interfaces.rkt"
          "context.rkt"
-         "../dist.rkt"
-         "util.rkt")
+         "../dist.rkt")
 (provide (all-defined-out))
 
 ;; mem and sample wrappers
@@ -179,3 +178,13 @@
                   #:when (zero? (dist-pdf a bval)))
           (define bweight (dist-pdf b bval))
           (abs bweight)))))
+
+;; ----------------------------------------
+
+;; Misc utils
+
+(define (repeat thunk times)
+  (for/list ([i times]) (thunk)))
+
+(define (probability? x)
+  (and (real? x) (<= 0 x 1)))

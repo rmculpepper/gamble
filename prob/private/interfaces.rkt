@@ -6,7 +6,8 @@
 (require racket/class
          (only-in "context.rkt" obs-mark)
          (only-in "dist.rkt" dist-sample dist-pdf))
-(provide weighted-sampler<%>
+(provide verbose?
+         weighted-sampler<%>
          sampler<%>
          weighted-sampler?
          sampler?
@@ -25,6 +26,13 @@
          current-derivatives)
 
 ;; Defines interfaces, base classes, and parameters.
+
+;; ============================================================
+;; Debugging
+
+;; FIXME: add logger?
+
+(define verbose? (make-parameter #f))
 
 ;; ============================================================
 ;; Samplers

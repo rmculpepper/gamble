@@ -8,8 +8,7 @@
          "../dist.rkt"
          "prob-lazy-tree.rkt"
          "pairingheap.rkt"
-         "interfaces.rkt"
-         "util.rkt")
+         "interfaces.rkt")
 (provide enumerate*
          enum-importance-sampler*)
 
