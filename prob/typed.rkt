@@ -37,7 +37,7 @@
 (provide (all-from-out "private/prob-syntax.rkt"))
 
 (module lib typed/racket/base
-  (require/typed "private/lib.rkt"
+  (require/typed "main.rkt"
                  [flip (case->
                         (-> Boolean)
                         (Real -> Boolean))]

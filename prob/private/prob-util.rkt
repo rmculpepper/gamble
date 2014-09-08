@@ -11,11 +11,7 @@
          "context.rkt"
          "../dist.rkt"
          "util.rkt")
-(provide (contract-out
-          [mem (-> procedure? procedure?)]
-          [sample (-> dist? any)]
-          [observe-at (-> dist? any/c any)]
-          [fail (->* [] [any/c] any)]))
+(provide (all-defined-out))
 
 ;; mem and sample wrappers
 
@@ -40,25 +36,6 @@
         [else (sample* dist)]))
 
 ;; == Finite distributions ==
-
-(provide
- (contract-out
-  [flip
-   (->* [] [probability?] 
-        any)]
-  [bernoulli
-   (->* [] [probability?] 
-        any)]
-  [categorical
-   (-> (vectorof (>=/c 0)) 
-       any)]
-  [discrete
-   (-> (or/c exact-positive-integer?
-             (listof (cons/c any/c (>=/c 0))))
-       any)]
-  [discrete*
-   (->* [list?] [(listof (>=/c 0))]
-       any)]))
 
 ;; flip : Prob -> (U #t #f)
 (define (flip [prob 1/2])
@@ -103,22 +80,11 @@
 
 ;; == Countable distributions ==
 
-(provide
- (contract-out
-  [geometric
-   (->* [] [probability?] any)]
-  [poisson
-   (-> (>/c 0) any)]
-  [binomial
-   (-> exact-nonnegative-integer? probability? any)]))
-
 ;; binomial : Nat Prob -> Integer
-;; FIXME: discretizable
 (define (binomial n p)
   (sample (binomial-dist n p)))
 
 ;; geometric : Prob -> Integer
-;; FIXME: discretizable
 (define (geometric [p 1/2])
   (sample (geometric-dist p)))
 
@@ -127,26 +93,6 @@
   (sample (poisson-dist mean)))
 
 ;; == Continuous distributions ==
-
-(provide
- (contract-out
-  [beta
-   (-> (>/c 0) (>/c 0) any)]
-  [cauchy
-   (->* [] [real? (>/c 0)] any)]
-  [exponential
-   (->* [] [(>/c 0)] any)]
-  [gamma
-   (->* [] [(>/c 0) (>/c 0)] any)]
-  [logistic
-   (->* [] [real? (>/c 0)] any)]
-  [normal
-   (->* [] [real? (>/c 0)] any)]
-  [pareto
-   (-> (>/c 0) (>/c 0) any)]
-  [uniform
-   (->* [] [real? real?] any)]
-  ))
 
 ;; beta : PositiveReal PositiveReal -> Real in [0,1]
 (define (beta a b)
@@ -188,10 +134,6 @@
 
 ;; ========================================
 
-(provide indicator/value
-         indicator/predicate
-         sampler->discrete-dist)
-
 (define ((indicator/value v) x)
   (if (equal? x v) 1 0))
 
@@ -222,12 +164,6 @@
   (make-discrete-dist entries #:normalize? normalize?))
 
 ;; ----------------------------------------
-
-(provide
- (contract-out
-  [discrete-dist-error
-   (-> discrete-dist? discrete-dist?
-       (>=/c 0))]))
 
 ;; discrete-dist-error : (Discrete-Dist A) (Discrete-Dist A) -> Real
 (define (discrete-dist-error a b)

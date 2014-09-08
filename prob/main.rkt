@@ -5,42 +5,128 @@
 ;; A language for probabilistic programming
 
 #lang racket/base
-(require "private/instrument.rkt"
-         "private/lib.rkt"
-         "private/ho-functions.rkt"
-         "private/particle-filter.rkt"
-         "dist.rkt")
+(require racket/contract)
+
+(module reader syntax/module-reader
+  prob)
+
+;; See private/instrument.rkt for the call-site instrumenter.
+;; See private/context.rkt for discussion of Address representation.
+(require "private/instrument.rkt")
 (provide (except-out (all-from-out racket/base)
                      #%module-begin #%top-interaction)
          (rename-out [instrumenting-module-begin #%module-begin]
                      [instrumenting-top-interaction #%top-interaction])
          describe-all-call-sites
-         describe-call-site
-         (all-from-out "private/lib.rkt")
-         (all-from-out "private/ho-functions.rkt")
-         (all-from-out "private/particle-filter.rkt")
-         (all-from-out "dist.rkt"))
+         describe-call-site)
 
-#|
-See private/context.rkt for discussion of Address representation.
-See private/lib.rkt for library functions and syntax (flip, samplers, etc).
-See private/instrument.rkt for the implementation of the call-site instrumenter.
-|#
+;; ------------------------------------------------------------
 
-#|
+(require "dist.rkt")
+(provide (all-from-out "dist.rkt"))
 
-TODO: avoid instrumenting *safe* applications?
-  - eg known first-order functions like list, +, etc
-  - potential benefits: speed, code size, size of address reps
+(require "private/util.rkt")
+(provide probability?
+         verbose?
+         (contract-out
+          [repeat
+           (-> (-> any) exact-nonnegative-integer? 
+               list?)]))
 
-Issue: interop w/ Racket, etc
-- solved issue with for/*, other macros
-- HO functions still not ok
-- Idea: develop mem-like context-replacement/augmentation discipline?
-  eg, (lift map) = (lambda (f xs) (map (lift* f) xs))
-      where (lift* f) = (lambda (x) (app/call-site (list 'map f x) f x)) ????
+(require "private/interfaces.rkt")
+(provide weighted-sampler?
+         sampler?
+         (contract-out
+          [generate-samples
+           (-> sampler? exact-nonnegative-integer? any)]
+          [generate-weighted-samples
+           (-> weighted-sampler? exact-nonnegative-integer? any)]))
 
-|#
+(require "private/prob-util.rkt")
+(provide (contract-out
+          [mem (-> procedure? procedure?)]
+          [sample (-> dist? any)]
+          [observe-at (-> dist? any/c any)]
+          [fail (->* [] [any/c] any)]
+          ;; ----
+          [sampler->discrete-dist
+           (->* [weighted-sampler? exact-nonnegative-integer?] [procedure?]
+                discrete-dist?)]
+          [indicator/value
+           (-> any/c procedure?)]
+          [indicator/predicate
+           (-> procedure? procedure?)]
+          ;; ----
+          [discrete-dist-error
+           (-> discrete-dist? discrete-dist?
+               (>=/c 0))])
+         ;; The following stochastic procedures have codomain contract of any
+         ;; so that their internal call to sample is in tail position (no
+         ;; result check frame). (Except for flip, FIXME.)
+         (contract-out
+          [flip
+           (->* [] [probability?] any)]
+          [bernoulli
+           (->* [] [probability?] any)]
+          [categorical
+           (-> (vectorof (>=/c 0)) 
+               any)]
+          [discrete
+           (-> (or/c exact-positive-integer?
+                     (listof (cons/c any/c (>=/c 0))))
+               any)]
+          [discrete*
+           (->* [list?] [(listof (>=/c 0))] any)]
+          [geometric
+           (->* [] [probability?] any)]
+          [poisson
+           (-> (>/c 0) any)]
+          [binomial
+           (-> exact-nonnegative-integer? probability? any)]
+          [beta
+           (-> (>/c 0) (>/c 0) any)]
+          [cauchy
+           (->* [] [real? (>/c 0)] any)]
+          [exponential
+           (->* [] [(>/c 0)] any)]
+          [gamma
+           (->* [] [(>/c 0) (>/c 0)] any)]
+          [logistic
+           (->* [] [real? (>/c 0)] any)]
+          [normal
+           (->* [] [real? (>/c 0)] any)]
+          [pareto
+           (-> (>/c 0) (>/c 0) any)]
+          [uniform
+           (->* [] [real? real?] any)]
+          ))
 
-(module reader syntax/module-reader
-  prob)
+(require "private/stat.rkt")
+(provide (contract-out
+          [struct statistics
+            ([dim exact-positive-integer?]
+             [n exact-positive-integer?]
+             [mean vector?]
+             [cov vector?])]
+          [sampler->statistics
+           (->* [procedure? exact-positive-integer?] [procedure?]
+                statistics?)]
+          [samples->statistics
+           (-> vector? statistics?)]
+          [sampler->KS
+           (-> procedure? exact-positive-integer? dist?
+               real?)]
+          [samples->KS
+           (-> vector? dist?
+               real?)])
+         sampler->mean+variance)
+
+(require "private/prob-syntax.rkt")
+(provide (except-out (all-from-out "private/prob-syntax.rkt")
+                     importance-stochastic-ctx%))
+
+(require "private/ho-functions.rkt")
+(provide (all-from-out "private/ho-functions.rkt"))
+
+(require "private/particle-filter.rkt")
+(provide (all-from-out "private/particle-filter.rkt"))
