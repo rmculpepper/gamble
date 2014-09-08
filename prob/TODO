@@ -1,8 +1,5 @@
 Tentative plans for the near future:
 
-- split out sampler utils
-- also samples utils (vector of samples), statistics
-
 - fix contract sites
 
 - catch up on docs, tests
