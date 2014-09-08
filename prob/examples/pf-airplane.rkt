@@ -49,6 +49,15 @@
         (* 100 (sin 
                 (/ (* x pi) 100)))))) ; finer variation
 
+(define (terrain3 x)
+  ;; plateu [300,600]
+  (cond [(< x 300)
+         (terrain2 x)]
+        [(> x 600)
+         (terrain2 (- x 300))]
+        [else
+         (terrain2 300)]))
+
 ;; ------------------------------------------------------------
 ;; Altimeter
 
@@ -83,7 +92,7 @@
 
 (define NPARTICLES 100)
 (define STEPS 50)
-(define terrain terrain2)
+(define terrain terrain3)
 
 (define xtrues
   (let loop ([i 0] [xtrue (airplane-init #f)])
