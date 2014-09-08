@@ -5,13 +5,10 @@
 #lang racket/base
 (require (rename-in racket/match [match-define defmatch])
          racket/class
-         data/order
          unstable/markparam
          "interfaces.rkt"
          (only-in "context.rkt" obs-mark)
-         "dist.rkt"
-         "pairingheap.rkt"
-         "util.rkt")
+         "dist.rkt")
 (provide (struct-out only)
          (struct-out split)
          (struct-out failed)

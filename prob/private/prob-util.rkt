@@ -3,10 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/contract/base
-         racket/class
-         data/order
-         racket/dict
+(require racket/class
          "interfaces.rkt"
          "context.rkt"
          "../dist.rkt"

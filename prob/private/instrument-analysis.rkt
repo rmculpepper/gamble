@@ -4,7 +4,6 @@
 
 #lang racket/base
 (require (for-template racket/base)
-         racket/syntax
          syntax/id-table
          racket/dict
          syntax/stx

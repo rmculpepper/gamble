@@ -12,8 +12,7 @@
          "util.rkt"
          "interfaces.rkt"
          "../dist.rkt"
-         (only-in "dist.rkt" dists-same-type?)
-         "prob-util.rkt")
+         (only-in "dist.rkt" dists-same-type?))
 (provide (all-defined-out))
 
 ;; A DB is (Hashof Address Entry)

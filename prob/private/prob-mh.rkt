@@ -3,12 +3,9 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/list
-         racket/class
+(require racket/class
          (rename-in racket/match [match-define defmatch])
          racket/math
-         data/order
-         "context.rkt"
          "db.rkt"
          "util.rkt"
          "interfaces.rkt"
@@ -16,9 +13,7 @@
          "hmc/system.rkt"
          "hmc/step.rkt"
          "hmc/acceptance-threshold.rkt"
-         "hmc/db-Denergy.rkt"
-         (only-in "dist.rkt" dists-same-type?)
-         "prob-util.rkt")
+         "hmc/db-Denergy.rkt")
 (provide mh-sampler*
          cycle
          single-site

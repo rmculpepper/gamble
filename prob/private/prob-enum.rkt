@@ -5,8 +5,6 @@
 #lang racket/base
 (require racket/match
          racket/class
-         data/order
-         unstable/markparam
          "../dist.rkt"
          "prob-lazy-tree.rkt"
          "pairingheap.rkt"

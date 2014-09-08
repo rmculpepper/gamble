@@ -9,7 +9,6 @@
          racket/math
          racket/vector
          "../dist.rkt"
-         "interfaces.rkt"
          "prob-syntax.rkt")
 (provide
  particles?
