@@ -190,7 +190,7 @@
     [else (error 'resample "bad resampling algorithm\n  got: ~e" alg)]))
 
 (define (resample-multinomial vs ws count)
-  (define d (make-discrete-dist* vs ws #:normalize? #f))
+  (define d (make-discrete-dist* vs ws #:normalize? #f #:sort? #f))
   (define r (make-vector count #f))
   (for ([i (in-range count)])
     (vector-set! r i (dist-sample d)))
@@ -216,7 +216,7 @@
         (vector-set! r (+ j joffset) si))
       (+ j whole)))
   ;; Now fill in (count* - nextj) final elements of states*.
-  (define d (make-discrete-dist* vs ws #:normalize? #f))
+  (define d (make-discrete-dist* vs ws #:normalize? #f #:sort? #f))
   (for ([j (in-range nextj count)])
     (vector-set! r j (dist-sample d)))
   r)

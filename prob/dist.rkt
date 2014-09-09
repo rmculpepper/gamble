@@ -15,10 +15,10 @@
          racket/generic
          racket/flonum
          racket/vector
-         data/order
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
-         "private/dist.rkt")
+         "private/dist.rkt"
+         "private/sort.rkt")
 (provide dist?
          integer-dist?
          real-dist?
@@ -489,6 +489,7 @@
   (syntax-parse stx
     [(discrete-dist :maybe-normalize p:vwpair ...)
      #'(make-discrete-dist* #:normalize? normalize?
+                            #:sort? #t
                             (vector p.value ...) (vector p.weight ...))]))
 
 (define (make-discrete-dist dict #:normalize? [normalize? #t])
@@ -502,22 +503,26 @@
   (for ([w (in-vector ws)])
     (unless (and (rational? w) (>= w 0))
       (raise-argument-error 'dict->discrete-dist "(dict/c any/c (>=/c 0))" dict)))
-  (make-discrete-dist* vs ws #:normalize? normalize?))
+  (make-discrete-dist* vs ws #:normalize? normalize? #:sort? #t))
 
-(define (make-discrete-dist* vs ws #:normalize? [normalize? #t])
+(define (make-discrete-dist* vs ws #:normalize? [normalize? #t] #:sort? [sort? #t])
   (unless (= (vector-length vs) (vector-length ws))
     (error 'make-discrete-dist
            "values and weights vectors have different lengths\n  values: ~e\n  weights: ~e"
            vs ws))
-  (define vs* (vector->immutable-vector vs))
+  (define-values (vs1 ws1)
+    (if sort?
+        (combine-duplicates vs ws)
+        (values vs ws)))
+  (define vs* (vector->immutable-vector vs1))
   (define-values (ws* wsum*)
     (if normalize?
-        (let ([wsum (vector-sum ws)])
+        (let ([wsum (vector-sum ws1)])
           (values (vector->immutable-vector
-                   (vector-map (lambda (w) (/ w wsum)) ws))
+                   (vector-map (lambda (w) (/ w wsum)) ws1))
                   1))
-        (values (vector->immutable-vector ws)
-                (vector-sum ws))))
+        (values (vector->immutable-vector ws1)
+                (vector-sum ws1))))
   (*discrete-dist vs* ws* wsum*))
 
 (define (normalize-discrete-dist d)
@@ -542,16 +547,15 @@
 
   (define (print-contents p leading-space)
     (let ([lead (if leading-space (make-string (add1 leading-space) #\space) " ")])
-      (for ([v+w (in-list (sort (for/list ([v (in-vector vs)] [w (in-vector ws)]) (cons v w))
-                                (order-<? datum-order)
-                                #:key car))])
+      (for ([v (in-vector vs)]
+            [w (in-vector ws)])
         (when leading-space
           (pretty-print-newline p (pretty-print-columns)))
         (write-string lead p)
         (write-string "[" p)
-        (recur (car v+w) p)
+        (recur v p)
         (write-string " " p)
-        (recur (cdr v+w) p)
+        (recur w p)
         (write-string "]" p))))
 
   (define (print/one-line p)
