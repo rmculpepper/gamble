@@ -59,7 +59,9 @@
           [make-discrete-dist
            (->* [dict?] [#:normalize? any/c] discrete-dist?)]
           [make-discrete-dist*
-           (->* [vector? (vectorof (>=/c 0))] [#:normalize? any/c] discrete-dist?)]
+           (->* [vector? (vectorof (>=/c 0))]
+                [#:normalize? any/c #:sort? any/c]
+                discrete-dist?)]
           [normalize-discrete-dist
            (-> discrete-dist? discrete-dist?)]
           [discrete-dist-values
