@@ -181,7 +181,6 @@
         [(split label dist k _)
          (cond [(eq? (dist-enum dist) #f)
                 ;; Just sample.
-                ;; FIXME: check: don't weight by pdf; implicit in sampling frequency, right?
                 ;; FIXME: generate multiple samples, "while we're here"???
                 (define forced-subs (list (cons 1 (k (dist-sample dist)))))
                 (get-samples/paths forced-subs prob)]

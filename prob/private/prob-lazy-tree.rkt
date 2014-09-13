@@ -122,7 +122,6 @@
 (define (call-with-enum-context act memo-table thunk)
   (define ctag (activation-prompt act))
   (define memo-key (activation-memo-table-key act))
-  ;; FIXME: put more params/ctx into stochastic-ctx???
   (parameterize ((current-stochastic-ctx
                   (new lazy-tree-stochastic-ctx%))
                  (current-activation (activation ctag memo-key)))

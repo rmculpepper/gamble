@@ -463,7 +463,6 @@
 
 ;; Not automatically normalized.
 ;; Uses equal? to distinguish elements of support.
-;; Does not detect duplicates! (FIXME?)
 
 (define-dist-type *discrete
   ([vs vector?]

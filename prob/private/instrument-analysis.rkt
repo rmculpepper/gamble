@@ -175,7 +175,6 @@
     ;; Fully-Expanded Programs
     ;; -- module body
     [(#%plain-module-begin form ...)
-     ;; FIXME: could do bind pass then modfix
      (recur* #'(form ...))]
     ;; -- module-level form
     [(#%provide . _) (void)]
