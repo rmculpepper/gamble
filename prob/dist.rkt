@@ -405,7 +405,6 @@
             (reverse best))
   #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights)))
 
-;; FIXME: cache computations of B(alpha) normalizing factor for pdf
 ;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
 (define-dist-type dirichlet
   ([alpha (vectorof (>/c 0))])
@@ -686,15 +685,26 @@
 ;; ============================================================
 ;; Dirichlet distribution
 
+;; dirichlet-multibeta-cache : WeakHash[ Vector => Real ]
+;; Cache multinomial-beta result for vector; relies on immutability of alpha.
+(define dirichlet-multibeta-cache (make-weak-hash))
+
+;; multinomial-beta : Vector -> Real
+(define (multinomial-beta alpha)
+  (cond [(hash-ref dirichlet-multibeta-cache alpha #f)
+         => values]
+        [else
+         (define r
+           (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
+              (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
+         (hash-set! dirichlet-multibeta-cache alpha r)
+         r]))
+
 (define (rawdirichlet-pdf alpha x log?)
   (define p
     (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
-       ;; FIXME: cache multinomial-beta, since fixed!
        (multinomial-beta alpha)))
   (convert-p p log? #f))
-(define (multinomial-beta alpha)
-  (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
-     (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
 (define (rawdirichlet-cdf alpha x log? 1-p?)
   (error 'dirichlet-dist:cdf "not implemented"))
 (define (rawdirichlet-inv-cdf alpha x log? 1-p?)
