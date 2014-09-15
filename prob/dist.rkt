@@ -343,7 +343,7 @@
   ([mean real?]
    [stddev (>/c 0)])
   #:real
-  #:support '#s(real-range (-inf.0 +inf.0))
+  #:support '#s(real-range -inf.0 +inf.0)
   #:mean mean
   #:median mean
   #:modes (list mean)

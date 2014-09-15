@@ -28,6 +28,7 @@
          single-site
          multi-site
          hamiltonian-mc
+         slice
          label
          with-zone
          derivative

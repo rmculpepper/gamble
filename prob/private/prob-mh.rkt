@@ -17,7 +17,8 @@
          cycle
          single-site
          multi-site
-         hamiltonian-mc)
+         hamiltonian-mc
+         slice)
 
 #|
 MH Acceptance
@@ -156,6 +157,24 @@ depending on only choices reused w/ different params.
       ;; Integer-valued dists: more difficult.
       [_ #f])))
 
+;; used by slice sampler
+(define (real-dist-adjust-value dist value scale-factor)
+  (define (add scale)
+    (+ value (* scale-factor scale)))
+  (define (mult-exp scale)
+    (* value (exp (* scale-factor scale))))
+  ;; Default proposals
+  (match dist
+    [(normal-dist mean stddev) (add stddev)]
+    [(cauchy-dist mode scale) (add scale)]
+    [(logistic-dist mean scale) (add (* (/ pi (sqrt 3)) scale))]
+    [(gamma-dist shape scale) (mult-exp (* scale (sqrt shape)))]
+    [(exponential-dist mean) (mult-exp mean)]
+    [(beta-dist a b) (add 1)]
+    [(uniform-dist min max)
+     (add (- max min))]
+    [_ #f]))
+
 (proposal-map
  (extend-proposal-map
   (proposal-map)
@@ -170,6 +189,8 @@ depending on only choices reused w/ different params.
 ;; A Trace is (trace Any DB Nat Real Real)
 (struct trace (value db nchoices ll-free ll-obs))
 (define init-trace (trace #f '#hash() 0 0 0))
+
+(define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
 
 (define mh-transition<%>
   (interface ()
@@ -222,7 +243,7 @@ depending on only choices reused w/ different params.
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (define key-to-change (pick-a-key last-nchoices last-db))
+      (define key-to-change (pick-a-key last-nchoices last-db zone))
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
       (if key-to-change
@@ -287,16 +308,18 @@ depending on only choices reused w/ different params.
       (define F (- (log (exact->inexact last-nchoices))))
       (- R F))
 
-    ;; pick-a-key : DB -> (U Address #f)
-    ;; Returns a key s.t. the value is not pinned.
-    (define/private (pick-a-key nchoices db)
-      ;; FIXME: what if zone has no choices?
-      (define nchoices/zone
-        (cond [(eq? zone #f) nchoices]
-              [else (db-count-unpinned db #:zone zone)]))
-      (and (positive? nchoices/zone)
-           (db-nth-unpinned db (random nchoices/zone) #:zone zone)))
     ))
+
+;; pick-a-key : DB -> (U Address #f)
+;; Returns a key s.t. the value is not pinned.
+(define (pick-a-key nchoices db zone)
+  ;; FIXME: what if zone has no choices?
+  (define nchoices/zone
+    (cond [(eq? zone #f) nchoices]
+          [else (db-count-unpinned db #:zone zone)]))
+  (and (positive? nchoices/zone)
+       (db-nth-unpinned db (random nchoices/zone) #:zone zone)))
+
 
 (define multi-site-mh-transition%
   (class mh-transition-base%
@@ -359,6 +382,98 @@ depending on only choices reused w/ different params.
             (+ R-F ll-diff ll-diff-obs))))
     ))
 
+(define single-site-slice-mh-transition%
+  (class* object% (mh-transition<%>)
+    (init-field zone
+                scale-factor)
+    (field [run-counter 0]
+           [find-slice-counter 0]
+           [in-slice-counter 0])
+    (super-new)
+
+    (define/public (info)
+      (eprintf "Transitions: ~s\n" run-counter)
+      (eprintf "Evals to find slice: ~s\n" find-slice-counter)
+      (eprintf "Evals in slice: ~s\n" in-slice-counter))
+
+    ;; run : (-> A) Trace -> TransitionResult
+    (define/public (run thunk last-trace)
+      (set! run-counter (add1 run-counter))
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (define key-to-change (pick-a-key last-nchoices last-db #f))
+      (when (verbose?)
+        (eprintf "# perturb: changing ~s\n" key-to-change))
+      (unless key-to-change
+        (error 'slice:run "no key to change"))
+      (match (hash-ref last-db key-to-change)
+        [(entry zones dist value ll #f)
+         (unless (real-dist? dist)
+           (error 'slice:run "chosen distribution is not real-valued\n  dist: ~e" dist))
+         (perturb/slice key-to-change dist value zones thunk last-trace)]))
+
+    (define/private (perturb/slice key-to-change dist value zones thunk last-trace)
+      (define (make-entry value*)
+        (entry zones dist value* (dist-pdf dist value* #t) #f))
+      (define threshold (log (* (random) (exp (trace-ll last-trace)))))
+      (when (verbose?)
+        (eprintf "* slice threshold = ~s\n" (exp threshold)))
+      (define (find-slice-bound value W)
+        (define value* (real-dist-adjust-value dist value W))
+        (define entry* (entry zones dist value* (dist-pdf dist value* #t) #f))
+        (define delta-db (hash key-to-change entry*))
+        (define ctx
+          (new db-stochastic-ctx% 
+               (last-db (trace-db last-trace))
+               (delta-db delta-db)
+               (record-obs? #f)))
+        (set! find-slice-counter (add1 find-slice-counter))
+        (match (send ctx run thunk)
+          [(cons 'okay sample-value)
+           (define ll (+ (get-field ll-obs ctx) (get-field ll-free ctx)))
+           (cond [(<= ll threshold)
+                  value*]
+                 [else
+                  (find-slice-bound value* W)])]
+          [(cons 'fail fail-reason)
+           value*]))
+      (define lo (find-slice-bound value (- scale-factor)))
+      (define hi (find-slice-bound value scale-factor))
+      (when (verbose?)
+        (eprintf "* found slice in ~s evals\n" find-slice-counter))
+      (let loop ([lo lo] [hi hi])
+        (when (verbose?)
+          (eprintf "* slice [~s, ~s]\n" lo hi))
+        (define value* (+ lo (* (random) (- hi lo))))
+        (define entry* (entry zones dist value* (dist-pdf dist value* #t) #f))
+        (define delta-db (hash key-to-change entry*))
+        (define ctx
+          (new db-stochastic-ctx% 
+               (last-db (trace-db last-trace))
+               (delta-db delta-db)
+               (record-obs? #f)))
+        (set! in-slice-counter (add1 in-slice-counter))
+        (match (send ctx run thunk)
+          [(cons 'okay sample-value)
+           (define ll (+ (get-field ll-obs ctx) (get-field ll-free ctx)))
+           (cond [(> ll threshold)
+                  ;; ok
+                  (define current-db (get-field current-db ctx))
+                  (define nchoices (get-field nchoices ctx))
+                  (define ll-free (get-field ll-free ctx))
+                  (define ll-obs (get-field ll-obs ctx))
+                  (define current-trace
+                    (trace sample-value current-db nchoices ll-free ll-obs))
+                  (define threshold 1)
+                  (cons +inf.0 current-trace)]
+                 [else ;; whoops, found hole in slice interval
+                  (if (< value* value)
+                      (loop value* hi)
+                      (loop lo value*))])]
+          [(cons 'fail fail-reason)
+           (if (< value* value)
+               (loop value* hi)
+               (loop lo value*))])))
+    ))
 
 #|
 HMC - Hamiltonian Monte Carlo
@@ -473,6 +588,8 @@ choices do not affect control flow through the probabilistic program).
   (new multi-site-mh-transition% [zone zone]))
 (define (hamiltonian-mc epsilon L [zone #f])
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
+(define (slice #:scale-factor [scale-factor 1] #:zone [zone #f])
+  (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
 
 ;; ============================================================
 
