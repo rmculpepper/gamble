@@ -96,8 +96,10 @@
   ;; k is number of previous samples
   ;; Note: don't reorder; must update C2 before mean is overwritten!
   ;; FIXME: could only update triangle, since symmetric
-  (for ([ei (in-vector v)] [meani (in-vector mean)] [i (in-naturals)])
-    (define C2i (vector-ref C2 i))
+  (for ([ei (in-vector v)] 
+        [meani (in-vector mean)]
+        [C2i (in-vector C2)]
+        [i (in-naturals)])
     (for ([ej (in-vector v)] [meanj (in-vector mean)] [j (in-naturals)])
       ;; C2'[i,j] = C2[i,j] + k/(k+1) * (v[i] - mean[i])*(v[j] - mean[j])
       (vector-set! C2i j
@@ -159,7 +161,8 @@
 (define (make-square-matrix len [fill 0])
   (define m (make-vector len))
   (for ([i (in-range len)])
-    (vector-set! m i (make-vector len fill))))
+    (vector-set! m i (make-vector len fill)))
+  m)
 
 ;; ============================================================
 ;; Kolmogorov-Smirov statistic
