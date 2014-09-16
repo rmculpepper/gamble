@@ -85,6 +85,7 @@
 (sampler->mean+variance s-obs 10000)
 
 (printf "the analytic solution, for comparison\n")
+(printf "  NOTE: dist uses stddev, not variance\n")
 (dist-update-prior (normal-dist 10 1) '(normal-dist _ 1) (vector 9))
 
 (newline)
