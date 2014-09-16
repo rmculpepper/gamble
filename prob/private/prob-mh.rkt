@@ -16,6 +16,7 @@
 (provide mh-sampler*
          mh-transition?
          cycle
+         sequence
          single-site
          multi-site
          hmc
@@ -184,8 +185,8 @@ depending on only choices reused w/ different params.
 ;; ============================================================
 
 ;; A RunResult is one of
-;; - (cons Real Trace)  -- run completed, includes threshold (not yet checked)
-;; - (cons 'fail any)   -- run failed
+;; - Trace  -- run completed, threshold already checked (if applicable)
+;; - #f     -- run failed or mh-rejected
 
 ;; A Trace is (trace Any DB Nat Real Real)
 (struct trace (value db nchoices ll-free ll-obs))
@@ -198,13 +199,64 @@ depending on only choices reused w/ different params.
     run ;; (-> A) Trace -> RunResult
     ))
 
+(define (iprintf i fmt . args)
+  (display (make-string i #\space))
+  (apply printf fmt args))
+
+(define (%age nom denom)
+  (/ (* 100.0 nom) (exact->inexact denom)))
+
 (define mh-transition-base%
   (class* object% (mh-transition<%>)
+    (field [accepts 0]
+           [mh-rejects 0]
+           [cond-rejects 0])
+    (super-new)
+
+    (define/public (info i)
+      (define total (+ accepts cond-rejects mh-rejects))
+      (iprintf i "Total runs: ~s\n" total)
+      (iprintf i "Accepted traces: ~s, ~a%\n"
+               accepts (%age accepts total))
+      (iprintf i "Traces rejected by condition: ~s, ~a%\n"
+               cond-rejects (%age cond-rejects total))
+      (iprintf i "Traces rejected by MH threshold: ~s, ~a%\n"
+               mh-rejects (%age mh-rejects total)))
+
+    ;; run : (-> A) Trace -> RunResult
+    (define/public (run thunk last-trace)
+      (match (run* thunk last-trace)
+        [(cons (? real? threshold) trace)
+         (when (verbose?)
+           (eprintf "# accept threshold = ~s\n" (exp threshold)))
+         (define u (log (random)))
+         (cond [(< u threshold)
+                (when (verbose?)
+                  (eprintf "# Accepted MH step with ~s\n" (exp u)))
+                (set! accepts (add1 accepts))
+                trace]
+               [else
+                (when (verbose?)
+                  (eprintf "# Rejected MH step with ~s\n" (exp u)))
+                (set! mh-rejects (add1 mh-rejects))
+                #f])]
+        [(cons 'fail reason)
+         (set! cond-rejects (add1 cond-rejects))
+         (when (verbose?)
+           (eprintf "# Rejected condition (~s)" reason))
+         #f]))
+
+    ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
+    (abstract run*)
+    ))
+
+(define perturb-mh-transition-base%
+  (class mh-transition-base%
     (init-field [record-obs? #t])  ;; FIXME: default #t ??
     (super-new)
 
-    ;; run : (-> A) Trace -> TransitionResult
-    (define/public (run thunk last-trace)
+    ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
+    (define/override (run* thunk last-trace)
       (define last-db (trace-db last-trace))
       (defmatch (cons delta-db R-F) (perturb last-trace))
       (define ctx
@@ -237,9 +289,17 @@ depending on only choices reused w/ different params.
     ))
 
 (define single-site-mh-transition%
-  (class mh-transition-base%
+  (class perturb-mh-transition-base%
     (init-field [zone #f])
+    (field [proposed 0]
+           [resampled 0])
     (super-new)
+
+    (define/override (info i)
+      (iprintf i "== Transition (single-site #:zone ~e)\n" zone)
+      (super info i)
+      (iprintf i "Proposal perturbs: ~s\n" proposed)
+      (iprintf i "Resample perturbs: ~s\n" resampled))
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
@@ -265,6 +325,7 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+      (set! resampled (add1 resampled))
       (cons (hash key-to-change (entry zones dist value* F #f)) (- R F)))
 
     ;; perturb/proposal : Address Dist Any List -> (U (cons DB Real) #f)
@@ -275,6 +336,7 @@ depending on only choices reused w/ different params.
            (eprintf "  PROPOSED from ~e to ~e\n" value value*)
            (eprintf "  R-F = ~s\n" R-F))
          (define ll* (dist-pdf dist value* #t))
+         (set! proposed (add1 proposed))
          (cons (hash key-to-change (entry zones dist value* ll* #f)) R-F)]
         [#f #f]))
 
@@ -323,9 +385,15 @@ depending on only choices reused w/ different params.
 
 
 (define multi-site-mh-transition%
-  (class mh-transition-base%
+  (class perturb-mh-transition-base%
     (init-field [zone #f])
+    (field [proposed 0]
+           [resampled 0])
     (super-new)
+
+    (define/override (info i)
+      (iprintf i "== Transition (multi-site #:zone ~e)\n" zone)
+      (super info i))
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
@@ -356,6 +424,7 @@ depending on only choices reused w/ different params.
       (when (verbose?)
         (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
         (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+      (set! resampled (add1 resampled))
       (cons (entry zones dist value* F #f) (- R F)))
 
     ;; perturb/proposal : Address Dist Any List -> (U (cons Entry Real) #f)
@@ -366,6 +435,7 @@ depending on only choices reused w/ different params.
            (eprintf "  PROPOSED from ~e to ~e\n" value value*)
            (eprintf "  R-F = ~s\n" R-F))
          (define ll* (dist-pdf dist value* #t))
+         (set! proposed (add1 proposed))
          (cons (entry zones dist value* ll* #f) R-F)]
         [#f #f]))
 
@@ -392,10 +462,11 @@ depending on only choices reused w/ different params.
            [in-slice-counter 0])
     (super-new)
 
-    (define/public (info)
-      (eprintf "Transitions: ~s\n" run-counter)
-      (eprintf "Evals to find slice: ~s\n" find-slice-counter)
-      (eprintf "Evals in slice: ~s\n" in-slice-counter))
+    (define/public (info i)
+      (iprintf i "== Transition (slice #:scale ~e #:zone ~e)\n" scale-factor zone)
+      (iprintf i "Total runs: ~s\n" run-counter)
+      (iprintf i "Evals to find slice: ~s\n" find-slice-counter)
+      (iprintf i "Evals in slice: ~s\n" in-slice-counter))
 
     ;; run : (-> A) Trace -> TransitionResult
     (define/public (run thunk last-trace)
@@ -439,8 +510,6 @@ depending on only choices reused w/ different params.
            value*]))
       (define lo (find-slice-bound value (- scale-factor)))
       (define hi (find-slice-bound value scale-factor))
-      (when (verbose?)
-        (eprintf "* found slice in ~s evals\n" find-slice-counter))
       (let loop ([lo lo] [hi hi])
         (when (verbose?)
           (eprintf "* slice [~s, ~s]\n" lo hi))
@@ -465,7 +534,7 @@ depending on only choices reused w/ different params.
                   (define current-trace
                     (trace sample-value current-db nchoices ll-free ll-obs))
                   (define threshold 1)
-                  (cons +inf.0 current-trace)]
+                  current-trace]
                  [else ;; whoops, found hole in slice interval
                   (if (< value* value)
                       (loop value* hi)
@@ -494,14 +563,18 @@ Limitations:
 choices do not affect control flow through the probabilistic program).
 |#
 (define hmc-transition%
-  (class* object% (mh-transition<%>)
+  (class mh-transition-base%
     (init-field epsilon 
                 L
                 [zone #f])
     (field [gradients #f])
     (super-new)
 
-    (define/public (run thunk last-trace)
+    (define/override (info i)
+      (iprintf i "== Transition (hmc ~e ~e #:zone ~e)\n" epsilon L zone)
+      (super info i))
+
+    (define/override (run* thunk last-trace)
       (define last-trace*
         (cond [(and gradients (not (equal? last-trace init-trace)))
                last-trace]
@@ -523,7 +596,7 @@ choices do not affect control flow through the probabilistic program).
       (define grads (get-field derivatives ctx))
       (when (verbose?)
         (eprintf " (recorded derivatives are) ~e\n" grads)
-`        (eprintf " (relevant labels were) ~e \n" (get-field relevant-labels ctx)))
+        (eprintf " (relevant labels were) ~e \n" (get-field relevant-labels ctx)))
       (match result
         [(cons 'okay ans)
          (set! gradients grads)
@@ -547,14 +620,16 @@ choices do not affect control flow through the probabilistic program).
          (let-values ([(proposal-energy alpha)
                        (hmc-acceptance-threshold initial-sys proposal-sys)])
            (when (verbose?)
-             (eprintf "# Previous system energy: ~e (K = ~e + U = ~e)\n" (hmc-system-energy initial-sys)
+             (eprintf "# Previous system energy: ~e (K = ~e + U = ~e)\n"
+                      (hmc-system-energy initial-sys)
                       (db-kinetic-energy (hmc-system-P initial-sys))
                       (db-potential-energy (hmc-system-X initial-sys)))
-             (eprintf "# Proposal energy: ~e (K = ~e + U = ~e)\n" proposal-energy
+             (eprintf "# Proposal energy: ~e (K = ~e + U = ~e)\n"
+                      proposal-energy
                       (db-kinetic-energy (hmc-system-P proposal-sys))
                       (db-potential-energy (hmc-system-X proposal-sys)) ))
            (cons alpha (hmc-system->trace last-trace val proposal-sys)))]))
-    
+
     (define/private (hmc-system->trace last-trace sample-value proposal-sys)
       (defmatch (trace _ _ last-nchoices _ _) last-trace)
       (define proposal-db (hmc-system-X proposal-sys))
@@ -562,27 +637,54 @@ choices do not affect control flow through the probabilistic program).
       (define ll-free 0.0)
       (define ll-obs 0.0)
       (trace sample-value proposal-db last-nchoices ll-free ll-obs))
-    
     ))
 
-;; FIXME: don't rotate if transition rejected; need communication w/ sampler
 (define cycle-mh-transition%
   (class* object% (mh-transition<%>)
     (init-field transitions)
     (super-new)
 
-    (set! transitions
-          (let ([p (make-placeholder (void))])
-            (placeholder-set! p (append transitions p))
-            (make-reader-graph p)))
+    (define ctransitions
+      (let ([p (make-placeholder (void))])
+        (placeholder-set! p (append transitions p))
+        (make-reader-graph p)))
+
+    (define/public (info i)
+      (iprintf i "== Transition (cycle ...)\n")
+      (for ([tx (in-list transitions)])
+        (send tx info (+ i 2))))
 
     (define/public (run thunk last-trace)
-      (begin0 (send (car transitions) run thunk last-trace)
-        (set! transitions (cdr transitions))))
+      (define r (send (car ctransitions) run thunk last-trace))
+      (when r  ;; only advance on success
+        (set! ctransitions (cdr ctransitions)))
+      r)
+    ))
+
+(define sequence-mh-transition%
+  (class* object% (mh-transition<%>)
+    (init-field transitions)
+    (super-new)
+
+    (define ctransitions transitions)
+
+    (define/public (info i)
+      (iprintf i "== Transition (sequence ...)\n")
+      (for ([tx (in-list transitions)])
+        (send tx info (+ i 2))))
+
+    (define/public (run thunk last-trace)
+      (define r (send (car ctransitions) run thunk last-trace))
+      (when (and r (pair? (cdr ctransitions)))
+        ;; only advance on success; stop on last tx
+        (set! ctransitions (cdr ctransitions)))
+      r)
     ))
 
 (define (mh-transition? x) (is-a? x mh-transition<%>))
 
+(define (sequence . txs)
+  (new sequence-mh-transition% (transitions txs)))
 (define (cycle . txs)
   (new cycle-mh-transition% (transitions txs)))
 (define (single-site #:zone [zone #f])
@@ -629,38 +731,13 @@ choices do not affect control flow through the probabilistic program).
       (trace-value best-trace))
 
     (define/override (sample)
-      (define tr (send transition run thunk last-trace))
-      (match tr
-        [(cons (? real? threshold) trace)
-         (when (verbose?)
-           (eprintf "# accept threshold = ~s\n" (exp threshold)))
-         (define u (log (random)))
-         (cond [(< u threshold)
-                (when (verbose?)
-                  (eprintf "# Accepted MH step with ~s\n" (exp u)))
-                (set! accepts (add1 accepts))
-                (set! last-trace trace)
-                (trace-value trace)]
-               [else
-                (when (verbose?)
-                  (eprintf "# Rejected MH step with ~s\n" (exp u)))
-                (set! mh-rejects (add1 mh-rejects))
-                (trace-value last-trace)])]
-        [(cons 'fail reason)
-         (when (verbose?)
-           (eprintf "# Rejected condition (~s)" reason))
-         (set! cond-rejects (add1 cond-rejects))
+      (match (send transition run thunk last-trace)
+        [(? trace? t)
+         (set! last-trace t)
+         (trace-value t)]
+        [#f
          (trace-value last-trace)]))
 
     (define/public (info)
-      (define total (+ accepts cond-rejects mh-rejects))
-      (cond [(zero? total)
-             (printf "No traces taken.\n")]
-            [else
-             (printf "Accepted traces: ~s, ~a%\n"
-                     accepts (* 100.0 (/ accepts total)))
-             (printf "Traces rejected by condition: ~s, ~a%\n"
-                     cond-rejects (* 100.0 (/ cond-rejects total)))
-             (printf "Traces rejected by MH threshold: ~s, ~a%\n"
-                     mh-rejects (* 100.0 (/ mh-rejects total)))]))
+      (send transition info 0))
     ))

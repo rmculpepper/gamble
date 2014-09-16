@@ -136,7 +136,9 @@
 (provide mh-transition?
          (contract-out
           [cycle
-           (-> (listof mh-transition?) mh-transition?)]
+           (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
+          [sequence
+           (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
            (->* [] [#:zone any/c] mh-transition?)]
           [multi-site
@@ -144,4 +146,4 @@
           [hmc
            (->* [] [(>/c 0) exact-positive-integer?] mh-transition?)]
           [slice
-           (->* [] [(>/c 0) #:zone any/c] mh-transition?)]))
+           (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]))
