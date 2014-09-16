@@ -15,57 +15,6 @@
 ;; ------------------------------------------------------------
 ;; Address-tracking
 
-#|
-How to represent an Address (ie, a point in evaluation, reasonably stable 
-across runs with different random choices)?
-
-Version 0:
-An Address0 is a (listof CallSite).
--- the list of call sites in the context (ie, continuation), most recent first
-
-Note: call sites, not functions. Consider (define (f) (g (h) (h)))---need to
-distinguish separate calls to h. But what if function changes? Well, what if
-argument changes? We're ignoring the latter, why not ignore the former too?
-
-Store address in context using with-continuation-mark (WCM) and retrieve using
-current-continuation-marks (CCM).
-
-Problem: tail calls. If f tail-calls itself, then second WCM overwrites first;
-calls within the two activations of f will have colliding addresses. Also if 
-f tail-calls g then g tail-calls f, collisions in two f activations. And so on. 
-(See sum-n-flips* in test-pl1.rkt.)
-
-Version 1 (old):
-
-An Address is a (listof CallSequence)
---- a list of tail-call sequences, most recent first
-A CallSequence is an improper list of CallSite.
---- the list of tail calls (most recent first) together with 
-    the non-tail call they start from at the end
-
-Issue: May change space complexity of program---but it needs to make finer
-distinctions than original program, so somewhat justified. Maybe devise ad-hoc
-representation optimizations: eg, RLE for self-tail-calling functions.
-
-Version 2 (current):
-
-Use parameter instead of continuation marks. Parameter access seems to
-be specially optimized in Racket runtime, so it is considerably faster
-than current-continuation-marks.
-
-Potential issue: will parameters cause problems for enumerate?
-
-Another possibility is call-with-immediate-continuation-mark, which in
-my microbenchmarks is slightly faster than parameters. It would also
-allow for safety checking. The downside is all reads to the context
-have to be in tail position wrt a call from instrumented code. So eg
-flip impl would have to either grab context or call (current-ERP) in
-tail position. Or flip could be defined in instrumented module. But
-would contracts interfere? (Probably not, if both definition and use
-site are instrumented.)
-
-|#
-
 ;; the-context : (Parameterof (Listof Nat))
 (define the-context (make-parameter null))
 
@@ -97,70 +46,6 @@ CC ::=                   -- CCFrame rep:
     |  (reverse CC)      -- 'reverse
     |  ... more invertible functions that don't affect density
            (eg, * is bad, I think)
-
-ConditioningContext = (list CCFrame ...)
-
-The CC is implicitly stored in the continuation mark stack under the
-obs-mark key. The value of the observation is stored in the observing?
-parameter.
-
-Note: in order to cooperate with unannotated code---ie, to detect
-uninstrumented non-conditionable frames in context---store the CC one
-frame back in the context. So in general:
-
-    at CC[e], cms(CC) = (cons 'unknown 〚CC〛)
-
-So if CC[(f)] -> CC[B[(g)]] --- B for bad frame, non-conditionable ---
-then -> CC[B[CC'[e]]], cms(CC[B[CC'[]]]) will have an internal
-'unknown frame indicating that we cannot invert the context to adjust 
-the observed value.
-
-(Need to explain this better. TODO: reread Jay's paper on serializable
-continuations for servlets, which also wants to detect bad frames.)
-
-So sample function will just overwrite top frame using WCM. Better to
-overwrite than ignore first 'unknown, since overwriting also catches
-CC[B[(observe ...)]].
-
-More challenges:
-- (let ([t conditionable-expr]) (+ v t))
-   cf laziness w/ 2 kinds of forcing contexts
-- conditions on accumulated lists (eg, for/list expansion)
-- (begin (define X conditionable-expr) (observe X v))
-- conditioning through lists/vectors/tables (indexed RVs)
-- smarter +: pick conditionable expr even if not last
-
-Optimizations:
-- limit instrumentation to functions that could be called in CC
-|#
-
-#|
-Major problem: How to check that condition is applied?
-
-Idea 1: (observe e v) also checks e evaluates to v (equal?).
-Problem: floating-point arithmetic may mean equality doesn't hold.
-
-Idea 2: check approximate numeric equality
-Problem: .... eh, maybe, but what tolerance?
-
-Idea 3: Mutable flag checked when condition used by sample.
-Problem: mutation bad for enum; given cons, can have many subconditions
-
-Idea 4: Check structure of v up to numeric leaves, then use
-  4a: approximate equality on reals
-  4b: mutable counter for reals
-
-What constitutes an unused condition?
-eg (observe (cons 1 (bernoulli)) '(1 . 1))
-The first part of the condition is "unused" but still satisfied.
-|#
-
-#|
-Observation failure: error vs fail
-- for continuous RVs, generally expect conditioning to always succeed
-- for some examples, eg PCFG, want something more like automatic
-  'fail' propoagation
-Maybe want two variants. check-observe seems more useful in second variant.
 |#
 
 (struct observation (value))

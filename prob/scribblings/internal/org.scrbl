@@ -57,11 +57,7 @@ The instrumentor rewrites expanded code to track
 probabilistic program execution. These addresses are used by DB-based
 samplers/solvers like @racket[mh-sampler].
 
-@defmodule[prob/private/context #:no-declare]
-
-Contains the representation of contexts, the parameter that holds the
-current context, and some macros and functions for manipulating
-contexts.
+See also @racketmodname[prob/private/context].
 
 @defmodule[prob/private/instrument #:no-declare]
 
@@ -73,4 +69,3 @@ Like @racketmodname[racket/base] except with the instrumenter enabled;
 that is, it is @racketmodname[prob] without any of the library
 support. It is useful for writing support functions that need
 instrumentation (eg, replacements for HO functions like @racket[map]).
-

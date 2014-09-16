@@ -22,52 +22,6 @@
          hmc
          slice)
 
-#|
-MH Acceptance
-
-Let X, X' be full traces (dbs)
-
-X  = Xsame  U Xdiff  U Xstale  U Xfresh
-X' = Xsame' U Xdiff' U Xstale' U Xfresh'
-
-  Xsame = Xsame' -- part of trace that stayed same
-  Xdiff != Xdiff' -- part of trace w/ changed params, kept value
-                  -- OR is the directly perturbed part
-  Xstale -- part of old trace not reused
-  Xfresh' -- new part of new trace
-
-  Note: Xfresh = empty, Xstale' = empty
-
-MH acceptance ratio (from Sean):
-
-  P(X' | Obs)   Q(X | X')
-  ----------- * ---------
-  P(x  | Obs)   Q(X' | X)
-
-  where Q is whole-trace proposal distribution
-
-MH acceptance ratio from Bher paper:
-
-  P(X')   Kt(x|x', theta)   P(Xstale)
-  ----- * --------------- * ----------
-  P(X)    Kt(x'|x, theta)   P(Xfresh')
-
-  where x,x' are values of a single ERP
-
-Many things cancel, resulting in
-
-  P(Xdiff')   Kt(x|x', theta)
-  --------- * ---------------
-  P(Xdiff)    Kt(x'|x, theta)
-
-So, need to accumulate
-
-  lldiff = log Kt(x|x', theta) - log Kt(x'|x, theta)
-           + log P(Xdiff') - log P(Xdiff')
-
-depending on only choices reused w/ different params.
-|#
-
 ;; ProposalMap = hash[ Zone => (listof ProposalFun) ])
 ;; where ProposalFun = (Dist Value -> (U (cons Value Real) #f))
 ;; The function returns a new value and the proposal's R-F.

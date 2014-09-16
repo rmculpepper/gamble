@@ -15,3 +15,5 @@
 
 @include-section["org.scrbl"]
 @include-section["interfaces.scrbl"]
+@include-section["mh.scrbl"]
+@include-section["instrument.scrbl"]
