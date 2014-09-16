@@ -29,8 +29,8 @@
 (void (for ([i HBURN-IN]) (sh)))
 (set-field! transition sh
             (cycle (multi-site #f)
-                   (hamiltonian-mc 0.005 30 'Point)
-                   (hamiltonian-mc 0.005 30 'Point))
+                   (hmc 0.005 30 'Point)
+                   (hmc 0.005 30 'Point))
 )
 
 (define samples-h 

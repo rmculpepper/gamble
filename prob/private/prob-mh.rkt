@@ -14,10 +14,11 @@
          "hmc/acceptance-threshold.rkt"
          "hmc/db-Denergy.rkt")
 (provide mh-sampler*
+         mh-transition?
          cycle
          single-site
          multi-site
-         hamiltonian-mc
+         hmc
          slice)
 
 #|
@@ -580,15 +581,17 @@ choices do not affect control flow through the probabilistic program).
         (set! transitions (cdr transitions))))
     ))
 
+(define (mh-transition? x) (is-a? x mh-transition<%>))
+
 (define (cycle . txs)
   (new cycle-mh-transition% (transitions txs)))
-(define (single-site [zone #f])
+(define (single-site #:zone [zone #f])
   (new single-site-mh-transition% [zone zone]))
-(define (multi-site [zone #f])
+(define (multi-site #:zone [zone #f])
   (new multi-site-mh-transition% [zone zone]))
-(define (hamiltonian-mc epsilon L [zone #f])
+(define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
-(define (slice #:scale-factor [scale-factor 1] #:zone [zone #f])
+(define (slice #:scale [scale-factor 1] #:zone [zone #f])
   (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
 
 ;; ============================================================

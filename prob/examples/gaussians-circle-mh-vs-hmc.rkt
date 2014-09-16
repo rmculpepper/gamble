@@ -42,7 +42,7 @@
 (void (for ([i BURN-IN]) (s)))
 (set-field! transition sh (multi-site))
 (void (for ([i HBURN-IN]) (sh)))
-(set-field! transition sh (hamiltonian-mc 0.005 30))
+(set-field! transition sh (hmc 0.005 30))
 
 (define samples (repeat s SAMPLES))
 (define samples-h (repeat sh HSAMPLES))

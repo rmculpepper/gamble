@@ -24,11 +24,6 @@
          hmc-sampler
          enumerate
          enum-importance-sampler
-         cycle
-         single-site
-         multi-site
-         hamiltonian-mc
-         slice
          label
          with-zone
          derivative
@@ -147,10 +142,13 @@
 (define-syntax (mh-sampler stx)
   (syntax-parse stx
     [(mh-sampler def:expr ... result:expr
-                 (~optional (~seq #:when condition:expr)))
+                 (~or (~optional (~seq #:when condition:expr))
+                      (~optional (~seq #:transition tx))))
+     #:declare tx (expr/c #'mh-transition?)
      (template
       (mh-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
+       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (?? tx.c)))]))
 
 ;; ----
 
@@ -164,7 +162,7 @@
      (template
       (mh-sampler*
        (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (hamiltonian-mc (?? epsilon 0.01) (?? L 10))))]))
+       (hmc (?? epsilon 0.01) (?? L 10))))]))
 
 ;; ----
 

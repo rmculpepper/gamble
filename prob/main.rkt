@@ -131,3 +131,17 @@
 
 (require "private/particle-filter.rkt")
 (provide (all-from-out "private/particle-filter.rkt"))
+
+(require "private/prob-mh.rkt")
+(provide mh-transition?
+         (contract-out
+          [cycle
+           (-> (listof mh-transition?) mh-transition?)]
+          [single-site
+           (->* [] [#:zone any/c] mh-transition?)]
+          [multi-site
+           (->* [] [#:zone any/c] mh-transition?)]
+          [hmc
+           (->* [] [(>/c 0) exact-positive-integer?] mh-transition?)]
+          [slice
+           (->* [] [(>/c 0) #:zone any/c] mh-transition?)]))
