@@ -197,7 +197,7 @@
         [(cons 'fail reason)
          (set! cond-rejects (add1 cond-rejects))
          (when (verbose?)
-           (eprintf "# Rejected condition (~s)" reason))
+           (eprintf "# Rejected condition (~s)\n" reason))
          #f]))
 
     ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
@@ -690,7 +690,9 @@ choices do not affect control flow through the probabilistic program).
          (set! last-trace t)
          (trace-value t)]
         [#f
-         (trace-value last-trace)]))
+         (if (eq? last-trace init-trace)
+             (sample)
+             (trace-value last-trace))]))
 
     (define/public (info)
       (send transition info 0))
