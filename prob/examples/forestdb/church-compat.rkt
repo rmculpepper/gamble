@@ -9,8 +9,7 @@
          uniform-draw
          multinomial
          rejection-query
-         enumeration-query
-         factor)
+         enumeration-query)
 
 (define (all ls) (andmap values ls))
 (define (any ls) (ormap values ls))
@@ -33,12 +32,6 @@
   (list (vector->list (discrete-dist-values dd))
         (for/list ([v (discrete-dist-values dd)])
           (dist-pdf dd v))))
-
-;; hack to weight a trace by an arbitrary (log) factor
-(define (factor l)
-  (define p (exp l))
-  (define half-len (* 1/2 (/ p)))
-  (observe-at (uniform-dist (- half-len) half-len) 0))
 
 (define (uniform-draw xs)
   (discrete* xs))

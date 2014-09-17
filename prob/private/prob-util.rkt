@@ -130,6 +130,13 @@
 
 ;; ========================================
 
+;; factor : Real -> Real
+;; Weight the current trace by the given log-factor.
+(define (factor ldensity)
+  (observe-at (improper-dist ldensity) 0))
+
+;; ========================================
+
 (define ((indicator/value v) x)
   (if (equal? x v) 1 0))
 

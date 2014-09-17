@@ -100,7 +100,8 @@
            (-> (>/c 0) (>/c 0) any)]
           [uniform
            (->* [] [real? real?] any)]
-          ))
+          [factor
+           (-> real? any)]))
 
 (require "private/stat.rkt")
 (provide (contract-out
