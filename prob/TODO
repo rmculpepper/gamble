@@ -12,13 +12,30 @@ Tentative plans for the near future:
 - weighted-sampler -> sampler via sampling-importance-resampling
   - Sean is skeptical of my plans :(
     incremental sampling (as opposed to "take N samples and done") seems hard
-- slice sampling
 - simulated annealing
 - calculate effective sample size
   - typically for SMC, but maybe also for importance sampler?
 - evidence softening
 
 Longer term:
+
+- multivariate dists (esp. Gaussian)
+- Wishart dist (& inv?)
+
+- metrics:
+  - total variation
+    - continuous against samples
+    - discrete
+  - Hamming distance
+  - Expected squared difference
+
+- decision theory functions:
+  - EVI
+
+- specialized algorithms for HMM
+  - for long sequences, SMC
+  - for MAP sequence, Viterbi
+  - for smoothing, forward and backward
 
 - avoid running entire program to recompute trace
   (cf Venture scaffolds ??, Church tracing and slicing ??)
