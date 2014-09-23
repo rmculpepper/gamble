@@ -8,8 +8,9 @@
 ;; - no polymorphic function instantiation problems from untyped Racket
 
 #lang typed/racket/base
-(require (for-syntax racket/base racket/syntax syntax/parse))
-(require (prefix-in t: math/array)
+(require (for-syntax racket/base racket/syntax syntax/parse)
+         racket/math
+         (prefix-in t: math/array)
          (prefix-in t: math/matrix))
 
 ;; FIXME/TODO:
@@ -132,14 +133,18 @@
 (Wrap vector->array : t:In-Indexes (Vectorof Real) -> MutArray)
 (Wrap array->vector : Array -> (Vectorof Real))
 
+(provide list*->array
+         vector*->array
+         array-list->array
+         array->array-list)
+
 (: list*->array : (t:Listof* Real) -> ImmArray)
 (define (list*->array elts)
   (ImmArray (t:list*->array elts real?)))
-(Wrap array->list* : Array -> (t:Listof* Real))
-
 (: vector*->array : (t:Vectorof* Real) -> MutArray)
 (define (vector*->array elts)
   (MutArray (t:vector*->array elts real?)))
+(Wrap array->list* : Array -> (t:Listof* Real))
 (Wrap array->vector* : Array -> (t:Vectorof* Real))
 
 ;; FIXME: cases, auto unwrap w/in Listof
@@ -218,6 +223,7 @@
 
 (Wrap array-transform : Array t:In-Indexes (t:Indexes -> t:In-Indexes) -> Array)
 
+(provide array-append*)
 (: array-append* : (->* [(Listof Array)] [Integer] Array))
 (define (array-append* arrs [k 0])
   (ImmArray (t:array-append* (map Array-contents arrs) k)))
@@ -358,6 +364,7 @@
        [(Real Real -> Real) Matrix Matrix -> Matrix]
        [(Real Real Real -> Real) Matrix Matrix Matrix -> Matrix])
 
+(provide matrix-sum)
 (: matrix-sum : (Listof Matrix) -> Matrix)
 (define (matrix-sum ms) (ImmArray (t:matrix-sum (map Array-contents ms))))
 
@@ -372,6 +379,11 @@
 (Wrap matrix-diagonal : Matrix -> Array)
 (Wrap matrix-upper-triangle : Matrix -> Matrix)
 (Wrap matrix-lower-triangle : Matrix -> Matrix)
+
+(provide matrix-rows
+         matrix-cols
+         matrix-augment
+         matrix-stack)
 
 (: matrix-rows : Matrix -> (Listof Matrix))
 (define (matrix-rows m) (map ImmArray (t:matrix-rows (Array-contents m))))
@@ -454,3 +466,46 @@
 (Wrap* matrix-zero? : [Matrix -> Boolean] [Matrix Real -> Boolean])
 (Wrap* matrix-identity? : [Matrix -> Boolean] [Matrix Real -> Boolean])
 (Wrap* matrix-orthonormal? : [Matrix -> Boolean] [Matrix Real -> Boolean])
+
+
+;; ============================================================
+
+(: t:matrix-set! : (t:Mutable-Array Real) Integer Integer Real -> Void)
+(define (t:matrix-set! m i j v)
+  (t:array-set! m (vector i j) v))
+
+(Wrap matrix-set! : MutMatrix Integer Integer Real -> Void)
+
+(: t:matrix-cholesky : (t:Matrix Real) -> (t:Matrix Real))
+(define (t:matrix-cholesky A)
+  ;; check square, symmetric
+  ;; FIXME: quick check: diagonal?
+  (define n (t:square-matrix-size A))
+  (define L ((inst t:array->mutable-array Real) (t:make-matrix n n 0.0)))
+  (define (real-sqrt [x : Real])
+    (define r (sqrt x))
+    (if (real? r) r +nan.0))
+  (for ([j (in-range n)])
+    (for ([i (in-range j n)])
+      (define Aij (t:matrix-ref A i j))
+      (t:matrix-set!
+       L i j
+       (cond [(= i j)
+              (real-sqrt (- Aij (for/sum : Real ([k (in-range j)])
+                                  (sqr (t:matrix-ref L j k)))))]
+             [else
+              (/ (- Aij (for/sum : Real ([k (in-range j)])
+                          (* (t:matrix-ref L i k) (t:matrix-ref L j k))))
+                 (t:matrix-ref L j j))]))))
+  L)
+
+(Wrap matrix-cholesky : Matrix -> Matrix)
+
+(: t:matrix11->value : (t:Matrix Real) -> Real)
+(define (t:matrix11->value m)
+  (unless (and (t:square-matrix? m)
+               (= 1 (t:square-matrix-size m)))
+    (error 'matrix11->value "expected 1 by 1 matrix\n  given: ~e" m))
+  (t:matrix-ref m 0 0))
+
+(Wrap matrix11->value : Matrix -> Real)

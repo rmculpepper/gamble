@@ -14,10 +14,12 @@
          racket/dict
          racket/generic
          racket/flonum
+         math/flonum
          racket/vector
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "private/dist.rkt"
+         "matrix.rkt"
          "private/sort.rkt")
 (provide dist?
          integer-dist?
@@ -456,6 +458,26 @@
   #:guard (lambda (alpha _name)
             (vector->immutable-vector (vector-map exact->inexact alpha))))
 
+(define-dist-type multi-normal
+  ([mean matrix?] [cov matrix?])
+  #:any #:enum #f
+  #:mean mean
+  #:modes (list mean) ;; FIXME: degenerate cases?
+  #:variance cov
+  #:guard (lambda (mean cov _name)
+            ;; check mean is column matrix
+            ;; check cov is square, same size as mean, symmetric, nonnegative-definite (?)
+            (unless (col-matrix? mean)
+              (error 'multi-normal-dist "expected column matrix for mean\n  given: ~e" cov))
+            (define n (matrix-num-rows mean))
+            (unless (square-matrix? cov)
+              (error 'multi-normal-dist "expected square matrix for covariance\n  given: ~e" cov))
+            (unless (= n (square-matrix-size cov))
+              (error 'multi-normal-dist
+                     "covariance matrix has wrong number of rows\n  expected: ~s\n value: ~e"
+                     n cov))
+            (values mean cov)))
+
 ;; Not a real dist. Useful for throwing arbitrary factors into a trace.
 (define-dist-type improper
   ([ldensity real?])
@@ -750,6 +772,34 @@
   (for ([i (in-range n)])
     (flvector-set! flv i (m:flpareto-inv-cdf scale shape (random) #f #f)))
   flv)
+
+
+;; ============================================================
+;; Multivariate Normal dist functions
+
+(define (rawmulti-normal-pdf mean cov x log?)
+  (define k (matrix-num-rows mean))
+  (unless (col-matrix? x)
+    (error 'multi-normal:pdf "expected column matrix\n  given: ~e" x))
+  (unless (= (matrix-num-rows x) k)
+    (error 'multi-normal:pdf "column matrix has wrong number of rows\n  expected: ~e\n  given: ~e"
+           k x))
+  (define p (* (expt (* 2 pi) (- (/ k 2)))
+               (expt (matrix-determinant cov) -1/2)
+               (exp (* -1/2 (matrix11->value
+                             (matrix* (matrix-transpose (matrix- x mean))
+                                      (matrix-inverse cov)
+                                      (matrix- x mean)))))))
+  (convert-p p log? #f))
+(define (rawmulti-normal-cdf . _)
+  (error 'multi-normal:cdf "not defined"))
+(define (rawmulti-normal-inv-cdf . _)
+  (error 'multi-normal:inv-cdf "not defined"))
+(define (rawmulti-normal-sample mean cov)
+  (define n (matrix-num-rows mean))
+  (define A (matrix-cholesky cov)) ;; FIXME: cache!
+  (define snv (flvector->vector (m:flnormal-sample 0.0 1.0 n)))
+  (matrix+ mean (matrix* A (->col-matrix snv))))
 
 
 ;; ============================================================
