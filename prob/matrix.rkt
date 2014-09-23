@@ -11,7 +11,12 @@
 (require (for-syntax racket/base racket/syntax syntax/parse)
          racket/math
          (prefix-in t: math/array)
-         (prefix-in t: math/matrix))
+         (prefix-in t: math/matrix)
+         (prefix-in t: "private/matrix-util.rkt")
+         "private/matrix-base.rkt"
+         "private/matrix-syntax.rkt")
+(provide (all-from-out "private/matrix-base.rkt")
+         (all-from-out "private/matrix-syntax.rkt"))
 
 ;; FIXME/TODO:
 ;; - use FLArray?
@@ -19,23 +24,6 @@
 
 ;; ============================================================
 ;; math/array
-
-(provide (struct-out ImmArray)
-         (struct-out MutArray)
-         Array
-         Array-contents)
-
-(struct: ImmArray ([contents : (t:Array Real)]) #:transparent)
-(struct: MutArray ([contents : (t:Mutable-Array Real)]) #:transparent)
-(define-type Array (U ImmArray MutArray))
-
-(define (Array? x)
-  (or (ImmArray? x) (MutArray? x)))
-
-(: Array-contents : (U ImmArray MutArray) -> (t:Array Real))
-(define (Array-contents x)
-  (cond [(ImmArray? x) (ImmArray-contents x)]
-        [(MutArray? x) (MutArray-contents x)]))
 
 (begin-for-syntax
   (define-syntax-class type
@@ -94,7 +82,9 @@
 
 ;; == Section 6.6
 
-(provide array? settable-array? mutable-array?)
+(provide array?
+         settable-array?
+         mutable-array?)
 
 (define (array? x)
   (Array? x))
@@ -109,11 +99,6 @@
 ;; mutable-array-data
 
 ;; == Section 6.7
-
-(define-syntax-rule (array elts)
-  (array (t:array elts : Real)))
-(define-syntax-rule (mutable-array elts)
-  (array (t:mutable-array elts : Real)))
 
 (Wrap make-array : t:In-Indexes Real -> ImmArray)
 (Wrap build-array : t:In-Indexes (t:Indexes -> Real) -> ImmArray)
@@ -310,17 +295,6 @@
 
 ;; == Section 7.3 Construction
 
-(provide matrix
-         row-matrix
-         col-matrix)
-
-(define-syntax-rule (matrix elts)
-  (ImmArray (t:matrix elts : Real)))
-(define-syntax-rule (row-matrix elts)
-  (ImmArray (t:row-matrix elts : Real)))
-(define-syntax-rule (col-matrix elts)
-  (ImmArray (t:col-matrix elts : Real)))
-
 (Wrap identity-matrix : Integer -> Matrix)
 (Wrap make-matrix : Integer Integer Real -> Matrix)
 (Wrap build-matrix : Integer Integer (Index Index -> Real) -> Matrix)
@@ -470,42 +444,8 @@
 
 ;; ============================================================
 
-(: t:matrix-set! : (t:Mutable-Array Real) Integer Integer Real -> Void)
-(define (t:matrix-set! m i j v)
-  (t:array-set! m (vector i j) v))
-
-(Wrap matrix-set! : MutMatrix Integer Integer Real -> Void)
-
-(: t:matrix-cholesky : (t:Matrix Real) -> (t:Matrix Real))
-(define (t:matrix-cholesky A)
-  ;; check square, symmetric
-  ;; FIXME: quick check: diagonal?
-  (define n (t:square-matrix-size A))
-  (define L ((inst t:array->mutable-array Real) (t:make-matrix n n 0.0)))
-  (define (real-sqrt [x : Real])
-    (define r (sqrt x))
-    (if (real? r) r +nan.0))
-  (for ([j (in-range n)])
-    (for ([i (in-range j n)])
-      (define Aij (t:matrix-ref A i j))
-      (t:matrix-set!
-       L i j
-       (cond [(= i j)
-              (real-sqrt (- Aij (for/sum : Real ([k (in-range j)])
-                                  (sqr (t:matrix-ref L j k)))))]
-             [else
-              (/ (- Aij (for/sum : Real ([k (in-range j)])
-                          (* (t:matrix-ref L i k) (t:matrix-ref L j k))))
-                 (t:matrix-ref L j j))]))))
-  L)
-
-(Wrap matrix-cholesky : Matrix -> Matrix)
-
-(: t:matrix11->value : (t:Matrix Real) -> Real)
-(define (t:matrix11->value m)
-  (unless (and (t:square-matrix? m)
-               (= 1 (t:square-matrix-size m)))
-    (error 'matrix11->value "expected 1 by 1 matrix\n  given: ~e" m))
-  (t:matrix-ref m 0 0))
-
 (Wrap matrix11->value : Matrix -> Real)
+(Wrap matrix-set! : MutMatrix Integer Integer Real -> Void)
+(Wrap matrix-symmetric? : Matrix -> Boolean)
+(Wrap matrix-cholesky : Matrix -> Matrix)
+(Wrap make-mutable-matrix : Index Index Real -> MutMatrix)
