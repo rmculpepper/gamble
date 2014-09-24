@@ -280,6 +280,21 @@
   (flvector-ref (m:flgamma-sample (* 0.5 p) 2.0 1) 0))
 
 
+;; ------------------------------------------------------------
+;; Inverse Wishart dist functions
+
+(define (rawinv-wishart-pdf n Vinv X log?)
+  (rawwishart-pdf n (matrix-inverse Vinv) (matrix-inverse X) log?))
+
+(define (rawinv-wishart-cdf . _)
+  (error 'inv-wishart:cdf "not defined"))
+(define (rawinv-wishart-inv-cdf . _)
+  (error 'inv-wishart:inv-cdf "not defined"))
+
+(define (rawinv-wishart-sample n Vinv)
+  (matrix-inverse (rawwishart-sample n (matrix-inverse Vinv))))
+
+
 ;; ============================================================
 ;; Improper dist functions
 

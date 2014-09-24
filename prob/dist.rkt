@@ -486,7 +486,20 @@
             (define p (square-matrix-size V))
             (unless (> n (- p 1))
               (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
+            ;; FIXME: check V symmetric, positive definite
             (values n V)))
+
+(define-dist-type inv-wishart
+  ([n real?] [Vinv matrix?])
+  #:any #:enum #f
+  #:guard (lambda (n Vinv _name)
+            (unless (square-matrix? Vinv)
+              (error 'wishart-dist "expected square matrix\n  given: ~e" Vinv))
+            (define p (square-matrix-size Vinv))
+            (unless (> n (- p 1))
+              (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
+            ;; FIXME: check V symmetric, positive definite
+            (values n Vinv)))
 
 ;; Not a real dist. Useful for throwing arbitrary factors into a trace.
 (define-dist-type improper
