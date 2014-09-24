@@ -12,7 +12,10 @@
          (struct-out MutArray)
          Array
          Array?
-         Array-contents)
+         Array-contents
+         Matrix
+         ImmMatrix
+         MutMatrix)
 
 (struct: ImmArray ([contents : (t:Array Real)]) #:transparent)
 (struct: MutArray ([contents : (t:Mutable-Array Real)]) #:transparent)
@@ -25,3 +28,7 @@
 (define (Array-contents x)
   (cond [(ImmArray? x) (ImmArray-contents x)]
         [(MutArray? x) (MutArray-contents x)]))
+
+(define-type ImmMatrix ImmArray)
+(define-type MutMatrix MutArray)
+(define-type Matrix Array)

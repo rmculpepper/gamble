@@ -26,16 +26,24 @@
 ;; math/array
 
 (begin-for-syntax
-  (define-syntax-class type
-    (pattern (~or (~literal Array) (~literal Matrix))
+  (define-syntax-class arraytype
+    #:literals (Array Matrix ImmArray ImmMatrix MutArray MutMatrix
+                Listof Values)
+    (pattern (~or Array Matrix)
              #:with unpack #'Array-contents
              #:with repack #'ImmArray)
-    (pattern (~or (~literal ImmArray) (~literal ImmMatrix))
+    (pattern (~or ImmArray ImmMatrix)
              #:with unpack #'ImmArray-contents
              #:with repack #'ImmArray)
-    (pattern (~or (~literal MutArray) (~literal MutMatrix))
+    (pattern (~or MutArray MutMatrix)
              #:with unpack #'MutArray-contents
              #:with repack #'MutArray)
+    (pattern (Listof t:arraytype)
+             #:with unpack #'(lambda (l) (map t.unpack l))
+             #:with repack #'(lambda (l) (map t.repack l))))
+  (define-syntax-class type
+    #:attributes (unpack repack)
+    (pattern :arraytype)
     (pattern (~and _:expr (~not (~datum :)) (~not (~datum ->)) (~not (~datum ...)))
              #:with unpack #'values
              #:with repack #'begin)))
@@ -43,11 +51,19 @@
 (define-syntax (Wrap* stx)
   (define (gen-clause t:fun clause)
     (syntax-parse clause
+      #:literals (Values)
       [[argtype:type ... -> restype:type]
        (with-syntax ([(arg ...) (generate-temporaries #'(argtype ...))]
                      [t:fun t:fun])
          #'[([arg : argtype] ...)
             (restype.repack (t:fun (argtype.unpack arg) ...))])]
+      [[argtype:type ... -> (Values restype:type ...)]
+       (with-syntax ([(arg ...) (generate-temporaries #'(argtype ...))]
+                     [(res ...) (generate-temporaries #'(restype ...))]
+                     [t:fun t:fun])
+         #'[([arg : argtype] ...)
+            (let-values ([(res ...) (t:fun (argtype.unpack arg) ...)])
+              (values (restype.repack res) ...))])]
       [[argtype:type ... #:rest restargtype:type -> restype:type]
        (with-syntax ([(arg ...) (generate-temporaries #'(argtype ...))]
                      [t:fun t:fun])
@@ -119,9 +135,7 @@
 (Wrap array->vector : Array -> (Vectorof Real))
 
 (provide list*->array
-         vector*->array
-         array-list->array
-         array->array-list)
+         vector*->array)
 
 (: list*->array : (t:Listof* Real) -> ImmArray)
 (define (list*->array elts)
@@ -132,14 +146,8 @@
 (Wrap array->list* : Array -> (t:Listof* Real))
 (Wrap array->vector* : Array -> (t:Vectorof* Real))
 
-;; FIXME: cases, auto unwrap w/in Listof
-(: array-list->array : (Listof Array) Index -> Array)
-(define (array-list->array subarrays index)
-  (ImmArray (t:array-list->array (map Array-contents subarrays) index)))
-
-(: array->array-list : Array Index -> (Listof Array))
-(define (array->array-list array index)
-  (map ImmArray (t:array->array-list (Array-contents array) index)))
+(Wrap array-list->array : (Listof Array) Index -> Array)
+(Wrap array->array-list : Array Index -> (Listof Array))
 
 ;; == Section 6.9 Comprehensions and Sequences
 
@@ -207,11 +215,7 @@
 ;; == Section 6.12 Transformations
 
 (Wrap array-transform : Array t:In-Indexes (t:Indexes -> t:In-Indexes) -> Array)
-
-(provide array-append*)
-(: array-append* : (->* [(Listof Array)] [Integer] Array))
-(define (array-append* arrs [k 0])
-  (ImmArray (t:array-append* (map Array-contents arrs) k)))
+(Wrap* array-append* : [(Listof Array) -> Array] [(Listof Array) Integer -> Array])
 
 (Wrap* array-axis-insert :
        [Array Integer -> Array]
@@ -266,19 +270,12 @@
 ;; ============================================================
 ;; math/matrix
 
-(provide ImmMatrix
-         MutMatrix
-         Matrix)
-
-(define-type ImmMatrix ImmArray)
-(define-type MutMatrix MutArray)
-(define-type Matrix Array)
-
 ;; == Section 7.2 Types, Predicates, and Accessors
 
 (provide matrix?
          col-matrix?
-         row-matrix?)
+         row-matrix?
+         square-matrix?)
 
 (define (matrix? x)
   (and (Array? x) (t:matrix? (Array-contents x))))
@@ -286,8 +283,9 @@
   (and (Array? x) (t:col-matrix? (Array-contents x))))
 (define (row-matrix? x)
   (and (Array? x) (t:row-matrix? (Array-contents x))))
+(define (square-matrix? x)
+  (and (Array? x) (t:square-matrix? (Array-contents x))))
 
-(Wrap square-matrix? : Matrix -> Boolean)
 (Wrap matrix-shape : Matrix -> (Values Integer Integer))
 (Wrap matrix-num-rows : Matrix -> Index)
 (Wrap matrix-num-cols : Matrix -> Index)
@@ -338,9 +336,7 @@
        [(Real Real -> Real) Matrix Matrix -> Matrix]
        [(Real Real Real -> Real) Matrix Matrix Matrix -> Matrix])
 
-(provide matrix-sum)
-(: matrix-sum : (Listof Matrix) -> Matrix)
-(define (matrix-sum ms) (ImmArray (t:matrix-sum (map Array-contents ms))))
+(Wrap matrix-sum : (Listof Matrix) -> Matrix)
 
 (Wrap matrix= : Matrix Matrix -> Boolean)
 
@@ -359,17 +355,10 @@
          matrix-augment
          matrix-stack)
 
-(: matrix-rows : Matrix -> (Listof Matrix))
-(define (matrix-rows m) (map ImmArray (t:matrix-rows (Array-contents m))))
-
-(: matrix-cols : Matrix -> (Listof Matrix))
-(define (matrix-cols m) (map ImmArray (t:matrix-cols (Array-contents m))))
-
-(: matrix-augment : (Listof Matrix) -> Matrix)
-(define (matrix-augment ms) (ImmArray (t:matrix-augment (map Array-contents ms))))
-
-(: matrix-stack : (Listof Matrix) -> Matrix)
-(define (matrix-stack ms) (ImmArray (t:matrix-stack (map Array-contents ms))))
+(Wrap matrix-rows : Matrix -> (Listof Matrix))
+(Wrap matrix-cols : Matrix -> (Listof Matrix))
+(Wrap matrix-augment : (Listof Matrix) -> Matrix)
+(Wrap matrix-stack : (Listof Matrix) -> Matrix)
 
 ;; matrix-map-rows, matrix-map-cols
 
@@ -408,7 +397,11 @@
 
 ;; == Section 7.10 Row-based algorithms
 
-;; matrix-gaussian-elim (Matrix w/in values)
+(Wrap* matrix-gauss-elim :
+       [Matrix -> (Values Matrix (Listof Index))]
+       [Matrix Any -> (Values Matrix (Listof Index))]
+       [Matrix Any Any -> (Values Matrix (Listof Index))]
+       [Matrix Any Any (U 'first 'partial) -> (Values Matrix (Listof Index))])
 
 (Wrap* matrix-row-echelon :
        [Matrix -> Matrix]
@@ -416,7 +409,8 @@
        [Matrix Any Any -> Matrix]
        [Matrix Any Any (U 'first 'partial) -> Matrix])
 
-;; matrix-lu (Matrix w/in values)
+(Wrap* matrix-lu :
+       [Matrix -> (Values Matrix Matrix)])
 
 ;; == Section 7.11 Orthogonal algorithms
 
@@ -425,8 +419,11 @@
        [Matrix Any -> Matrix]
        [Matrix Any Integer -> Matrix])
 
-;; matrix-basis-extension
-;; matrix-qr
+(Wrap matrix-basis-extension : Matrix -> Matrix)
+
+(Wrap* matrix-qr :
+       [Matrix -> (Values Matrix Matrix)]
+       [Matrix Any -> (Values Matrix Matrix)])
 
 ;; == Section 7.12 Operator norms and comparing matrices
 
