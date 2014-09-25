@@ -18,6 +18,9 @@
 
 @title[#:tag "dist"]{Probability Distributions}
 
+This section describes the distribution types and operations supported
+by @racketmodname[prob].
+
 @section[#:tag "dist-ops"]{Distribution Operations}
 
 @defproc[(dist? [v any/c]) boolean?]{
@@ -95,7 +98,9 @@ p)] is used instead.
 
 @defproc[(dist-sample [d dist?]) any/c]{
 
-Produces a sample distributed according to @racket[d].
+Produces a sample distributed according to @racket[d]. This is an
+@emph{unmanaged} stochastic effect, like calling Racket's
+@racket[random] function.
 
 @emph{Do not use @racket[dist-sample] within a sampler/solver; use
 @racket[sample] instead.}
@@ -144,7 +149,7 @@ unknown; it may not be defined, it may be infinite, or the calculation
 might not be implemented.
 }
 
-@defproc[(dist-energy [d dist?] [x any/c]) any/c]{
+@defproc[(dist-energy [d dist?] [x any/c]) real?]{
 
 Returns the value of the ``energy'' function of @racket[d] evaluated
 at @racket[x]. Minimizing energy is equivalent to maximizing likelihood.
@@ -164,7 +169,7 @@ Equivalent to @racket[(- (log (dist-pdf d x)))].
                        [x real?]
                        [dx/dt real? 1]
                        [dparam/dt real? 0] ...)
-         any/c]{
+         real?]{
 
 Returns the value at @racket[x] of the derivative of @racket[d]'s
 energy function. 
@@ -297,7 +302,7 @@ Represents a @wiki["Gamma_distribution"]{gamma distribution} with
 shape (@italic{k}) @racket[shape] and scale (@italic{θ})
 @racket[scale].
 
-Note: A common alternative parameterization uses the shape @italic{α}
+Note: A common alternative parameterization uses @italic{α}
 = @racket[shape] and rate @italic{β} = @racket[(/ scale)].}
 
 @defstruct*[inverse-gamma-dist
@@ -340,12 +345,61 @@ Represents a @wiki["Uniform_distribution"]{uniform distribution} with
 lower bound @racket[min] and upper bound @racket[max].}
 
 
-@section[#:tag "other-dists"]{Other Distribution Types}
+@section[#:tag "vector-dists"]{Vector Distribution Types}
 
 @defstruct*[dirichlet-dist
             ([alpha (vectorof (>/c 0))])]{
 
-Represents a @wiki["Dirichlet_distribution"]{Dirichlet distribution}.}
+Represents a @wiki["Dirichlet_distribution"]{Dirichlet distribution}.
+The support consists of vectors of the same length as @racket[alpha]
+whose elements are nonnegative reals summing to @racket[1].
+}
+
+
+@section[#:tag "multi-dists"]{Multivariate Distribution Types}
+
+@defstruct*[multi-normal-dist
+            ([mean col-matrix?]
+             [cov square-matrix?])]{
+
+Represents a @wiki["Multivariate_normal_distribution"]{multi-variate
+normal (Gaussian) distribution}. The covariance matrix @racket[cov]
+must be a square, symmetric, positive-definite matrix with as many
+rows as @racket[mean].
+
+The support consists of column matrices having the same shape as
+@racket[mean].
+}
+
+@defstruct*[wishart-dist
+            ([n real?]
+             [V square-matrix?])]{
+
+Represents a @wiki["Wishart_distribution"]{Wishart distribution} with
+@racket[n] degrees of freedom and scale matrix @racket[_V]. The scale
+matrix @racket[V] must be a square, symmetric, positive-definite
+matrix.
+
+The support consists of square, symmetric, positive-definite matrices
+having the same shape as @racket[V].
+}
+
+@defstruct*[inverse-wishart-dist
+            ([n real?]
+             [Vinv square-matrix?])]{
+
+Represents a @wiki["Inverse-Wishart_distribution"]{Inverse-Wishart
+distribution} with @racket[n] degrees of freedom and scale matrix
+@racket[Vinv]. The scale matrix @racket[Vinv] must be a square,
+symmetric, positive-definite matrix.
+
+If @racket[X] is distributed according to @racket[(wishart-dist n V)],
+then @racket[(matrix-inverse X)] is distributed according to
+@racket[(inverse-wishart-dist n (matrix-inverse V))].
+
+The support consists of square, symmetric, positive-definite matrices
+having the same shape as @racket[Vinv].
+}
 
 
 @section[#:tag "discrete-dist"]{Discrete Distribution Type}
@@ -354,6 +408,10 @@ A discrete distribution is a distribution whose support is a finite
 collection of arbitrary Racket values. Note: this library calls
 @racket[categorical-dist] a distribution whose support consists of the
 integers {0, 1, ..., @italic{N}}.
+
+The elements of a discrete distribution are distinguished using
+@racket[equal?]. The constructors for discrete distributions detect
+and coalesce duplicates.
 
 @defproc[(discrete-dist? [v any/c]) boolean?]{
 
@@ -373,6 +431,10 @@ corresponding @racket[weight-expr]s.
 
 Normalization affects printing and @racket[discrete-dist-weights], but
 not @racket[dist-pdf].
+
+@examples[#:eval the-eval
+(discrete-dist ['apple 1/2] ['orange 1/3] ['pear 1/6])
+]
 }
 
 @defproc[(make-discrete-dist [weighted-values dict?]
@@ -381,6 +443,10 @@ not @racket[dist-pdf].
 
 Produces a discrete distribution from the dictionary
 @racket[weighted-values] that maps values to weights.
+
+@examples[#:eval the-eval
+(make-discrete-dist '((apple . 1/2) (orange . 1/3) (pear . 1/6)))
+]
 }
 
 @defproc[(make-discrete-dist* [values vector?]
@@ -391,6 +457,11 @@ Produces a discrete distribution from the dictionary
 Produces a discrete distribution with the values of @racket[values]
 and weights of @racket[weights]. The two vectors must have equal
 lengths.
+
+@examples[#:eval the-eval
+(make-discrete-dist* (vector 'apple 'orange 'pear)
+                     (vector 1/2 1/3 1/6))
+]
 }
 
 @defproc[(normalize-discrete-dist [d discrete-dist?])

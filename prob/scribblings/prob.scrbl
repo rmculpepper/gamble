@@ -13,6 +13,9 @@
 
 @defmodulelang[prob]
 
+A language for expressing probabilistic models as functional programs
+with managed stochastic effects.
+
 @(local-table-of-contents)
 
 @bold{Development} Development of this library is hosted by
@@ -61,9 +64,9 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 @include-section["intro.scrbl"]
+@include-section["dist.scrbl"]
 @include-section["features.scrbl"]
 @include-section["solvers.scrbl"]
-@include-section["dist.scrbl"]
 @include-section["util.scrbl"]
 @include-section["viz.scrbl"]
 @; @include-section["notes.scrbl"]

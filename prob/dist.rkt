@@ -67,6 +67,8 @@
           [normalize-discrete-dist
            (-> discrete-dist? discrete-dist?)]
           [discrete-dist-values
+           (-> discrete-dist? vector?)]
+          [discrete-dist-weights
            (-> discrete-dist? vector?)]))
 
 ;; Distributions from math/distributions have performance penalty in untyped code
@@ -459,17 +461,13 @@
             (vector->immutable-vector (vector-map exact->inexact alpha))))
 
 (define-dist-type multi-normal
-  ([mean matrix?] [cov matrix?])
+  ([mean col-matrix?] [cov square-matrix?])
   #:any #:enum #f
   #:mean mean
   #:modes (list mean) ;; FIXME: degenerate cases?
   #:variance cov
   #:guard (lambda (mean cov _name)
-            (unless (col-matrix? mean)
-              (error 'multi-normal-dist "expected column matrix for mean\n  given: ~e" cov))
             (define n (matrix-num-rows mean))
-            (unless (square-matrix? cov)
-              (error 'multi-normal-dist "expected square matrix for covariance\n  given: ~e" cov))
             (unless (= n (square-matrix-size cov))
               (error 'multi-normal-dist
                      "covariance matrix has wrong number of rows\n  expected: ~s\n value: ~e"
@@ -489,7 +487,7 @@
             ;; FIXME: check V symmetric, positive definite
             (values n V)))
 
-(define-dist-type inv-wishart
+(define-dist-type inverse-wishart
   ([n real?] [Vinv matrix?])
   #:any #:enum #f
   #:guard (lambda (n Vinv _name)

@@ -287,15 +287,15 @@
 ;; ------------------------------------------------------------
 ;; Inverse Wishart dist functions
 
-(define (rawinv-wishart-pdf n Vinv X log?)
+(define (rawinverse-wishart-pdf n Vinv X log?)
   (rawwishart-pdf n (memo-matrix-inverse Vinv) (memo-matrix-inverse X) log?))
 
-(define (rawinv-wishart-cdf . _)
-  (error 'inv-wishart:cdf "not defined"))
-(define (rawinv-wishart-inv-cdf . _)
-  (error 'inv-wishart:inv-cdf "not defined"))
+(define (rawinverse-wishart-cdf . _)
+  (error 'inverse-wishart:cdf "not defined"))
+(define (rawinverse-wishart-inv-cdf . _)
+  (error 'inverse-wishart:inv-cdf "not defined"))
 
-(define (rawinv-wishart-sample n Vinv)
+(define (rawinverse-wishart-sample n Vinv)
   (matrix-inverse (rawwishart-sample n (memo-matrix-inverse Vinv))))
 
 
