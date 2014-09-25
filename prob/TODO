@@ -3,7 +3,7 @@ Tentative plans for the near future:
 - catch up on docs, tests
 
 - test multivariate dists
-- memoize matrix ops used by multivariate dists (eg, matrix-inverse, matrix-cholesky)
+- drift kernel for multivariate dists
 
 - custom proposals that use info from trace (via labels??)
 
