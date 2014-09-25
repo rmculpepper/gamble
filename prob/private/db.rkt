@@ -154,7 +154,8 @@
            [nchoices 0]  ;; number of unpinned entries in current-db
            [ll-free  0]  ;; sum of ll of all unpinned entries in current-db
            [ll-obs   0]  ;; sum of ll of all observations
-           [ll-diff  0])
+           [ll-diff  0]) ;; if record-obs?: (ll-free + ll-obs) - OLD(ll-free + ll-obs)
+                         ;; if not record-obs?: ll-free - OLD(ll-free)
     (super-new)
 
     ;; db-add! : Address Entry -> Void
