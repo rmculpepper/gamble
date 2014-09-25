@@ -17,6 +17,16 @@
 ;; dists in prob/dist. The naming convention is peculiar to the
 ;; define-dist-type macro (see prob/dist).
 
+(define-syntax-rule (define-memoize1 (fun arg) . body)
+  (begin (define memo-table (make-weak-hash))
+         (define (fun arg)
+           (cond [(hash-ref memo-table arg #f)
+                  => values]
+                 [else
+                  (define r (let () . body))
+                  (hash-set! memo-table arg r)
+                  r]))))
+
 
 ;; ============================================================
 ;; Univariate dist functions
@@ -116,20 +126,9 @@
 ;; ------------------------------------------------------------
 ;; Dirichlet distribution
 
-;; dirichlet-multibeta-cache : WeakHash[ Vector => Real ]
-;; Cache multinomial-beta result for vector; relies on immutability of alpha.
-(define dirichlet-multibeta-cache (make-weak-hash))
-
-;; multinomial-beta : Vector -> Real
-(define (multinomial-beta alpha)
-  (cond [(hash-ref dirichlet-multibeta-cache alpha #f)
-         => values]
-        [else
-         (define r
-           (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
-              (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
-         (hash-set! dirichlet-multibeta-cache alpha r)
-         r]))
+(define-memoize1 (multinomial-beta alpha)
+  (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
+     (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
 
 (define (rawdirichlet-pdf alpha x log?)
   (define p
@@ -181,6 +180,10 @@
 ;; ============================================================
 ;; Multivariate dist functions
 
+(define-memoize1 (memo-matrix-inverse m) (matrix-inverse m))
+(define-memoize1 (memo-matrix-cholesky m) (matrix-cholesky m))
+(define-memoize1 (memo-matrix-determinant m) (matrix-determinant m))
+
 ;; ------------------------------------------------------------
 ;; Multivariate normal dist functions
 
@@ -196,9 +199,10 @@
   (define p (* (expt (* 2 pi) (- (/ k 2)))
                (expt (matrix-determinant cov) -1/2)
                (exp (* -1/2 (matrix11->value
-                             (matrix* (matrix-transpose (matrix- x mean))
-                                      (matrix-inverse cov)
-                                      (matrix- x mean)))))))
+                             (let ([x-mean (matrix- x mean)])
+                               (matrix* (matrix-transpose x-mean)
+                                        (memo-matrix-inverse cov)
+                                        x-mean)))))))
   (convert-p p log? #f))
 (define (rawmulti-normal-cdf . _)
   (error 'multi-normal-dist:cdf "not defined"))
@@ -206,7 +210,7 @@
   (error 'multi-normal0dist:inv-cdf "not defined"))
 (define (rawmulti-normal-sample mean cov)
   (define n (matrix-num-rows mean))
-  (define A (matrix-cholesky cov)) ;; FIXME: cache!
+  (define A (memo-matrix-cholesky cov)) ;; FIXME: cache!
   (define snv (flvector->vector (m:flnormal-sample 0.0 1.0 n)))
   (matrix+ mean (matrix* A (->col-matrix snv))))
 
@@ -222,10 +226,10 @@
 (define (rawwishart-pdf n V X log?)
   (define p (square-matrix-size V))
   (define lp
-    (+ (* 1/2 (- n p 1) (log (matrix-determinant X)))
-       (* -1/2 (matrix-trace (matrix* (matrix-inverse V) X)))
+    (+ (* 1/2 (- n p 1) (log (memo-matrix-determinant X)))
+       (* -1/2 (matrix-trace (matrix* (memo-matrix-inverse V) X)))
        (* -1/2 n p (log 2))
-       (* 1/2 n (log (matrix-determinant V)))
+       (* 1/2 n (log (memo-matrix-determinant V)))
        (log (multigamma p (/ n 2)))))
   (if log? lp (exp lp)))
 
@@ -247,7 +251,7 @@
   ;; p1: If W ~ W(I_p,p,n) and V = L*L^T, 
   ;; then L W L^T^ ~ W(V,p,n).
   (define p (square-matrix-size V*))
-  (define L (matrix-cholesky V*))
+  (define L (memo-matrix-cholesky V*))
   ;; p5, Theorem 3.1:
   (define V (build-vector p (lambda (i) (chi-squared-sample (- n i)))))
   (define B (make-mutable-matrix p p 0.0))
@@ -284,7 +288,7 @@
 ;; Inverse Wishart dist functions
 
 (define (rawinv-wishart-pdf n Vinv X log?)
-  (rawwishart-pdf n (matrix-inverse Vinv) (matrix-inverse X) log?))
+  (rawwishart-pdf n (memo-matrix-inverse Vinv) (memo-matrix-inverse X) log?))
 
 (define (rawinv-wishart-cdf . _)
   (error 'inv-wishart:cdf "not defined"))
@@ -292,7 +296,7 @@
   (error 'inv-wishart:inv-cdf "not defined"))
 
 (define (rawinv-wishart-sample n Vinv)
-  (matrix-inverse (rawwishart-sample n (matrix-inverse Vinv))))
+  (matrix-inverse (rawwishart-sample n (memo-matrix-inverse Vinv))))
 
 
 ;; ============================================================
