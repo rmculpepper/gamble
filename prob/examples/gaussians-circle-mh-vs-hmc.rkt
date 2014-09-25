@@ -21,7 +21,6 @@
    (define r2 (+ (* x x) (* y y)))
    (observe-at (normal-dist r2 OBS-STDDEV) 1)
    (vector x y #|(sqrt r2)|#)))
-;; (set-field! transition s (multi-site))
 
 (define sh
   (hmc-sampler
@@ -40,9 +39,9 @@
    #:L 30))
 
 (void (for ([i BURN-IN]) (s)))
-(set-field! transition sh (multi-site))
+(send sh set-transition (multi-site))
 (void (for ([i HBURN-IN]) (sh)))
-(set-field! transition sh (hmc 0.005 30))
+(send sh set-transition (hmc 0.005 30))
 
 (define samples (repeat s SAMPLES))
 (define samples-h (repeat sh HSAMPLES))

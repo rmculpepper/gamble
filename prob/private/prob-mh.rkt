@@ -662,8 +662,22 @@ choices do not affect control flow through the probabilistic program).
     (field [last-trace init-trace]
            [accepts 0]
            [cond-rejects 0]
-           [mh-rejects 0])
+           [mh-rejects 0]
+           [transition-stack null])
     (super-new)
+
+    (define/public (set-transition tx)
+      (set! transition tx))
+    (define/public (push-transition tx)
+      (set! transition-stack (cons transition transition-stack))
+      (set! transition tx))
+    (define/public (pop-transition)
+      (cond [(pair? transition-stack)
+             (define tx transition)
+             (set! transition (car transition-stack))
+             (set! transition-stack (cdr transition-stack))
+             tx]
+            [else #f]))
 
     ;; Note: {MAP,MLE}-estimate is argmax over *all* unconditioned variables.
     ;; FIXME: figure out how to do subsets.
@@ -695,5 +709,9 @@ choices do not affect control flow through the probabilistic program).
              (trace-value last-trace))]))
 
     (define/public (info)
-      (send transition info 0))
+      (send transition info 0)
+      (when (pair? transition-stack)
+        (printf "\n== Pushed transitions\n")
+        (for ([tx (in-list transition-stack)])
+          (send tx info 2))))
     ))
