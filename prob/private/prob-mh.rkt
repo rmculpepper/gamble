@@ -635,6 +635,17 @@ choices do not affect control flow through the probabilistic program).
       r)
     ))
 
+(define rerun-mh-transition%
+  (class single-site-mh-transition%
+    (super-new)
+    (define/override (info i)
+      (iprintf "== Transition (rerun)\n"))
+    (define/override (perturb last-trace)
+      (cons '#hash() +inf.0))
+    (define/override (accept-threshold . _args)
+      +inf.0)))
+(define the-rerun-mh-transition (new rerun-mh-transition% [record-obs? #f]))
+
 (define (mh-transition? x) (is-a? x mh-transition<%>))
 
 (define (sequence . txs)
@@ -649,6 +660,8 @@ choices do not affect control flow through the probabilistic program).
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
 (define (slice #:scale [scale-factor 1] #:zone [zone #f])
   (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
+(define (rerun)
+  the-rerun-mh-transition)
 
 ;; ============================================================
 
@@ -699,7 +712,15 @@ choices do not affect control flow through the probabilistic program).
       (trace-value best-trace))
 
     (define/override (sample)
-      (match (send transition run thunk last-trace)
+      (sample/transition transition))
+
+    (define/public (rerun)
+      (define lt last-trace)
+      (sample/transition the-rerun-mh-transition)
+      (not (eq? lt last-trace)))
+
+    (define/public (sample/transition tx)
+      (match (send tx run thunk last-trace)
         [(? trace? t)
          (set! last-trace t)
          (trace-value t)]
