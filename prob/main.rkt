@@ -141,9 +141,9 @@
           [sequence
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
-           (->* [] [#:zone any/c] mh-transition?)]
+           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
           [multi-site
-           (->* [] [#:zone any/c] mh-transition?)]
+           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
           [hmc
            (->* [] [(>/c 0) exact-positive-integer?] mh-transition?)]
           [slice

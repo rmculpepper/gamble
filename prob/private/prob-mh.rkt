@@ -206,7 +206,7 @@
 
 (define perturb-mh-transition-base%
   (class mh-transition-base%
-    (init-field [record-obs? #t])  ;; FIXME: default #t ??
+    (init-field record-obs?)
     (super-new)
 
     ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
@@ -641,10 +641,10 @@ choices do not affect control flow through the probabilistic program).
   (new sequence-mh-transition% (transitions txs)))
 (define (cycle . txs)
   (new cycle-mh-transition% (transitions txs)))
-(define (single-site #:zone [zone #f])
-  (new single-site-mh-transition% [zone zone]))
-(define (multi-site #:zone [zone #f])
-  (new multi-site-mh-transition% [zone zone]))
+(define (single-site #:zone [zone #f] #:record-obs? [record-obs? #f])
+  (new single-site-mh-transition% [zone zone] [record-obs? record-obs?]))
+(define (multi-site #:zone [zone #f] #:record-obs? [record-obs? #f])
+  (new multi-site-mh-transition% [zone zone] [record-obs? #f]))
 (define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
 (define (slice #:scale [scale-factor 1] #:zone [zone #f])
