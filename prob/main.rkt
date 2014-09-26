@@ -134,7 +134,32 @@
 (provide (all-from-out "private/ho-functions.rkt"))
 
 (require "private/particle-filter.rkt")
-(provide (all-from-out "private/particle-filter.rkt"))
+(provide particles?
+         (contract-out
+          [make-particles
+           (->* [exact-nonnegative-integer?]
+                [any/c]
+                particles?)]
+          [particles-count
+           (-> particles? exact-nonnegative-integer?)]
+          [particles-update
+           (->* [particles? procedure?]
+                [exact-nonnegative-integer?]
+                particles?)]
+          [particles-resample
+           (->* [particles?]
+                [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
+                particles?)]
+          [particles-effective-count
+           (-> particles? real?)]
+          [particles-effective-ratio
+           (-> particles? real?)]
+          [particles-weighted-states
+           (-> particles? vector?)]
+          [particles-states
+           (-> particles? vector?)]
+          [in-particles
+           (-> particles? sequence?)]))
 
 (require "private/prob-mh.rkt")
 (provide mh-transition?

@@ -389,6 +389,93 @@ A) (* B B))] with respect to @racket[A] and @racket[B], in that order.
 
 
 @; ============================================================
+@section[#:tag "particles"]{Particle Filters}
+
+A @deftech{particle set} consists of a collection of particles, each
+of which contains a current state estimate and a likelihood
+weight. Particle sets are updated via a (stochastic) state transformer
+that produces a new state for each particle. Observations performed by
+the state transformer adjust the particles' weights.
+
+
+@defproc[(particles? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a @tech{particle set},
+@racket[#f] otherwise.
+}
+
+@defproc[(make-particles [n exact-nonnegative-integer?]
+                         [init-state any/c])
+         particles?]{
+
+Returns a particle set with @racket[n] particles, each with state
+@racket[init-state] and weight @racket[1].
+}
+
+@defproc[(particles-count [ps particles?]) exact-nonnegative-integer?]{
+
+Returns the number of particles in @racket[ps].
+}
+
+@defproc[(particles-update [ps particles?]
+                           [update-state (-> any/c any/c)])
+         particles?]{
+
+Produces a new particle set where each particle corresponds to a
+particle in @racket[ps], where each new particle's state is the result
+of applying @racket[update-state] to the old state. Each new particle's
+weight is the old particle's weight adjusted by observations performed
+by @racket[update-state].
+}
+
+@defproc[(particles-resample [ps particles?]
+                             [n exact-nonnegative-integer? (particles-count ps)]
+                             [#:alg algorithm (or/c 'multinomial 'residual #f)
+                              'multinomial])
+         particles?]{
+
+Produces a new particle set by resampling particles from
+@racket[ps]. Every particle in the new particle set has weight
+@racket[1]. See also @racket[resample].
+}
+
+@deftogether[[
+@defproc[(particles-effective-count [ps particles?]) real?]
+@defproc[(particles-effective-ratio [ps particles?]) real?]
+]]{
+
+Returns an estimate of the effective sample size and its ratio to the
+number of particles, respectively.
+}
+
+@defproc[(particles-weighted-states [ps particles?])
+         (vectorof (cons/c any/c (>/c 0)))]{
+
+Returns a vector of the particle states and weights from
+@racket[ps]. Particles with zero weight are omitted, so the length of
+the vector may be less than @racket[(particle-count ps)].
+}
+
+@defproc[(particles-states [ps particles?])
+         vector?]{
+
+Returns a vector of the particle states from @racket[ps], regardless
+of weight (except that particles with zero weight are omitted).
+
+In general, it is only sensible to call this function when the weights
+are known to be equal, such as after calling @racket[particles-resample].
+}
+
+@defproc[(in-particles [ps particles?])
+         sequence?]{
+
+Produces a sequence where each step produces two values: the particle
+state and its weight. Particles with empty weights are omitted from
+the sequence.
+}
+
+
+@; ============================================================
 @section[#:tag "enum"]{Enumeration Solver}
 
 @defform[(enumerate def/expr ... result-expr
