@@ -121,19 +121,6 @@ In the example above, @racket[1/10] of the probability mass of
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 @; ============================================================
 @section[#:tag "misc-util"]{Miscellaneous Utilities}
 
@@ -180,5 +167,15 @@ values accepted by the predicate @racket[pred], respectively.
 ]
 }
 
+@defproc[(resample [samples vector?]
+                   [weights (vectorof (>=/c 0))]
+                   [n exact-nonnegative-integer? (vector-length samples)]
+                   [#:alg algorithm (or/c 'multinomial 'residual #f)
+                   'multinomial])
+         vector?]{
+
+Resamples @racket[n] values from @racket[samples] with corresponding
+weights given by @racket[weights].
+}
 
 @(close-eval the-eval)
