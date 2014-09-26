@@ -387,20 +387,20 @@ given @racket[condition-expr] and the observations in the program. If
 the probability is unnormalized instead.
 
 The @racket[enumerate] form works by exploring all possibilities using
-the technique described in @cite{EPP}. If @racket[limit-expr]
-evaluates to a probability @racket[_limit], then exploration ceases
-when the error of the normalized result distribution would be less
-than @racket[_limit]---that is, when the unexplored paths have
+the technique described in @cite{EPP}. If @racket[limit-expr] is
+absent or evaluates to @racket[#f], then exploration ceases only when
+all paths have been explored; if any path is infinite, then
+@racket[enumerate] fails to terminate.  If @racket[limit-expr] is
+given and evaluates to a probability @racket[_limit], then exploration
+ceases when the error of the normalized result distribution would be
+less than @racket[_limit]---that is, when the unexplored paths have
 probability less than @racket[_limit] times the sum of the
-probabilities of the paths accepted so far. If @racket[limit-expr]
-evaluates to @racket[#f], then exploration ceases only when all paths
-have been explored; if any path is infinite, then @racket[enumerate]
-fails to terminate.
+probabilities of the paths accepted so far.
 
 Only discrete and integer-valued distributions can be sampled with
 @racket[enumerate], and infinite-range distributions (such as
 @racket[geometric-dist]) and infinitely-deep recursive functions (such
-as @racket[geometric]) require the use of @racket[#:limit] to enforce
+as @racket[geometric]) require the use of @racket[#:limit] for
 termination.
 
 @examples[#:eval the-eval
@@ -409,19 +409,15 @@ termination.
   (define B (flip))
   A
   #:when (or A B))
-(enumerate
-  (define A (geom))
-  A
-  #:when (< 10 A 20))
 ]
 
 Use @racket[#:limit] to control when exploration should be cut
-off. The default limit is @racket[1e-6].
+off.
 
 @interaction[#:eval the-eval
 (enumerate
   (geom)
-  #:limit 1e-9)
+  #:limit 1e-6)
 ]
 
 Use @racket[#:normalize? #f] to get the result probabilities without
@@ -440,9 +436,7 @@ normalizing by the acceptance rate:
  (define A (drunk-flips 10))
  (eq? A #t)
  #:when (not (eq? A 'failed))
- #:normalize? #f
- (code:comment "Default limit is too high to detect #t case")
- #:limit #f)
+ #:normalize? #f)
 ]
 }
 

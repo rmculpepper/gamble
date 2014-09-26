@@ -37,7 +37,7 @@
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
 (define (enumerate* thunk
-                    #:limit [limit 1e-6]
+                    #:limit [limit #f]
                     #:normalize? [normalize? #t])
   (define tree (reify-tree thunk))
   (define-values (table prob-unexplored prob-accepted)

@@ -258,7 +258,8 @@ The @racket[enumerate] form supports conditioning through a final
 (enumerate
   (define A (geom))
   A
-  #:when (< 20 A 30))
+  #:when (< 20 A 30)
+  #:limit 1e-6)
 ]
 
 Here's an example from @cite{EPP} that shows that this technique can
@@ -279,9 +280,7 @@ resulting probabilities by the acceptance rate of the condition.
           (and (drunk-flip)
                (drunk-andflips (sub1 n)))]))
  (drunk-andflips 10)
- #:normalize? #f
- (code:comment "Need to disable limit to detect #t case")
- #:limit #f)
+ #:normalize? #f)
 ]
 
 Enumeration can be nested:
@@ -361,9 +360,9 @@ flip when it is actually relevant.
 ]
 
 The @racket[enumerate] solver cannot handle continuous random
-variables, but a related sampler called @racket[importance-sampler]
-can explore trees, even those involving continuous random variables,
-and produce weighted samples.
+variables, but a related sampler called
+@racket[enum-importance-sampler] can explore trees, even those
+involving continuous random variables, and produce weighted samples.
 
 @interaction[#:eval the-eval
 (define (make-ws-cd stddev_R)
