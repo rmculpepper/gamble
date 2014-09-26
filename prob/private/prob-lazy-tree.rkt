@@ -165,7 +165,8 @@
           (lambda ()
             (weight dist val
                     (lambda ()
-                      (call-with-enum-context act memo-table (lambda () (k (void)))))))))
+                      (call-with-enum-context act memo-table
+                        (lambda () (k val))))))))
        ctag))
 
     (define/public (fail reason)

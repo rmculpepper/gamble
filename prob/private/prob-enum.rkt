@@ -188,7 +188,7 @@
                 (define forced-subs (force-subtrees (split->subtrees tree)))
                 (get-samples/paths forced-subs prob)])]
         [(weight dist val k)
-         (get-samples/paths (list (cons (dist-pdf dist val) (k))))]
+         (get-samples/paths (list (cons (dist-pdf dist val) (k))) prob)]
         [(failed _)
          null]))
 
@@ -202,7 +202,8 @@
     (define/private (get-samples/paths forced-subs prob)
       (define successes (filter (lambda (s) (only? (cdr s))) forced-subs))
       (define failures (filter (lambda (s) (failed? (cdr s))) forced-subs))
-      (define unknowns (filter (lambda (s) (split? (cdr s))) forced-subs))
+      (define unknowns
+        (filter (lambda (s) (or (split? (cdr s)) (weight? (cdr s)))) forced-subs))
       (append (for/list ([success (in-list successes)])
                 (match success
                   [(cons sub-prob (only value))

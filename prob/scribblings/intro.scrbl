@@ -366,7 +366,7 @@ involving continuous random variables, and produce weighted samples.
 
 @interaction[#:eval the-eval
 (define (make-ws-cd stddev_R)
-  (importance-sampler
+  (enum-importance-sampler
    (define R (normal 10 stddev_R))
    (observe-at (normal-dist R 1) 9)
    R))
