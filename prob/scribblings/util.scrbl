@@ -19,13 +19,17 @@
 @; ============================================================
 @section[#:tag "stat-util"]{Statistical Utilities}
 
+For the purpose of this section, a RealVector is a real
+(@racket[real?]), a vector of reals (@racket[(vectorof real?)]), or a
+column matrix (@racket[col-matrix?]).
+
 @defstruct*[statistics
             ([dim exact-positive-integer?]
              [n exact-positive-integer?]
-             [mean vector?]
-             [cov vector?])]{
+             [mean col-matrix?]
+             [cov matrix?])]{
 
-Represents some basic statistics of a sample sequence of real vectors
+Represents some basic statistics of a sample sequence of RealVectors
 of compatible shapes. The @racket[dim] field represents the dimension
 of the sample vectors; @racket[n] is the number of samples;
 @racket[mean] is the mean of the samples; and @racket[cov] is the
@@ -35,21 +39,27 @@ covariance matrix.
 @deftogether[[
 @defproc[(sampler->statistics [s sampler?]
                               [n exact-positive-integer?]
-                              [f (-> any/c (vectorof real?))])
+                              [f (-> any/c @#,(elem "RealVector")) values])
          statistics?]
 @defproc[(samples->statistics [samples (vectorof (vectorof real?))])
          statistics?]
-]]
+]]{
+
+Returns the statistics of @racket[samples] or of @racket[n] samples
+drawn from @racket[s] and passed through @racket[f].
+
+@examples[#:eval the-eval
+(sampler->statistics (mh-sampler (normal 0 1)) 1000)
+]
+}
 
 @defproc[(sampler->mean+variance [sampler sampler?]
                                  [n exact-positive-integer?]
-                                 [f (-> any/c real?) (lambda (x) x)])
+                                 [f (-> any/c real?) values])
          (values real? real?)]{
 
-Generates @racket[n] samples using @racket[(f (sampler))], and returns
-the mean and variance. If @racket[sampler] does not return real-valued
-samples, then @racket[f] must be given and must convert samples into
-real values.
+Like @racket[sample->statistics], but returns the mean and variance as
+two scalar values.
 
 @examples[#:eval the-eval
 (sampler->mean+variance (rejection-sampler (flip 1/2))

@@ -7,6 +7,7 @@
          math/matrix
          racket/math)
 (provide matrix11->value
+         array->immutable-array
          make-mutable-matrix
          matrix-set!
          matrix-symmetric?
@@ -19,6 +20,10 @@
                (= 1 (square-matrix-size m)))
     (error 'matrix11->value "expected 1 by 1 matrix\n  given: ~e" m))
   (matrix-ref m 0 0))
+
+(: array->immutable-array : (All (A) (Array A) -> (Array A)))
+(define (array->immutable-array a)
+  (array-map (inst values A) a))
 
 (: make-mutable-matrix : (All (A) Index Index A -> (Mutable-Array A)))
 (define (make-mutable-matrix n m a)

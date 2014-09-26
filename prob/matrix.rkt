@@ -441,6 +441,7 @@
 
 ;; ============================================================
 
+(Wrap array->immutable-array : Array -> ImmArray)
 (Wrap matrix11->value : Matrix -> Real)
 (Wrap matrix-set! : MutMatrix Integer Integer Real -> Void)
 (Wrap matrix-symmetric? : Matrix -> Boolean)
