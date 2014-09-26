@@ -40,7 +40,9 @@ support observations on continuous random variables}
 high-probability zones}
 ]
 
-The following solvers are supported:
+Aside from @tech{samplers}, there are other @deftech{solvers} that can
+extract information from a probabilistic model. The following solvers
+are supported:
 @itemlist[
 @item{@racket[enumerate] --- exhaustive enumeration (up to optional
 threshold), exponential in number of random variables, cannot handle
@@ -90,6 +92,25 @@ Generates @racket[n] samples from the sampler @racket[s].
 
 Generates @racket[n] weighted samples from the @tech{weighted sampler}
 @racket[s] and returns them as a vector of value-weight pairs.
+}
+
+@defproc[(sampler->discrete-dist [sampler weighted-sampler?]
+                                 [n exact-positive-integer?]
+                                 [f (-> any/c any/c) (lambda (x) x)])
+         discrete-dist?]{
+
+Returns the empirical distribution obtained by generating @racket[n]
+samples from @racket[s], apply @racket[f] to each result.
+
+@examples[#:eval the-eval
+(sampler->discrete-dist (rejection-sampler (flip 1/2)) 100)
+(sampler->discrete-dist
+  (importance-sampler
+    (define R (binomial 20 1/2))
+    (observe-at (normal-dist R 1) 9)
+    R)
+  100)
+]
 }
 
 

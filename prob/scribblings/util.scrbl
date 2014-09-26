@@ -14,19 +14,80 @@
 @(define the-eval (make-base-eval))
 @(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
 
-@title[#:tag "util"]{Probabilistic Utilities}
+@title[#:tag "util"]{Utilities}
 
-@defproc[(probability? [v any/c])
-         boolean?]{
+@; ============================================================
+@section[#:tag "stat-util"]{Statistical Utilities}
 
-Returns @racket[#t] if @racket[v] is a real number between 0 and 1
-(inclusive), @racket[#f] otherwise.
+@defstruct*[statistics
+            ([dim exact-positive-integer?]
+             [n exact-positive-integer?]
+             [mean vector?]
+             [cov vector?])]{
+
+Represents some basic statistics of a sample sequence of real vectors
+of compatible shapes. The @racket[dim] field represents the dimension
+of the sample vectors; @racket[n] is the number of samples;
+@racket[mean] is the mean of the samples; and @racket[cov] is the
+covariance matrix.
 }
 
-@defparam[verbose? v? boolean?]{
+@deftogether[[
+@defproc[(sampler->statistics [s sampler?]
+                              [n exact-positive-integer?]
+                              [f (-> any/c (vectorof real?))])
+         statistics?]
+@defproc[(samples->statistics [samples (vectorof (vectorof real?))])
+         statistics?]
+]]
 
-Parameter that controls whether informative messages are printed by
-solvers and ERPs.
+@defproc[(sampler->mean+variance [sampler sampler?]
+                                 [n exact-positive-integer?]
+                                 [f (-> any/c real?) (lambda (x) x)])
+         (values real? real?)]{
+
+Generates @racket[n] samples using @racket[(f (sampler))], and returns
+the mean and variance. If @racket[sampler] does not return real-valued
+samples, then @racket[f] must be given and must convert samples into
+real values.
+
+@examples[#:eval the-eval
+(sampler->mean+variance (rejection-sampler (flip 1/2))
+                        100
+                        (indicator/value #t))
+]
+}
+
+
+@; ============================================================
+@section[#:tag "test-util"]{Utilities for Testing and Comparing Distributions}
+
+@deftogether[[
+@defproc[(sampler->KS [sampler sampler?]
+                      [iterations exact-positive-integer?]
+                      [dist dist?])
+         (>=/c 0)]
+@defproc[(samples->KS [samples (vectorof real?)]
+                      [dist dist?])
+         real?]
+]]{
+
+Calculates the
+@hyperlink["http://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov
+statistic} of a sample set with @racket[dist]. The result is a measure
+of the goodness of fit of the samples to the distribution.
+
+@examples[#:eval the-eval
+(sampler->KS (rejection-sampler (uniform 0 1))
+             1000
+             (uniform-dist 0 1))
+(sampler->KS (rejection-sampler (normal 0 1))
+             1000
+             (uniform-dist 0 1))
+(sampler->KS (rejection-sampler (for/sum ([i 3]) (uniform -1 1)))
+             100
+             (normal-dist 0 1))
+]
 }
 
 @defproc[(discrete-dist-error [dist1 discrete-dist?]
@@ -49,31 +110,35 @@ In the example above, @racket[1/10] of the probability mass of
 @racket['B] to transform the first distribution into the second.
 }
 
-@defproc[(sampler->KS [sampler sampler?]
-                      [iterations exact-positive-integer?]
-                      [dist dist?])
-         (>=/c 0)]{
 
-Gets @racket[iterations] samples from @racket[sampler] and calculates
-the @hyperlink["http://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov
-statistic} with @racket[dist]. The result is a measure of the goodness
-of fit of the samples to the distribution.
 
-@examples[#:eval the-eval
-(sampler->KS (rejection-sampler (uniform 0 1))
-             1000
-             (uniform-dist 0 1))
-(sampler->KS (rejection-sampler (normal 0 1))
-             1000
-             (uniform-dist 0 1))
-(sampler->KS (rejection-sampler (for/sum ([i 3]) (uniform -1 1)))
-             100
-             (normal-dist 0 1))
-]
+
+
+
+
+
+
+
+
+
+
+
+
+@; ============================================================
+@section[#:tag "misc-util"]{Miscellaneous Utilities}
+
+@defproc[(probability? [v any/c])
+         boolean?]{
+
+Returns @racket[#t] if @racket[v] is a real number between 0 and 1
+(inclusive), @racket[#f] otherwise.
 }
 
+@defparam[verbose? v? boolean?]{
 
-@section[#:tag "sample-utils"]{Sampler Utilities}
+Parameter that controls whether informative messages are printed by
+solvers and ERPs.
+}
 
 @defproc[(repeat [thunk (-> any/c)]
                  [n exact-nonnegative-integer?])
@@ -84,35 +149,6 @@ list.
 
 @examples[#:eval the-eval
 (repeat flip 10)
-]
-}
-
-@defproc[(sampler->discrete-dist [sampler sampler?]
-                                 [n exact-positive-integer?]
-                                 [f (-> any/c any/c) (lambda (x) x)])
-         discrete-dist?]{
-
-Generates @racket[n] samples using @racket[(f (sampler))], and
-produces a list of the results with probability weights.
-
-@examples[#:eval the-eval
-(sampler->discrete-dist (rejection-sampler (flip 1/2)) 100)
-]
-}
-
-@defproc[(sampler->mean+variance [sampler sampler?]
-                                 [f (-> _A real?) (lambda (x) x)])
-         (values real? real?)]{
-
-Generates @racket[n] samples using @racket[(f (sampler))], and returns
-the mean and variance. If @racket[sampler] does not return real-valued
-samples, then @racket[f] must be given and must convert samples into
-real values.
-
-@examples[#:eval the-eval
-(sampler->mean+variance (rejection-sampler (flip 1/2))
-                        100
-                        (indicator/value #t))
 ]
 }
 
