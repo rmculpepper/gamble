@@ -368,11 +368,6 @@
 (Wrap matrix-upper-triangle : Matrix -> Matrix)
 (Wrap matrix-lower-triangle : Matrix -> Matrix)
 
-(provide matrix-rows
-         matrix-cols
-         matrix-augment
-         matrix-stack)
-
 (Wrap matrix-rows : Matrix -> (Listof Matrix))
 (Wrap matrix-cols : Matrix -> (Listof Matrix))
 (Wrap matrix-augment : (Listof Matrix) -> Matrix)

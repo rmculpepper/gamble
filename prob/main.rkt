@@ -25,6 +25,9 @@
 (require "dist.rkt")
 (provide (all-from-out "dist.rkt"))
 
+(require "matrix.rkt")
+(provide (all-from-out "matrix.rkt"))
+
 (require "private/interfaces.rkt")
 (provide verbose?
          weighted-sampler?

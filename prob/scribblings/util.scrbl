@@ -9,7 +9,10 @@
           (for-label racket/contract
                      racket/class
                      prob
-                     prob/viz))
+                     prob/viz
+                     (prefix-in math: math/array)
+                     (prefix-in math: math/matrix)
+                     (prefix-in typed: typed/racket/base)))
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require prob (only-in prob/viz [hist-pict hist])))
@@ -118,6 +121,124 @@ be reassigned in order to transform @racket[dist1] into
 In the example above, @racket[1/10] of the probability mass of
 @racket['A] in the first distribution would have to be shifted to
 @racket['B] to transform the first distribution into the second.
+}
+
+
+@; ============================================================
+@section[#:tag "matrix-util"]{Arrays and Matrices}
+
+This language provides a wrapped version of the array and matrix types
+defined in @racketmodname[math/array] and
+@racketmodname[math/matrix]. Unlike the version provided by those
+libraries, this library's array and matrix types are specialized to
+real numbers, and they are simpler and faster to use in untyped code.
+
+Most of the functions listed in the documentation for
+@racketmodname[math/array] and @racketmodname[math/matrix] have
+corresponding monomorphic-wrapped functions exported by this
+language. In addition, the following functions and special forms are
+provided.
+
+@deftogether[[
+@defproc[(array? [v any/c]) boolean?]
+@defproc[(mutable-array? [v any/c]) boolean?]
+@defproc[(matrix? [v any/c]) boolean?]
+@defproc[(square-matrix? [v any/c]) boolean?]
+@defproc[(row-matrix? [v any/c]) boolean?]
+@defproc[(col-matrix? [v any/c]) boolean?]
+]]{
+
+Like @racket[math:array?], @racket[math:mutable-array?],
+@racket[math:matrix?], @racket[math:square-matrix?],
+@racket[math:row-matrix?], and @racket[math:col-matrix?],
+respectively, but for this library's monomorphic-wrapped arrays
+instead.
+}
+
+@deftogether[[
+@defstruct*[ImmArray ([contents (math:Array typed:Real)])]
+@defstruct*[MutArray ([contents (math:Mutable-Array typed:Real)])]
+]]{
+
+Monomorphic wrapper structs around the @racketmodname[math] library's
+arrays and matrices.
+}
+
+@defproc[(Array-contents [a array?]) (math:Array typed:Real)]{
+
+Gets the underlying @racketmodname[math/array] array from the
+wrapper.
+}
+
+@deftogether[[
+@defform[(array #[#[...] ...])]
+@defform[(mutable-array #[#[...] ...])]
+@defform[(matrix [[element-expr ...] ...])]
+@defform[(col-matrix [element-expr ...])]
+@defform[(row-matrix [element-expr ...])]
+@defform[(for/matrix numrows-expr numcols-expr (for-clause ...) body ...+)]
+@defform[(for*/matrix numrows-expr numcols-expr (for-clause ...) body ...+)]
+]]{
+
+Untyped wrapping versions of @racket[math:array],
+@racket[math:mutable-array], @racket[math:matrix],
+@racket[math:col-matrix], @racket[math:row-matrix],
+@racket[math:for/matrix], and @racket[math:for*/matrix], respectively.
+}
+
+@defproc[(matrix11->value [matrix? m]) real?]{
+
+Extracts the single value from a 1x1 matrix.
+}
+
+@defproc[(array->immutable-array [array? a]) array?]{
+
+Converts an array into an immutable array.
+}
+
+@defproc[(make-mutable-matrix [m exact-nonnegative-integer?]
+                              [n exact-nonnegative-integer?]
+                              [fill real?])
+         matrix?]{
+
+Creates a mutable matrix of shape @racket[m] by @racket[n] filled with
+initial value @racket[fill].
+}
+
+@defproc[(matrix-set! [m matrix?]
+                      [i exact-nonnegative-integer?]
+                      [j exact-nonnegative-integer?]
+                      [value real?])
+         void?]{
+
+Sets the entry of @racket[m] at row @racket[i] and column @racket[j]
+to be @racket[value].
+}
+
+@defproc[(matrix-symmetric? [m matrix?])
+         boolean?]{
+
+Returns @racket[#t] if @racket[m] is a square, symmetric matrix,
+@racket[#f] otherwise.
+}
+
+@defproc[(matrix-cholesky [m matrix?])
+         matrix?]{
+
+Given a symmetric, positive-definite matrix @racket[_A], returns a
+lower-triangular matrix @racket[_L] such that @racket[(matrix* _L
+(matrix-transpose _L))] is equal to @racket[_A].
+
+If the Cholesky decomposition cannot be calculated, the function
+raises an error.
+}
+
+@defproc[(matrix-ldl [m matrix?])
+         (values matrix? (vectorof real?))]{
+
+Given a symmetric, positive-definite matrix @racket[_A], returns the
+LDL decomposition, consisting of a lower-triangular matrix and a
+diagonal matrix.
 }
 
 
