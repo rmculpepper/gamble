@@ -31,10 +31,10 @@
                 Listof Values)
     (pattern (~or Array Matrix)
              #:with unpack #'Array-contents
-             #:with repack #'ImmArray)
+             #:with repack #'wrap-ImmArray)
     (pattern (~or ImmArray ImmMatrix)
              #:with unpack #'ImmArray-contents
-             #:with repack #'ImmArray)
+             #:with repack #'wrap-ImmArray)
     (pattern (~or MutArray MutMatrix)
              #:with unpack #'MutArray-contents
              #:with repack #'MutArray)
@@ -93,6 +93,24 @@
            (define (fun arg ...)
              (restype.repack (t:fun (argtype.unpack arg) ...)))
            (provide fun))))]))
+
+(: wrap-ImmArray : (t:Array Real) -> ImmArray)
+(define (wrap-ImmArray a)
+  #|
+  ;; Don't want to unnecessarily copy every array
+  (ImmArray (t:array-map (inst values Real) a))
+  |#
+  #|
+  ;; Occurrence typing screws up here
+  (cond [(t:settable-array? (values a))
+         (ImmArray (t:array-map (inst values Real) a))]
+        [else
+         (ImmArray a)])
+  |#
+  (let ([b a])
+    (cond [(t:settable-array? b)
+           (ImmArray (t:array-map (inst values Real) a))]
+          [else (ImmArray a)])))
 
 ;; ------------------------------------------------------------
 
