@@ -25,10 +25,10 @@
   (vector-length (get-field states ps)))
 
 (define (particles-update ps f [iters 1])
-  (send ps update f iters))
+  (send ps update f iters #t))
 
 (define (particles-score ps f [iters 1])
-  (send ps update (lambda (st) (f st) st) iters))
+  (send ps update f iters #f))
 
 (define (particles-resample ps [count (particles-count ps)]
                             #:alg [alg #f])
@@ -66,6 +66,14 @@
 
 ;; ----
 
+(define particles<%>
+  (interface ()
+    update ;; (State -> State) Nat Boolean -> ParticleSet
+    get-weighted-states ;; -> (vectorof (cons State Real))
+    effective-sample-size ;; -> Real
+    resample ;; ... -> ParticleSet
+    ))
+
 (define particles%
   (class* object% ()
     ;; states : (Vectorof State)
@@ -76,25 +84,21 @@
     (define ctx (new importance-stochastic-ctx%))
     (super-new)
 
-    (define/public (get-states) states)
-    (define/public (get-weights) weights)
-    (define/public (to-discrete-dist)
-      (make-discrete-dist* states weights))
-
-    ;; update : (State -> State) Nat -> ParticleSet
-    (define/public (update f iters)
+    ;; update : (State -> State) Nat Boolean -> ParticleSet
+    ;; If update? is #f, don't store result as new state (but do update weight).
+    (define/public (update f iters update?)
       (cond [(zero? iters)
              this]
             [else
              (define count (vector-length states))
-             (define states* (make-vector count #f))
+             (define states* (vector-copy states))
              (define weights* (make-vector count 1))
-             (update1 f count states weights states* weights*)
+             (update1 f count states weights states* weights* update?)
              (for ([i (in-range (sub1 iters))])
-               (update1 f count states* weights* states* weights*))
+               (update1 f count states* weights* states* weights* update?))
              (new particles% (states states*) (weights weights*))]))
 
-    (define/private (update1 f count states weights states* weights*)
+    (define/private (update1 f count states weights states* weights* update?)
       (for ([i (in-range count)]
             [si (in-vector states)]
             [wi (in-vector weights)])
@@ -102,7 +106,8 @@
                (set-field! weight ctx 1)
                (match (send ctx run (lambda () (f si)))
                  [(cons 'okay si*)
-                  (vector-set! states* i si*)
+                  (when update?
+                    (vector-set! states* i si*))
                   (vector-set! weights* i (* wi (get-field weight ctx)))]
                  [(cons 'fail _)
                   (vector-set! weights* i 0)])]
