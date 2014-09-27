@@ -91,29 +91,31 @@
 ;; Simulation & Inference
 
 (define NPARTICLES 100)
-(define STEPS 50)
+(define STEPS 100)
 (define terrain terrain3)
 
-(define xtrues
-  (let loop ([i 0] [xtrue (airplane-init #f)])
-    (if (< i STEPS)
-        (cons xtrue (loop (add1 i) (airplane-after-step xtrue)))
-        null)))
+(define xtrues (make-vector STEPS))
+(vector-set! xtrues 0 (airplane-init #f))
+(for ([i (in-range 1 STEPS)])
+  (vector-set! xtrues i (airplane-after-step (vector-ref xtrues (sub1 i)))))
 
 (define observed-altitudes
-  (for/list ([xtrue xtrues])
+  (for/vector ([xtrue (in-vector xtrues)])
     (observed-altimeter-reading xtrue terrain)))
 
-(define particless
-  (let loop ([ps (particles-update (make-particles NPARTICLES #f) airplane-init)]
-             [acc null]
-             [obss observed-altitudes])
-    (if (pair? obss)
-        (let* ([ps (particles-update ps (airplane-score terrain (car obss)))]
-               [ps* (particles-resample ps)]
-               [ps* (particles-update ps* airplane-after-step)])
-          (loop ps* (cons ps acc) (cdr obss)))
-        (reverse acc))))
+(define particless (make-vector STEPS))
+(for ([i (in-range STEPS)]
+      [obs (in-vector observed-altitudes)])
+  (let* ([prev-ps
+          (cond [(zero? i)
+                 (particles-update (make-particles NPARTICLES #f)
+                                   airplane-init)]
+                [else
+                 (particles-resample
+                  (vector-ref particless (sub1 i)))])]
+         [curr-ps (particles-update prev-ps airplane-after-step)]
+         [curr-ps (particles-score curr-ps (airplane-score terrain obs))])
+    (vector-set! particless i curr-ps)))
 
 (define (particles-mean ps)
   (define-values (ssum wsum)
