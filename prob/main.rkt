@@ -180,3 +180,7 @@
            (->* [] [(>/c 0) exact-positive-integer?] mh-transition?)]
           [slice
            (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]))
+
+(require "private/serializable-lambda.rkt")
+(provide lambda/s
+         define/s)
