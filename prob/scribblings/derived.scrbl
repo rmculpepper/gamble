@@ -100,7 +100,8 @@ Equivalent to the following, respectively:
 @defproc[(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
          any/c]
 @defproc[(discrete* [vals (non-empty-listof any/c)]
-                    [weights (non-empty-listof (>/c 0))])
+                    [weights (non-empty-listof (>/c 0))
+                             (make-vector (vector-length vals) 1)])
          any/c]
 ]]{
 

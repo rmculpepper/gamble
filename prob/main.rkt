@@ -5,7 +5,8 @@
 ;; A language for probabilistic programming
 
 #lang racket/base
-(require racket/contract)
+(require racket/contract
+         racket/dict)
 
 (module reader syntax/module-reader
   prob)
@@ -76,11 +77,13 @@
            (-> (vectorof (>=/c 0)) 
                any)]
           [discrete
-           (-> (or/c exact-positive-integer?
-                     (listof (cons/c any/c (>=/c 0))))
-               any)]
+           (-> dict? any)]
           [discrete*
-           (->* [list?] [(listof (>=/c 0))] any)]
+           (->* [(or/c list? vector?)]
+                [(or/c (listof (>=/c 0)) (vectorof (>=/c 0)))]
+                any)]
+          [discrete-uniform
+           (-> exact-positive-integer? any)]
           [geometric
            (->* [] [probability?] any)]
           [poisson

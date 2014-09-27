@@ -554,7 +554,11 @@
       (raise-argument-error 'dict->discrete-dist "(dict/c any/c (>=/c 0))" dict)))
   (make-discrete-dist* vs ws #:normalize? normalize? #:sort? #t))
 
-(define (make-discrete-dist* vs ws #:normalize? [normalize? #t] #:sort? [sort? #t])
+(define (make-discrete-dist* vs
+                             [ws (let ([len (vector-length vs)])
+                                   (make-vector len (/ len)))]
+                             #:normalize? [normalize? #t]
+                             #:sort? [sort? #t])
   (unless (= (vector-length vs) (vector-length ws))
     (error 'make-discrete-dist
            "values and weights vectors have different lengths\n  values: ~e\n  weights: ~e"

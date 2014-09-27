@@ -47,32 +47,25 @@
   (sample (categorical-dist weights)))
 
 ;; discrete : Nat -> Nat
-(define (discrete n/dist)
-  (discrete/weights 'discrete (map car n/dist) (map cdr n/dist)))
+(define (discrete dict)
+  (sample (make-discrete-dist dict)))
 
-;; discrete* : (Listof A) (Listof Prob) -> A
-(define (discrete* vals [weights #f])
-  (cond [(eq? weights #f)
-         (unless (pair? vals)
-           (error 'discrete* "empty values list"))
-         (list-ref vals (discrete-uniform (length vals)))]
-        [else
-         (unless (= (length vals) (length weights))
-           (error 'discrete*
-                  "values list and weights list have unequal lengths\n  values: ~e\n  weights: ~e"
-                  vals weights))
-         (discrete/weights 'discrete* vals weights)]))
+;; discrete* : (Listof/Vectorof A) (Listof/Vectorof Prob) -> A
+(define (discrete* vals0 [weights0 #f])
+  (let ([vals (if (list? vals0) (list->vector vals0) vals0)])
+    (cond [(eq? weights0 #f)
+           (sample (make-discrete-dist* vals))]
+          [else
+           (let ([weights (if (list? weights0) (list->vector weights0) weights0)])
+             (unless (= (vector-length vals) (vector-length weights))
+               (error 'discrete*
+                      "values and weights have unequal lengths\n  values: ~e\n  weights: ~e"
+                      vals0 weights0))
+             (sample (make-discrete-dist* vals weights)))])))
 
 ;; discrete-uniform : Nat -> Nat
 (define (discrete-uniform n)
   (sample (categorical-dist (make-vector n (/ n)))))
-
-;; discrete/weights : Symbol (Listof A) (Listof Prob) -> A
-(define (discrete/weights who vals probs)
-  (unless (positive? (apply + probs))
-    (error who "weights list sum is not positive\n  weights: ~e" probs))
-  (list-ref vals (inexact->exact
-                  (sample (categorical-dist (list->vector probs))))))
 
 ;; == Countable distributions ==
 
