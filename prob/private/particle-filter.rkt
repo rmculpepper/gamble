@@ -27,6 +27,9 @@
 (define (particles-update ps f [iters 1])
   (send ps update f iters))
 
+(define (particles-score ps f [iters 1])
+  (send ps update (lambda (st) (f st) st) iters))
+
 (define (particles-resample ps [count (particles-count ps)]
                             #:alg [alg #f])
   (send ps resample count alg))

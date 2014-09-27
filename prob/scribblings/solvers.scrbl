@@ -428,6 +428,18 @@ weight is the old particle's weight adjusted by observations performed
 by @racket[update-state].
 }
 
+@defproc[(particles-score [ps particles?]
+                          [score-state (-> any/c any)])
+         particles?]{
+
+Like @racket[particles-update], but the result of the
+@racket[score-state] function is ignored and the state of each
+particle is unchanged. Observations performed by @racket[score-state]
+still affect the new particles' weights.
+
+Equivalent to @racket[(particles-update ps (lambda (st) (score-state st) st))].
+}
+
 @defproc[(particles-resample [ps particles?]
                              [n exact-nonnegative-integer? (particles-count ps)]
                              [#:alg algorithm (or/c 'multinomial 'residual #f)

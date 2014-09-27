@@ -146,6 +146,10 @@
            (->* [particles? procedure?]
                 [exact-nonnegative-integer?]
                 particles?)]
+          [particles-score
+           (->* [particles? procedure?]
+                [exact-nonnegative-integer?]
+                particles?)]
           [particles-resample
            (->* [particles?]
                 [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
