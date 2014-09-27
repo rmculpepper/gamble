@@ -140,6 +140,10 @@
            (->* [exact-nonnegative-integer?]
                 [any/c]
                 particles?)]
+          [make-parallel-particles
+           (->* [exact-nonnegative-integer?]
+                [any/c]
+                particles?)]
           [particles-count
            (-> particles? exact-nonnegative-integer?)]
           [particles-update

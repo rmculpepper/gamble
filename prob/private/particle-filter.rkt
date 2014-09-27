@@ -19,10 +19,10 @@
        (weights (make-vector count 1))))
 
 (define (particles? ps)
-  (is-a? ps particles%))
+  (is-a? ps particles<%>))
 
 (define (particles-count ps)
-  (vector-length (get-field states ps)))
+  (send ps get-count))
 
 (define (particles-update ps f [iters 1])
   (send ps update f iters #t))
@@ -69,13 +69,14 @@
 (define particles<%>
   (interface ()
     update ;; (State -> State) Nat Boolean -> ParticleSet
+    resample ;; ... -> ParticleSet
+    get-count ;; -> Nat
     get-weighted-states ;; -> (vectorof (cons State Real))
     effective-sample-size ;; -> Real
-    resample ;; ... -> ParticleSet
     ))
 
 (define particles%
-  (class* object% ()
+  (class* object% (particles<%>)
     ;; states : (Vectorof State)
     ;; weights : (Vectorof Real)
     (init-field states weights)
@@ -114,6 +115,9 @@
               [else
                (vector-set! weights* i 0)])))
 
+    (define/public (get-count)
+      (vector-length states))
+
     (define/public (get-weighted-states)
       (for/vector ([si (in-vector states)]
                    [wi (in-vector weights)]
@@ -130,4 +134,92 @@
       (define states* (u:resample states weights count* #:alg alg))
       (define weights* (make-vector count* 1))
       (new particles% (states states*) (weights weights*)))
+    ))
+
+;; ============================================================
+
+(require racket/vector
+         racket/place
+         racket/future
+         racket/promise
+         racket/serialize
+         "place-util.rkt"
+         "serializable-lambda.rkt")
+(provide make-parallel-particles)
+
+;; Parallel Particle Sets are implemented by a list of
+;; HistoricalWorkers where State = ParticleSet. Use will-executor to
+;; forget previous times on GC.
+
+(define pp-executor (make-will-executor))
+(define pp-executor-thread
+  (thread
+   (lambda ()
+     (let loop ()
+       (will-execute pp-executor)
+       (loop)))))
+
+(define (make-parallel-particles n [initial-state #f])
+  (define managers (force the-managers))
+  (define num-workers (length managers))
+  ;; Round up, so may not get exactly n particles.
+  (define particles/worker (ceiling (/ n num-workers)))
+  ;; Create workers.
+  (define workers
+    (for/list ([manager (in-list managers)])
+      (new historical-worker% [manager manager])))
+  ;; Initialize each worker with its own ParticleSet.
+  (define nows
+    (for/list ([worker (in-list workers)])
+      (send worker update (send worker get-now)
+            (lambda/s (_) (make-particles particles/worker initial-state)))))
+  (new parallel-particles% [workers workers] [nows nows]))
+
+(define parallel-particles%
+  (class* object% (particles<%>)
+    ;; nows should always be list of |workers| copies of same number
+    (init-field workers nows)
+    (super-new)
+
+    (will-register pp-executor this (lambda (self) (send self finalize) this%))
+
+    ;; update : (State -> State) Nat Boolean -> ParticleSet
+    ;; If update? is #f, don't store result as new state (but do update weight).
+    (define/public (update f iters update?)
+      (define nows*
+        (for/list ([w (in-list workers)]
+                   [now (in-list nows)])
+          (send w update now (lambda/s (ps) (send ps update f iters update?)))))
+      (new parallel-particles% [workers workers] [nows nows*]))
+
+    (define/public (get-count)
+      (for/sum ([w (in-list workers)]
+                [now (in-list nows)])
+        (send w view now (lambda/s (ps) (send ps get-count)))))
+
+    (define/public (get-weighted-states)
+      (define wstatess
+        (for/list ([w (in-list workers)]
+                   [now (in-list nows)])
+          (send w view now (lambda/s (ps) (send ps get-weighted-states)))))
+      (apply vector-append wstatess))
+
+    (define/public (effective-sample-size)
+      ;; FIXME: is this actually additive?
+      (for/sum ([w (in-list workers)])
+        (send w view (lambda/s (ps) (send ps effective-sample-size)))))
+
+    (define/public (resample count alg)
+      (define count/worker (ceiling (/ count (length workers))))
+      (define nows*
+        (for/list ([w (in-list workers)]
+                   [now (in-list nows)])
+          (send w update now (lambda/s (ps) (send ps resample count/worker alg)))))
+      (new parallel-particles% [workers workers] [nows nows*]))
+
+    (define/public (finalize)
+      ;; Tell worker places to forget state.
+      (for ([w (in-list workers)]
+            [now (in-list nows)])
+        (send w forget now)))
     ))
