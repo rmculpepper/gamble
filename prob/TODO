@@ -2,8 +2,14 @@ Tentative plans for the near future:
 
 - catch up on docs, tests
 
-- test multivariate dists
-- drift kernel for multivariate dists
+- multivariate dists
+  - need tests
+  - need drift kernels
+
+- MH
+  - little lang of transitions
+  - parallel chains?
+  - simulated annealing
 
 - custom proposals that use info from trace (via labels??)
 
@@ -12,12 +18,6 @@ Tentative plans for the near future:
     when available. Zones nest, like Venture's "scope-include".
   - attach special conditions and derivatives to labels
 
-- weighted-sampler -> sampler via sampling-importance-resampling
-  - Sean is skeptical of my plans :(
-    incremental sampling (as opposed to "take N samples and done") seems hard
-- simulated annealing
-- calculate effective sample size
-  - typically for SMC, but maybe also for importance sampler?
 - evidence softening
 
 Longer term:
@@ -63,9 +63,6 @@ Longer term:
     as much as possible
 
 - testing and diagnostics
-
-- more diagnostics:
-  - MH: % of steps that used custom proposal vs resample
 
 ----
 
