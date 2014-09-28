@@ -69,3 +69,18 @@
 
 (define-syntax (for/matrix stx) (do-for/matrix 'for/matrix #'for/vector stx))
 (define-syntax (for*/matrix stx) (do-for/matrix 'for*/matrix #'for*/vector stx))
+
+;; ============================================================
+
+;; Deserialization Info
+
+;; The reason for this peculiar hack is to avoid the overhead of
+;; deserialize dynamic-requiring a "variable" from a typed module
+;; (matrix-base.rkt), which TR actually turns into an indirection
+;; macro, necessitating an eval rather than a simple env lookup.
+
+;; Without this hack, EACH deserialization takes ~150ms (on my laptop).
+;; With this change, each deserialization takes ~1ms.
+
+(provide array-deserialize-info-v0)
+(define array-deserialize-info-v0 t:array-deserialize-info-v0)

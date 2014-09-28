@@ -5,8 +5,10 @@
 ;; Defines wrapped (monomorphic) types used by prob/matrix.
 
 #lang typed/racket/base
-(require (prefix-in t: math/array)
-         (prefix-in t: math/matrix))
+(require racket/match
+         (prefix-in t: math/array)
+         (prefix-in t: math/matrix)
+         "matrix-type-env.rkt")
 (provide (struct-out ImmArray)
          (struct-out MutArray)
          Array
@@ -15,6 +17,34 @@
          Matrix
          ImmMatrix
          MutMatrix)
+
+;; ----------------------------------------
+;; Serialization
+
+(provide t:array-deserialize-info-v0)
+(define t:array-deserialize-info-v0
+  ((inst make-deserialize-info* Array)
+   (lambda (v)
+     (match (cast v (Vector Boolean t:Indexes (Vectorof Real)))
+       [(vector mutable? indexes contents)
+        (let ([marr (t:vector->array indexes contents)])
+          (if mutable?
+              (MutArray marr)
+              (ImmArray (t:array-map (inst values Real) marr))))]))))
+
+(define array-serialize-info-v0
+  ((inst make-serialize-info Array (Vector Boolean t:Indexes (Vectorof Real)))
+   (lambda (a)
+     (define arr (Array-contents a))
+     (vector (t:mutable-array? arr)
+             (t:array-shape arr)
+             (t:array->vector arr)))
+   ;; HACK: see comments in matrix-syntax.rkt
+   (cons 'array-deserialize-info-v0
+         (module-path-index-join '(lib "prob/private/matrix-syntax.rkt") #f))
+   #f
+   ;; FIXME:
+   (current-directory)))
 
 ;; ----------------------------------------
 ;; Printing
@@ -52,10 +82,12 @@
 
 (struct: ImmArray ([contents : (t:Array Real)])
          #:transparent
+         #:property prop:serializable array-serialize-info-v0
          ;; #:property prop:custom-write print-imm
          #:property prop:custom-print-quotable 'never)
 (struct: MutArray ([contents : (t:Mutable-Array Real)])
          #:transparent
+         #:property prop:serializable array-serialize-info-v0
          ;; #:property prop:custom-write print-mut
          #:property prop:custom-print-quotable 'never)
 (define-type Array (U ImmArray MutArray))
