@@ -160,7 +160,7 @@
        (loop)))))
 
 (define (make-parallel-particles n [initial-state #f])
-  (define managers (force the-managers))
+  (define managers (get-managers))
   (define num-workers (length managers))
   ;; Round up, so may not get exactly n particles.
   (define particles/worker (ceiling (/ n num-workers)))
@@ -181,7 +181,7 @@
     (init-field workers nows)
     (super-new)
 
-    (will-register pp-executor this (lambda (self) (send self finalize) this%))
+    (will-register pp-executor this (lambda (self) (send self finalize)))
 
     ;; update : (State -> State) Nat Boolean -> ParticleSet
     ;; If update? is #f, don't store result as new state (but do update weight).

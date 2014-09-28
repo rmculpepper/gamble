@@ -15,6 +15,14 @@
 ;; FIXME/TODO:
 ;; - adjust protocols to propagate exceptions
 
+;; Clean up place when manager client object is GC'd. Thus, every
+;; worker should maintain ref to manager to keep alive.
+;; Clean up worker thread when worker client object is GC'd.
+
+(define p-executor (make-will-executor))
+(define p-executor-thread
+  (thread (lambda () (let loop () (will-execute p-executor) (loop)))))
+
 
 ;; == Manager protocols:
 
@@ -29,12 +37,19 @@
     (super-new)
     (field [ws (place in (manager-server-loop in))])
 
+    (will-register p-executor this (lambda (self) (send self finalize)))
+
     (define/public (spawn proc)
       (define-values (here there) (place-channel))
       (place-channel-put ws (list 'spawn there (serialize proc)))
       here)
     (define/public (quit)
       (place-channel-put ws (list 'quit)))
+
+    (define/public (finalize)
+      (place-channel-put ws (list 'quit))
+      (sleep 0.01)
+      (place-kill ws))
     ))
 
 (define (manager-server-loop in)
@@ -49,8 +64,14 @@
 
 ;; ------------------------------------------------------------
 
-(define the-managers
-  (delay (for/list ([i (processor-count)]) (new manager%))))
+(define the-managers-cache (make-weak-box #f))
+
+(define (get-managers)
+  (let ([ms (weak-box-value the-managers-cache)])
+    (or ms
+        (let ([ms (for/list ([i (processor-count)]) (new manager%))])
+          (set! the-managers-cache (make-weak-box ms))
+          ms))))
 
 ;; ------------------------------------------------------------
 
@@ -74,10 +95,12 @@
 
 (define stateful-worker%
   (class object%
-    (init manager)
+    (init-field manager)
     (super-new)
 
     (field [sws (send manager spawn stateful-worker-loop)])
+
+    (will-register p-executor this (lambda (self) (send self finalize)))
 
     (define/public (update proc)
       (place-channel-put sws (list 'update (serialize proc))))
@@ -93,6 +116,9 @@
       (place-channel-put sws (list 'set (serialize value))))
     (define/public (quit)
       (place-channel-put sws (list 'quit)))
+
+    (define/public (finalize)
+      (quit))
     ))
 
 (define/s (stateful-worker-loop c)
@@ -119,7 +145,7 @@
 
 (define historical-worker%
   (class object%
-    (init manager)
+    (init-field manager)
     (super-new)
 
     ;; sw : StatefulWorker[ImmutableHash[Nat => State]]
