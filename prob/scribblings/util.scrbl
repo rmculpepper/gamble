@@ -222,6 +222,16 @@ Returns @racket[#t] if @racket[m] is a square, symmetric matrix,
 @racket[#f] otherwise.
 }
 
+@deftogether[[
+@defproc[(array-sqrt/nan [a array?]) array?]
+@defproc[(array-sqrt/err [a array?]) array?]
+]]{
+
+Like @racket[math:array-sqrt], but for negative entries either returns
+@racket[+nan.0] or raises an error, so as to avoid producing an array
+of complex numbers.
+}
+
 @defproc[(matrix-cholesky [m matrix?])
          matrix?]{
 

@@ -11,6 +11,8 @@
          make-mutable-matrix
          matrix-set!
          matrix-symmetric?
+         array-sqrt/nan
+         array-sqrt/err
          matrix-cholesky
          matrix-ldl)
 
@@ -42,6 +44,26 @@
              (= (matrix-ref m i j)
                 (matrix-ref m j i))))]
         [else #f]))
+
+;; ----------------------------------------
+
+(: array-sqrt/nan : (Array Real) -> (Array Real))
+(define (array-sqrt/nan a)
+  (array-map sqrt/nan a))
+
+(: array-sqrt/err : (Array Real) -> (Array Real))
+(define (array-sqrt/err a)
+  (array-map sqrt/err a))
+
+(: sqrt/nan : Real -> Real)
+(define (sqrt/nan x)
+  (if (negative? x) +nan.0 (sqrt x)))
+
+(: sqrt/err : Real -> Real)
+(define (sqrt/err x)
+  (if (negative? x)
+      (error 'array-sqrt/err "got negative number: ~e" x)
+      (sqrt x)))
 
 ;; ----------------------------------------
 

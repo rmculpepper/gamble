@@ -460,3 +460,5 @@
 (Wrap matrix-symmetric? : Matrix -> Boolean)
 (Wrap matrix-cholesky : Matrix -> Matrix)
 (Wrap make-mutable-matrix : Index Index Real -> MutMatrix)
+(Wrap array-sqrt/nan : Array -> Array)
+(Wrap array-sqrt/err : Array -> Array)
