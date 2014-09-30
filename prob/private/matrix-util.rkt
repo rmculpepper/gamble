@@ -69,13 +69,17 @@
 
 (: matrix-cholesky : (Matrix Real) -> (Matrix Real))
 (define (matrix-cholesky A)
+  (unless (matrix-symmetric? A)
+    (error 'matrix-cholesky "expected symmetric matrix\n  given: ~e" A))
   ;; check square, symmetric
   ;; FIXME: quick check: diagonal?
   (define n (square-matrix-size A))
   (define L ((inst array->mutable-array Real) (make-matrix n n 0.0)))
   (define (real-sqrt [x : Real])
     (define r (sqrt x))
-    (if (real? r) r +nan.0))
+    (if (real? r)
+        r
+        (error 'matrix-cholesky "expected positive-definite matrix\n  given: ~e" A)))
   (for ([j (in-range n)])
     (for ([i (in-range j n)])
       (define Aij (matrix-ref A i j))
