@@ -253,7 +253,8 @@ Returns @racket[#t] if @racket[v] represents a @tech{MH transition},
 @racket[#f] otherwise.
 }
 
-@defproc[(single-site [#:zone zone-pattern any/c #f])
+@defproc[(single-site [#:zone zone-pattern any/c #f]
+                      [#:record-obs? record-obs? boolean? #t])
          mh-transition?]{
 
 A transition that proposes a new state by randomly (uniformly)
@@ -264,9 +265,18 @@ selecting a single random choice in any zone matching
 
 A @deftech{zone pattern} matches a zone if the two values are
 @racket[equal?] or if the zone pattern is @racket[#f].
+
+If the set of observations in the probabilistic program is always the
+same (that is, the parameters may change, but the number of
+observations and the observed values stay the same), then it is safe
+to set @racket[record-obs?] to @racket[#f] to avoid creating database
+entries for observations. This can improve the efficiency of typical
+programs. If the observation set changes from run to run, however,
+then @racket[record-obs?] must be @racket[#t].
 }
 
-@defproc[(multi-site [#:zone zone-pattern any/c #f])
+@defproc[(multi-site [#:zone zone-pattern any/c #f]
+                     [#:record-obs? record-obs? boolean? #t])
          mh-transition?]{
 
 A transition that proposes a new state by perturbing @emph{all} random
