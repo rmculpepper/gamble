@@ -98,6 +98,8 @@
            (->* [] [(>/c 0)] any)]
           [gamma
            (->* [] [(>/c 0) (>/c 0)] any)]
+          [inverse-gamma
+           (->* [] [(>/c 0) (>/c 0)] any)]
           [logistic
            (->* [] [real? (>/c 0)] any)]
           [normal
@@ -106,6 +108,14 @@
            (-> (>/c 0) (>/c 0) any)]
           [uniform
            (->* [] [real? real?] any)]
+          [dirichlet
+           (-> (vectorof (>/c 0)) any)]
+          [multi-normal
+           (-> col-matrix? square-matrix? any)]
+          [wishart
+           (-> real? square-matrix? any)]
+          [inverse-wishart
+           (-> real? square-matrix? any)]
           [factor
            (-> real? any)]))
 

@@ -96,6 +96,32 @@ Equivalent to the following, respectively:
 ]
 }
 
+@defproc[(dirichlet [alpha (vectorof (>/c 0))])
+         (vectorof (>/c 0))]{
+
+Equivalent to @racket[(sample (dirichlet-dist alpha))].
+}
+
+@deftogether[[
+@defproc[(multi-normal [mean col-matrix?]
+                       [cov square-matrix?])
+         col-matrix?]
+@defproc[(wishart [n real?]
+                  [V square-matrix?])
+         square-matrix?]
+@defproc[(inverse-wishart [n real?]
+                          [Vinv square-matrix?])
+         square-matrix?]
+]]{
+
+Equivalent to the following, respectively:
+@racketblock[
+(sample (multi-normal-dist mean cov))
+(sample (wishart-dist n V))
+(sample (inverse-wishart-dist n Vinv))
+]
+}
+
 @deftogether[[
 @defproc[(discrete [weighted-vals (listof (cons/c any/c (>=/c 0)))])
          any/c]

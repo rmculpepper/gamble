@@ -100,6 +100,9 @@
 (define (gamma [shape 1] [scale 1])
   (sample (gamma-dist shape scale)))
 
+(define (inverse-gamma [shape 1] [scale 1])
+  (sample (inverse-gamma shape scale)))
+
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
   (sample (logistic-dist mean scale)))
@@ -120,6 +123,20 @@
     [(max) (uniform 0 max)]
     [(min max)
      (sample (uniform-dist min max))]))
+
+;; ========================================
+
+(define (dirichlet alpha)
+  (sample (dirichlet-dist alpha)))
+
+;; ========================================
+
+(define (multi-normal mean cov)
+  (sample (multi-normal-dist mean cov)))
+(define (wishart n V)
+  (sample (wishart-dist n V)))
+(define (inverse-wishart n V)
+  (sample (inverse-wishart n V)))
 
 ;; ========================================
 
