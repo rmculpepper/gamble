@@ -206,7 +206,8 @@
 
 (define perturb-mh-transition-base%
   (class mh-transition-base%
-    (init-field record-obs?)
+    (init-field record-obs?
+                [temperature 1])
     (field [proposed 0]
            [resampled 0])
     (super-new)
@@ -283,6 +284,7 @@
 (define single-site-mh-transition%
   (class perturb-mh-transition-base%
     (inherit perturb-a-key)
+    (inherit-field temperature)
     (init-field [zone #f])
     (super-new)
 
@@ -322,7 +324,7 @@
                        0 ;; already in ll-diff
                        (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))])
               (+ R-F (accept-threshold/nchoices nchoices last-nchoices)
-                 ll-diff ll-diff-obs)))))
+                 (/ (+ ll-diff ll-diff-obs)) temperature)))))
 
     (define/private (accept-threshold/nchoices nchoices last-nchoices)
       ;; Account for backward and forward likelihood of picking
@@ -350,6 +352,7 @@
 (define multi-site-mh-transition%
   (class perturb-mh-transition-base%
     (inherit perturb-a-key)
+    (inherit-field temperature)
     (init-field [zone #f])
     (super-new)
 
@@ -385,7 +388,7 @@
                  (if record-obs?
                      0 ;; already in ll-diff
                      (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))])
-            (+ R-F ll-diff ll-diff-obs))))
+            (+ R-F (/ (+ ll-diff ll-diff-obs) temperature)))))
     ))
 
 (define single-site-slice-mh-transition%
