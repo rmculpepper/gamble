@@ -1,5 +1,9 @@
 Tentative plans for the near future:
 
+- BUG: in DrRacket w/ debugging: #%plain-module-begin error
+- BUG: Aleksey's program w/ lifted ids
+- example of zones
+
 - catch up on docs, tests
 
 - multivariate dists
