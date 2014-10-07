@@ -309,33 +309,34 @@
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     ;; Computes (log) accept threshold for current trace.
     (define/override (accept-threshold last-trace R-F current-trace ll-diff record-obs?)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (defmatch (trace _ current-db nchoices _ _) current-trace)
-      (let ([nchoices
-             (cond [(eq? zone #f) nchoices]
-                   [else (db-count-unpinned current-db #:zone zone)])]
-            [last-nchoices
-             (cond [(eq? zone #f) last-nchoices]
-                   [else (db-count-unpinned last-db #:zone zone)])])
-        (if (zero? last-nchoices)
-            +inf.0
-            (let ([ll-diff-obs
-                   (if record-obs?
-                       0 ;; already in ll-diff
-                       (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))])
-              (+ R-F (accept-threshold/nchoices nchoices last-nchoices)
-                 (/ (+ ll-diff ll-diff-obs)) temperature)))))
+      (define ll-diff-obs
+        (if record-obs?
+            0 ;; already in ll-diff
+            (- (trace-ll-obs current-trace) (trace-ll-obs last-trace))))
+      (+ R-F (accept-threshold/nchoices last-trace current-trace)
+         (/ (+ ll-diff ll-diff-obs) temperature)))
 
-    (define/private (accept-threshold/nchoices nchoices last-nchoices)
+    (define/private (accept-threshold/nchoices last-trace current-trace)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
-      ;; Note: assumes we pick uniformly from all choices.
-      ;; R = (log (/ 1 nchoices))        =(- (log nchoices))
-      ;; F = (log (/ 1 last-nchoices))   = (- (log last-nchoices))
-      ;; convert to inexact so (log 0.0) = -inf.0
-      (define R (- (log (exact->inexact nchoices))))
-      (define F (- (log (exact->inexact last-nchoices))))
-      (- R F))
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ current-db nchoices _ _) current-trace)
+      (cond [(zero? last-nchoices)
+             +inf.0]
+            [else
+             (define nchoices*
+               (cond [(eq? zone #f) nchoices]
+                     [else (db-count-unpinned current-db #:zone zone)]))
+             (define last-nchoices*
+               (cond [(eq? zone #f) last-nchoices]
+                     [else (db-count-unpinned last-db #:zone zone)]))
+             ;; Note: assumes we pick uniformly from all choices.
+             ;; R = (log (/ 1 nchoices))        =(- (log nchoices))
+             ;; F = (log (/ 1 last-nchoices))   = (- (log last-nchoices))
+             ;; convert to inexact so (log 0.0) = -inf.0
+             (define R (- (log (exact->inexact nchoices*))))
+             (define F (- (log (exact->inexact last-nchoices*))))
+             (- R F)]))
     ))
 
 ;; pick-a-key : DB -> (U Address #f)
@@ -347,7 +348,6 @@
           [else (db-count-unpinned db #:zone zone)]))
   (and (positive? nchoices/zone)
        (db-nth-unpinned db (random nchoices/zone) #:zone zone)))
-
 
 (define multi-site-mh-transition%
   (class perturb-mh-transition-base%
@@ -383,7 +383,6 @@
       (if (zero? last-nchoices)
           +inf.0
           ;; FIXME: what if nchoices != last-nchoices ???
-          ;; FIXME: nchoices, last-nchoices are not zone-specific
           (let ([ll-diff-obs
                  (if record-obs?
                      0 ;; already in ll-diff
