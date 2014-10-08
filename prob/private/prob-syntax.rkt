@@ -143,7 +143,8 @@
   (syntax-parse stx
     [(mh-sampler def:expr ... result:expr
                  (~or (~optional (~seq #:when condition:expr))
-                      (~optional (~seq #:transition tx))))
+                      (~optional (~seq #:transition tx)))
+                 ...)
      #:declare tx (expr/c #'mh-transition?)
      (template
       (mh-sampler*
