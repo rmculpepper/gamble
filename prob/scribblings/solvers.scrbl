@@ -295,6 +295,20 @@ The @racket[scale-factor] argument controls the width parameter used
 to find the slice bounds.
 }
 
+@defproc[(enumerative-gibbs [#:zone zone-pattern any/c #f]
+                            [#:record-obs? record-obs? boolean? #t])
+         mh-transition?]{
+
+A transition that chooses a single random choice from a zone matching
+@racket[zone-pattern] and resamples it from its full conditional
+probability distribution given the values of all of the other choices
+in the program. The distribution of the choice to be perturbed must be
+finite; otherwise, an error is raised.
+
+Note: unlike traditional Gibbs sampling, this transition picks a
+choice at random rather than perturbing all choices round-robin.
+}
+
 @defproc[(hmc [epsilon (>/c 0) 0.01]
               [L exact-positive-integer? 10]
               [#:zone zone-pattern any/c #f])
@@ -346,7 +360,7 @@ produce samples.
 @; ----------------------------------------
 @subsection[#:tag "hmc-utils"]{Specifying Derivatives for HMC}
 
-The @racket[hmc] transition requires that all the distrubutions in the
+The @racket[hmc] transition requires that all the distributions in the
 model are continuous.  It further requires partial derivatives for
 each parameter of the distribution of each random variable in terms of
 any previous random variable. Such information is provided using the

@@ -196,7 +196,9 @@
           [hmc
            (->* [] [(>/c 0) exact-positive-integer?] mh-transition?)]
           [slice
-           (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]))
+           (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]
+          [enumerative-gibbs
+           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]))
 
 (require "private/serializable-lambda.rkt")
 (provide lambda/s

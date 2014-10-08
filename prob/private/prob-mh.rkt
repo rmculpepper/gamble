@@ -20,7 +20,8 @@
          single-site
          multi-site
          hmc
-         slice)
+         slice
+         enumerative-gibbs)
 
 ;; ProposalMap = hash[ Zone => (listof ProposalFun) ])
 ;; where ProposalFun = (Dist Value -> (U (cons Value Real) #f))
@@ -138,7 +139,7 @@
 
 ;; ============================================================
 
-;; A RunResult is one of
+;; A TransitionResult is one of
 ;; - Trace  -- run completed, threshold already checked (if applicable)
 ;; - #f     -- run failed or mh-rejected
 
@@ -150,7 +151,8 @@
 
 (define mh-transition<%>
   (interface ()
-    run ;; (-> A) Trace -> RunResult
+    run  ;; (-> A) Trace -> RunResult
+    info ;; Nat -> Void
     ))
 
 (define (iprintf i fmt . args)
@@ -203,6 +205,7 @@
     ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
     (abstract run*)
     ))
+
 
 (define perturb-mh-transition-base%
   (class mh-transition-base%
@@ -409,7 +412,7 @@
     (define/public (run thunk last-trace)
       (set! run-counter (add1 run-counter))
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (define key-to-change (pick-a-key last-nchoices last-db #f))
+      (define key-to-change (pick-a-key last-nchoices last-db zone))
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
       (unless key-to-change
@@ -481,6 +484,79 @@
                (loop value* hi)
                (loop lo value*))])))
     ))
+
+(define enumerative-gibbs-mh-transition%
+  (class* object% (mh-transition<%>)
+    (init-field [zone #f]
+                [record-obs? #t])
+    (field [run-counter 0]
+           [eval-counter 0])
+    (super-new)
+
+    (define/public (info i)
+      (iprintf "== Transition (enumerative-gibbs #:zone ~e)\n" zone)
+      (iprintf "Total runs: ~s\n" run-counter)
+      (iprintf "Total evals: ~s\n" eval-counter))
+
+    ;; run : (-> A) Trace -> TransitionResult
+    (define/public (run thunk last-trace)
+      (set! run-counter (add1 run-counter))
+      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (define key-to-change (pick-a-key last-nchoices last-db zone))
+      (when (verbose?)
+        (eprintf "# perturb: changing ~s\n" key-to-change))
+      (unless key-to-change
+        (error 'enumerative-gibbs:run "no key to change"))
+      (match (hash-ref last-db key-to-change)
+        [(entry zones dist value ll #f)
+         (unless (finite-dist? dist)
+           (error 'enumerative-gibbs:run
+                  "chosen distribution is not finite\n  dist: ~e"
+                  dist))
+         (perturb/gibbs key-to-change value dist zones thunk last-trace)]))
+
+    (define/private (perturb/gibbs key-to-change value dist zones thunk last-trace)
+      (define (make-entry value*)
+        (entry zones dist value* (dist-pdf dist value* #t) #f))
+      (define enum (dist-enum dist))
+      (define conditional-dist
+        (make-discrete-dist
+         (for*/list ([value* (dist-enum dist)]
+                     [ll* (in-value (dist-pdf dist value* #t))]
+                     #:when (ll-possible? ll*))
+           (cond [(equal? value* value)
+                  (when (verbose?)
+                    (eprintf "# considering ~e (last value)\n" value*))
+                  (cons last-trace (exp (trace-ll last-trace)))]
+                 [else
+                  (define entry* (make-entry value*))
+                  (define delta-db (hash key-to-change entry*))
+                  (when (verbose?)
+                    (eprintf "# considering ~e\n" value*))
+                  (define ctx (new db-stochastic-ctx%
+                                   (last-db (trace-db last-trace))
+                                   (delta-db delta-db)
+                                   (record-obs? record-obs?)))
+                  (match (send ctx run thunk)
+                    [(cons 'okay sample-value)
+                     (define current-db (get-field current-db ctx))
+                     (define nchoices (get-field nchoices ctx))
+                     (define ll-free (get-field ll-free ctx))
+                     (define ll-obs (get-field ll-obs ctx))
+                     (define current-trace
+                       (trace sample-value current-db nchoices ll-free ll-obs))
+                     (define ll (+ ll-free ll-obs))
+                     (cons current-trace (exp ll))]
+                    [(cons 'fail fail-reason)
+                     (cons #f 0)])]))))
+      (define t (dist-sample conditional-dist))
+      (when (verbose?)
+        (eprintf "# chose ~e w/ prob ~s\n"
+                 (entry-value (hash-ref (trace-db t) key-to-change))
+                 (dist-pdf conditional-dist t)))
+      t)
+    ))
+
 
 #|
 HMC - Hamiltonian Monte Carlo
@@ -644,6 +720,8 @@ choices do not affect control flow through the probabilistic program).
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
 (define (slice #:scale [scale-factor 1] #:zone [zone #f])
   (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
+(define (enumerative-gibbs #:zone [zone #f] #:record-obs? [record-obs? #t])
+  (new enumerative-gibbs-mh-transition% (zone zone) (record-obs? record-obs?)))
 (define (rerun)
   the-rerun-mh-transition)
 
