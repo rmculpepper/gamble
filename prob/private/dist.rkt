@@ -61,7 +61,7 @@
 (struct real-range (min max) #:prefab)
 
 ;; dist-support : Dist -> Support
-(define (dist-support d)  (*support d))
+(define (dist-support d) (*support d))
 
 ;; Returns #t if dist is necessarily {integer,real}-valued.
 ;; Note: a discrete-dist that happens to have integer values is NOT integer-dist?.

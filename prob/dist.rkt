@@ -518,6 +518,7 @@
    [ws vector?]
    [wsum real?])
   #:any #:enum vs
+  #:support 'finite
   #:no-provide
   #:property prop:custom-write
   (lambda (obj port mode)
