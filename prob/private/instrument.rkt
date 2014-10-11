@@ -76,12 +76,12 @@ distinct call-site indexes.
 (define-syntax (instrumenting-module-begin stx)
   (syntax-case stx ()
     [(instrumenting-module-begin form ...)
-     (with-syntax ([e-module-body
+     (with-syntax ([(_pmb e-form ...)
                     (analyze
-                     (local-expand #'(#%module-begin form ...)
+                     (local-expand #'(#%plain-module-begin form ...)
                                    'module-begin
                                    null))])
-       #'(instrument e-module-body #:nt))]))
+       #'(#%module-begin (instrument e-form #:nt) ...))]))
 
 (define-syntax (instrumenting-top-interaction stx)
   (syntax-case stx ()
