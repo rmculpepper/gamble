@@ -26,6 +26,9 @@
 (require "dist.rkt")
 (provide (all-from-out "dist.rkt"))
 
+(require "private/dist-define.rkt")
+(provide define-dist-type)
+
 (require "matrix.rkt")
 (provide (all-from-out "matrix.rkt"))
 

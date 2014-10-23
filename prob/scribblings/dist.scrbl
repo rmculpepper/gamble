@@ -481,4 +481,49 @@ normalized, the function may return @racket[d].
 Returns the values and weights of @racket[d], respectively.
 }
 
+
+@section[#:tag "dist-define"]{Defining New Probability Distributions}
+
+@defform[(define-dist-type dist-name ([field-id field-ctc] ...)
+           #:pdf pdf-fun
+           #:sample sample-fun
+           dist-option ...)
+         #:grammar
+         ([dist-option (code:line #:cdf cdf-fun)
+                       (code:line #:inv-cdf inv-cdf-fun)
+                       (code:line #:guard guard-fun)
+                       (code:line #:extra [struct-option ...])
+                       (code:line #:no-provide)])
+         #:contracts
+         ([field-ctc contract?]
+          [pdf-fun (field-ctc ... any/c boolean? . -> . real?)]
+          [cdf-fun (field-ctc ... any/c boolean? boolean? . -> . real?)]
+          [inv-cdf-fun (field-ctc ... real? boolean? boolean? . -> . any/c)]
+          [sample-fun (field-ctc ... . -> . any/c)])]{
+
+Defines @racket[dist-name] as a new distribution type. In particular,
+@racket[dist-name] is a struct implementing the internal generic
+interface representing distributions.
+
+At a minimum, the new distribution type must supply a probability
+density/mass function (@racket[pdf-fun]) and a sampling function
+(@racket[sample-fun]). The type may also supply a cumulative
+probability function (@racket[cdf-fun]) and inverse
+(@racket[inv-cdf-fun]). The signatures of the functions are like
+@racket[dist-pdf], @racket[dist-sample], etc, but instead of the
+distribution itself, they accept the fields of the distribution as the
+initial arguments.
+
+The @racket[guard-fun] is a struct guard function; see
+@racket[make-struct-type] for details. Other struct options may be
+passed via the @racket[#:extra] option. Distribution types are
+automatically transparent.
+
+By default, @racket[dist-name], @racket[_dist-name?], and the
+synthesized accessors are provided with the @racket[field-ctc]
+contracts. The @racket[#:no-provide] option disables automatic
+providing, in which case the @racket[field-ctc]s are ignored.
+}
+
+
 @(close-eval the-eval)
