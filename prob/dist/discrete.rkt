@@ -4,17 +4,10 @@
 
 #lang racket/base
 (require (for-syntax racket/base
-                     syntax/parse
-                     syntax/parse/experimental/template
-                     syntax/parse/experimental/eh
-                     racket/syntax)
+                     syntax/parse)
          racket/contract
-         racket/match
-         racket/math
          racket/pretty
          racket/dict
-         racket/generic
-         racket/flonum
          racket/vector
          "../private/dist.rkt"
          "../private/dist-define.rkt"

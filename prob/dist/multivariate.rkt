@@ -3,38 +3,12 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base
-                     syntax/parse
-                     syntax/parse/experimental/template
-                     syntax/parse/experimental/eh
-                     racket/syntax)
-         racket/contract
-         racket/match
-         racket/math
-         racket/pretty
-         racket/dict
-         racket/generic
-         racket/flonum
-         racket/vector
-         (prefix-in m: math/distributions)
-         (prefix-in m: math/special-functions)
+(require racket/contract
          "../private/dist.rkt"
          "../private/dist-define.rkt"
          "../private/dist-impl.rkt"
          "../matrix.rkt")
 (provide #| implicit in define-dist-type |#)
-
-;; If every q is 0, returns 0 without evaluating e.
-(define-syntax-rule (ifnz [q ...] e)
-  (if (and (zero? q) ...) 0 e))
-
-;; Multiply, but short-circuit if first arg evals to 0.
-(define-syntax-rule (lazy* a b ...)
-  (let ([av a]) (ifnz [av] (* av b ...))))
-
-(define (digamma x) (m:psi0 x))
-
-;; ----
 
 (define-dist-type multi-normal-dist
   ([mean col-matrix?] [cov square-matrix?])

@@ -4,7 +4,6 @@
 
 #lang racket/base
 (require racket/contract
-         racket/dict
          "private/dist.rkt"
          "dist/univariate.rkt"
          "dist/multivariate.rkt"
