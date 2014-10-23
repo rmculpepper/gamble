@@ -35,23 +35,23 @@
 ;; Bernoulli dist functions
 ;; -- math/dist version converts exact->inexact
 
-(define (rawbernoulli-pdf prob v log?)
+(define (bernoulli-pdf prob v log?)
   (define p
     (cond [(= v 0) (- 1 prob)]
           [(= v 1) prob]
           [else 0]))
   (convert-p p log? #f))
-(define (rawbernoulli-cdf prob v log? 1-p?)
+(define (bernoulli-cdf prob v log? 1-p?)
   (define p
     (cond [(< v 0) 0]
           [(< v 1) (- 1 prob)]
           [else 1]))
   (convert-p p log? 1-p?))
-(define (rawbernoulli-inv-cdf prob p0 log? 1-p?)
+(define (bernoulli-inv-cdf prob p0 log? 1-p?)
   (define p (unconvert-p p0 log? 1-p?))
   (cond [(<= p (- 1 prob)) 0]
         [else 1]))
-(define (rawbernoulli-sample prob)
+(define (bernoulli-sample prob)
   (if (<= (random) prob) 1 0))
 
 
@@ -59,16 +59,16 @@
 ;; Categorical weighted dist functions
 ;; -- Assume weights are nonnegative, normalized.
 
-(define (rawcategorical-pdf probs k log?)
+(define (categorical-pdf probs k log?)
   (unless (< k (vector-length probs))
     (error 'categorical-dist:pdf "index out of bounds\n  index: ~e\n  bounds: [0,~s]"
            k (sub1 (vector-length probs))))
   (define l (vector-ref probs k))
   (if log? (log l) l))
-(define (rawcategorical-cdf probs k log? 1-p?)
+(define (categorical-cdf probs k log? 1-p?)
   (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
   (convert-p p log? 1-p?))
-(define (rawcategorical-inv-cdf probs p0 log? 1-p?)
+(define (categorical-inv-cdf probs p0 log? 1-p?)
   (define p (unconvert-p p0 log? 1-p?))
   (let loop ([i 0] [p p])
     (cond [(>= i (vector-length probs))
@@ -77,26 +77,22 @@
            i]
           [else
            (loop (add1 i) (- p (vector-ref probs i)))])))
-(define (rawcategorical-sample probs)
-  (rawcategorical-inv-cdf probs (random) #f #f))
+(define (categorical-sample probs)
+  (categorical-inv-cdf probs (random) #f #f))
 
 
 ;; ------------------------------------------------------------
 ;; Discrete dist support functions
 ;; -- Weights are not normalized
 
-(define (raw*discrete-pdf vs ws wsum x log?)
+(define (discrete-pdf vs ws wsum x log?)
   (define p
     (or (for/or ([v (in-vector vs)]
                  [w (in-vector ws)])
           (and (equal? x v) (/ w wsum)))
         0))
   (convert-p p log? #f))
-(define (raw*discrete-cdf vs ws wsum x log? 1-p?)
-  (error 'discrete-dist:cdf "undefined"))
-(define (raw*discrete-inv-cdf vs ws wsum x log? 1-p?)
-  (error 'discrete-dist:inv-cdf "undefined"))
-(define (raw*discrete-sample vs ws wsum)
+(define (discrete-sample vs ws wsum)
   (define p (* (random) wsum))
   (let loop ([i 0] [p p])
     (unless (< i (vector-length ws))
@@ -130,16 +126,12 @@
   (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
      (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
 
-(define (rawdirichlet-pdf alpha x log?)
+(define (dirichlet-pdf alpha x log?)
   (define p
     (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
        (multinomial-beta alpha)))
   (convert-p p log? #f))
-(define (rawdirichlet-cdf alpha x log? 1-p?)
-  (error 'dirichlet-dist:cdf "not defined"))
-(define (rawdirichlet-inv-cdf alpha x log? 1-p?)
-  (error 'dirichlet-dist:inv-cdf "not defined"))
-(define (rawdirichlet-sample alpha)
+(define (dirichlet-sample alpha)
   ;; TODO: batch gamma sampling when all alphas same?
   (define n (vector-length alpha))
   (define x (make-vector n))
@@ -187,7 +179,7 @@
 ;; ------------------------------------------------------------
 ;; Multivariate normal dist functions
 
-(define (rawmulti-normal-pdf mean cov x log?)
+(define (multi-normal-pdf mean cov x log?)
   (define k (matrix-num-rows mean))
   (unless (col-matrix? x)
     (error 'multi-normal-dist:pdf
@@ -204,11 +196,7 @@
                                         (memo-matrix-inverse cov)
                                         x-mean)))))))
   (convert-p p log? #f))
-(define (rawmulti-normal-cdf . _)
-  (error 'multi-normal-dist:cdf "not defined"))
-(define (rawmulti-normal-inv-cdf . _)
-  (error 'multi-normal0dist:inv-cdf "not defined"))
-(define (rawmulti-normal-sample mean cov)
+(define (multi-normal-sample mean cov)
   (define n (matrix-num-rows mean))
   (define A (memo-matrix-cholesky cov)) ;; FIXME: cache!
   (define snv (flvector->vector (m:flnormal-sample 0.0 1.0 n)))
@@ -223,7 +211,7 @@
      (for/product ([j (in-range p)])
        (m:gamma (- a (/ j 2))))))
 
-(define (rawwishart-pdf n V X log?)
+(define (wishart-pdf n V X log?)
   (define p (square-matrix-size V))
   (define lp
     (+ (* 1/2 (- n p 1) (log (memo-matrix-determinant X)))
@@ -233,21 +221,16 @@
        (log (multigamma p (/ n 2)))))
   (if log? lp (exp lp)))
 
-(define (rawwishart-cdf . _)
-  (error 'wishart:cdf "not defined"))
-(define (rawwishart-inv-cdf . _)
-  (error 'wishart:inv-cdf "not defined"))
-
-(define (rawwishart-sample/naive n V)
+(define (wishart-sample/naive n V)
   (define p (square-matrix-size V))
   (define p-zeros (->col-matrix (make-vector p 0.0)))
   (matrix-sum
    (for/list ([i (in-range n)])
-     (define X (rawmulti-normal-sample p-zeros V))
+     (define X (multi-normal-sample p-zeros V))
      (matrix* X (matrix-transpose X)))))
 
 ;; Reference: http://www.math.wustl.edu/~sawyer/hmhandouts/Wishart.pdf
-(define (rawwishart-sample n V*)
+(define (wishart-sample n V*)
   ;; p1: If W ~ W(I_p,p,n) and V = L*L^T, 
   ;; then L W L^T^ ~ W(V,p,n).
   (define p (square-matrix-size V*))
@@ -287,28 +270,19 @@
 ;; ------------------------------------------------------------
 ;; Inverse Wishart dist functions
 
-(define (rawinverse-wishart-pdf n Vinv X log?)
-  (rawwishart-pdf n (memo-matrix-inverse Vinv) (memo-matrix-inverse X) log?))
+(define (inverse-wishart-pdf n Vinv X log?)
+  (wishart-pdf n (memo-matrix-inverse Vinv) (memo-matrix-inverse X) log?))
 
-(define (rawinverse-wishart-cdf . _)
-  (error 'inverse-wishart:cdf "not defined"))
-(define (rawinverse-wishart-inv-cdf . _)
-  (error 'inverse-wishart:inv-cdf "not defined"))
-
-(define (rawinverse-wishart-sample n Vinv)
-  (matrix-inverse (rawwishart-sample n (memo-matrix-inverse Vinv))))
+(define (inverse-wishart-sample n Vinv)
+  (matrix-inverse (wishart-sample n (memo-matrix-inverse Vinv))))
 
 
 ;; ============================================================
 ;; Improper dist functions
 
-(define (rawimproper-pdf ldensity v log?)
+(define (improper-pdf ldensity v log?)
   (if log? ldensity (exp ldensity)))
-(define (rawimproper-cdf ldensity v log? 1-p?)
-  (error 'improper-dist:cdf "not implemented"))
-(define (rawimproper-inv-cdf ldensity p log? 1-p?)
-  (error 'improper-dist:inv-cdf "not implemented"))
-(define (rawimproper-sample ldensity)
+(define (improper-sample ldensity)
   (error 'improper-dist:sample "not implemented"))
 
 
@@ -335,11 +309,11 @@
   (define p* (if 1-p? (- 1 p) p))
   (if log? (log p*) p*))
 
-(define (filter-modes d ms)
+(define (filter-modes f ms)
   (define-values (best best-p)
     (for/fold ([best null] [best-p -inf.0])
         ([m (in-list ms)])
-      (define m-p (dist-pdf d m))
+      (define m-p (f m))
       (cond [(> m-p best-p)
              (values (list m) m-p)]
             [(= m-p best-p)
