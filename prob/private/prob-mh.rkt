@@ -6,6 +6,7 @@
 (require racket/class
          (rename-in racket/match [match-define defmatch])
          racket/math
+         racket/vector
          "db.rkt"
          "interfaces.rkt"
          "../dist.rkt"
@@ -112,6 +113,20 @@
                      (to-01 value)))
        (cons (from-01 value*) R-F)]
       ;; Integer-valued dists: more difficult.
+      ;; Permutation dist
+      [(permutation-dist n)
+       (cond [(<= n 1)
+              value]
+             [else
+              (define v (vector-copy value))
+              (define idx1 (random n))
+              (define idx2-pre (random (sub1 n)))
+              (define idx2 (+ idx2-pre (if (>= idx2-pre idx1) 1 0)))
+              (define elt1 (vector-ref v idx1))
+              (define elt2 (vector-ref v idx2))
+              (vector-set! v idx1 elt1)
+              (vector-set! v idx2 elt2)
+              v])]
       [_ #f])))
 
 ;; used by slice sampler

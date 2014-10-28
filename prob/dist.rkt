@@ -8,6 +8,7 @@
          "dist/univariate.rkt"
          "dist/multivariate.rkt"
          "dist/discrete.rkt"
+         "dist/permutation.rkt"
          "dist/mixture.rkt")
 (provide dist?
          integer-dist?
@@ -45,4 +46,5 @@
          (all-from-out "dist/univariate.rkt")
          (all-from-out "dist/multivariate.rkt")
          (all-from-out "dist/discrete.rkt")
+         (all-from-out "dist/permutation.rkt")
          (all-from-out "dist/mixture.rkt"))
