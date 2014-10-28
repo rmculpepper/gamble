@@ -7,7 +7,8 @@
          "private/dist.rkt"
          "dist/univariate.rkt"
          "dist/multivariate.rkt"
-         "dist/discrete.rkt")
+         "dist/discrete.rkt"
+         "dist/mixture.rkt")
 (provide dist?
          integer-dist?
          real-dist?
@@ -43,4 +44,5 @@
 
          (all-from-out "dist/univariate.rkt")
          (all-from-out "dist/multivariate.rkt")
-         (all-from-out "dist/discrete.rkt"))
+         (all-from-out "dist/discrete.rkt")
+         (all-from-out "dist/mixture.rkt"))
