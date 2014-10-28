@@ -101,7 +101,7 @@
   (sample (gamma-dist shape scale)))
 
 (define (inverse-gamma [shape 1] [scale 1])
-  (sample (inverse-gamma shape scale)))
+  (sample (inverse-gamma-dist shape scale)))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])
