@@ -26,12 +26,11 @@
         (exp log-p))))
 
 (define (permutation-sample n)
-  (define (rp-inner so-far rest-of-list)
-    (if (null? rest-of-list)
-        so-far
-        (let* ([n (length rest-of-list)]
-               [idx (random n)]
-               [elt (list-ref rest-of-list idx)]
-               [remains (remove elt rest-of-list)])
-          (rp-inner (cons elt so-far) remains))))
-  (list->vector (rp-inner '() (range n))))
+  (define perm (build-vector n values))
+  (for ([i (in-range (sub1 n))])
+    (define j (+ i (random (- n i)))) ;; random index in [i,n)
+    (define vi (vector-ref perm i))
+    (define vj (vector-ref perm j))
+    (vector-set! perm i vj)
+    (vector-set! perm j vi))
+  perm)
