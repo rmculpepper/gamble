@@ -114,6 +114,11 @@
 
 ;; ------------------------------------------------------------
 
+(define-type In-Indexes t:Indexes)
+;; else gives contract error: or/c case overlap
+
+;; ------------------------------------------------------------
+
 ;; == Section 6.6
 
 (provide array?
@@ -134,8 +139,8 @@
 
 ;; == Section 6.7
 
-(Wrap make-array : t:In-Indexes Real -> ImmArray)
-(Wrap build-array : t:In-Indexes (t:Indexes -> Real) -> ImmArray)
+(Wrap make-array : In-Indexes Real -> ImmArray)
+(Wrap build-array : In-Indexes (t:Indexes -> Real) -> ImmArray)
 (Wrap array->mutable-array : Array -> MutArray)
 (Wrap mutable-array-copy : MutArray -> MutArray)
 ;; indexes-array
@@ -147,9 +152,9 @@
 
 (Wrap* list->array :
        [(Listof Real) -> ImmArray]
-       [t:In-Indexes (Listof Real) -> ImmArray])
+       [In-Indexes (Listof Real) -> ImmArray])
 (Wrap array->list : Array -> (Listof Real))
-(Wrap vector->array : t:In-Indexes (Vectorof Real) -> MutArray)
+(Wrap vector->array : In-Indexes (Vectorof Real) -> MutArray)
 (Wrap array->vector : Array -> (Vectorof Real))
 
 (provide list*->array
@@ -212,8 +217,8 @@
 
 ;; == Section 6.11 Indexing and Slicing
 
-(Wrap array-ref : Array t:In-Indexes -> Real)
-(Wrap array-set! : MutArray t:In-Indexes Real -> Void)
+(Wrap array-ref : Array In-Indexes -> Real)
+(Wrap array-set! : MutArray In-Indexes Real -> Void)
 ;; array-indexes-ref, array-indexes-set!
 
 (Wrap array-slice-ref : Array (Listof t:Slice-Spec) -> Array)
@@ -232,7 +237,7 @@
 
 ;; == Section 6.12 Transformations
 
-(Wrap array-transform : Array t:In-Indexes (t:Indexes -> t:In-Indexes) -> Array)
+(Wrap array-transform : Array In-Indexes (t:Indexes -> In-Indexes) -> Array)
 (Wrap* array-append* : [(Listof Array) -> Array] [(Listof Array) Integer -> Array])
 
 (Wrap* array-axis-insert :
@@ -241,7 +246,7 @@
 (Wrap array-axis-ref : Array Integer Integer -> Array)
 (Wrap array-axis-swap : Array Integer Integer -> Array)
 (Wrap array-axis-permute : Array (Listof Integer) -> Array)
-(Wrap array-reshape : Array t:In-Indexes -> Array)
+(Wrap array-reshape : Array In-Indexes -> Array)
 (Wrap array-flatten : Array -> Array)
 
 ;; == Section 6.13 Folds, Reductions, and Expansions
