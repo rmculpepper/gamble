@@ -48,7 +48,7 @@
 
 (define-syntax (define-dist-type stx)
   (syntax-parse stx
-    [(define-dist-type name-dist (p:param-spec ...)
+    [(define-dist-type name-dist:id (p:param-spec ...)
        f:prob-functions
        (~or (~eh-var o stat-options)
             (~optional (~seq #:guard guard-fun:expr))
@@ -56,6 +56,8 @@
             (~optional (~seq #:extra [extra-clause ...])
                        #:defaults ([(extra-clause 1) '()])))
        ...)
+     (unless (regexp-match? #rx"-dist$" (symbol->string (syntax-e #'name-dist)))
+       (raise-syntax-error #f "name does not end with `-dist'" stx #'name-dist))
      (with-syntax ([make-name-dist (format-id #'name-dist "make-~a" #'name-dist)]
                    [(get-param ...)
                     (for/list ([param (in-list (syntax->list #'(p.param ...)))])
