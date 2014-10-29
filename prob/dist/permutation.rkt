@@ -15,11 +15,15 @@
          "../private/dist-define.rkt")
 
 (define-dist-type permutation-dist
-  ([n exact-positive-integer?])
+  ([n exact-nonnegative-integer?])
   #:pdf permutation-pdf
   #:sample permutation-sample)
 
 (define (permutation-pdf n perm log?)
+  ;; FIXME: need to check that it's actually an n-permutation, else return 0
+  ;; FIXME: maybe want permutation ADT
+  ;; FIXME: alternatively, could have fast-pdf vs slow-pdf functions,
+  ;;   where fast-pdf only called on values returned from dist (but maybe different params)
   (let ((log-p (- (m:log-gamma (+ n 1)))))
     (if log?
         log-p

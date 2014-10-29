@@ -355,6 +355,15 @@ The support consists of vectors of the same length as @racket[alpha]
 whose elements are nonnegative reals summing to @racket[1].
 }
 
+@defstruct*[permutation-dist
+            ([n exact-nonnegative-integer?])]{
+
+Returns a uniform distribution over permutations of @racket[n]
+elements, where a permutation is represented by a vector containing
+each of the integers from @racket[0] to @racket[(sub1 n)] exactly
+once.
+}
+
 
 @section[#:tag "multi-dists"]{Multivariate Distribution Types}
 
