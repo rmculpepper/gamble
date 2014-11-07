@@ -20,14 +20,21 @@
   #:sample permutation-sample)
 
 (define (permutation-pdf n perm log?)
-  ;; FIXME: need to check that it's actually an n-permutation, else return 0
-  ;; FIXME: maybe want permutation ADT
-  ;; FIXME: alternatively, could have fast-pdf vs slow-pdf functions,
-  ;;   where fast-pdf only called on values returned from dist (but maybe different params)
-  (let ((log-p (- (m:log-gamma (+ n 1)))))
-    (if log?
-        log-p
-        (exp log-p))))
+  (cond [(permutation? perm n)
+         (let ((log-p (- (m:log-gamma (+ n 1)))))
+           (if log?
+               log-p
+               (exp log-p)))]
+        [else
+         (if log? -inf.0 0)]))
+
+;; FIXME: need to check that it's actually an n-permutation
+;; FIXME: maybe want permutation ADT
+;; FIXME: alternatively, could have fast-pdf vs slow-pdf functions,
+;;   where fast-pdf only called on values returned from dist (but maybe different params)
+(define (permutation? perm n)
+  (and (vector? perm)
+       (= (vector-length perm) n)))
 
 (define (permutation-sample n)
   (define perm (build-vector n values))
