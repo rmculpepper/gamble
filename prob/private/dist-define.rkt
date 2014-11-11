@@ -42,8 +42,8 @@
           (~optional (~seq #:modes modes:expr))
           (~optional (~seq #:variance variance:expr))
           (~optional (~seq #:conjugate conj-fun:expr))
-          (~optional (~seq #:Denergy Denergy-fun:expr)))))
-
+          (~optional (~seq #:Denergy Denergy-fun:expr))
+          (~optional (~seq #:drift drift-fun:expr)))))
   )
 
 (define-syntax (define-dist-type stx)
@@ -90,7 +90,10 @@
                          (apply (let ([p.param (get-param d)] ...) o.Denergy-fun) x d/dts)))
                    (?? (define (*conj d data-d data)
                          (let ([p.param (get-param d)] ...)
-                           (o.conj-fun data-d data))))]
+                           (o.conj-fun data-d data))))
+                   (?? (define (*drift d value scale-factor)
+                         (let ([p.param (get-param d)] ...)
+                           (o.drift-fun value scale-factor))))]
                   extra-clause ...
                   #:transparent)
           #,(if (attribute no-provide)

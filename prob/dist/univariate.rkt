@@ -9,7 +9,7 @@
                      syntax/parse/experimental/eh
                      racket/syntax)
          racket/contract
-         racket/match
+         (rename-in racket/match [match-define defmatch])
          racket/math
          racket/pretty
          racket/dict
@@ -106,7 +106,14 @@
                   [`(geometric-dist _)
                    (beta-dist (+ a (vector-length data))
                               (+ b (vector-sum data)))]
-                  [_ #f])))
+                  [_ #f]))
+  #:drift (lambda (value scale-factor)
+            ;; mode = α / (α + β), peakedness = α + β = S (our choice)
+            ;; So if we want dist peaked at x:
+            ;;   α = S * x
+            ;;   β = S - α = S * (1 - x)
+            (define S 10) ;; "peakedness" parameter
+            (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x)))) value)))
 
 (define-fl-dist-type cauchy-dist
   ([mode real?]
@@ -121,7 +128,8 @@
               (+ (lazy* ds (/ scale))
                  (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
                     (- (/ (- dx dm) scale)
-                       (lazy* ds (/ x-m scale scale)))))))
+                       (lazy* ds (/ x-m scale scale))))))
+  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
 
 (define-fl-dist-type exponential-dist
   ([mean (>/c 0)])
@@ -134,7 +142,8 @@
   #:Denergy (lambda (x [dx 1] [dm 0])
               (define /mean (/ mean))
               (+ (lazy* dm (- /mean (* x /mean /mean)))
-                 (* dx /mean))))
+                 (* dx /mean)))
+  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* mean scale-factor))))
 
 (define-fl-dist-type gamma-dist
   ([shape (>/c 0)]
@@ -170,7 +179,8 @@
                                (/ (+ (/ scale)
                                      (* 1/2 (for/sum ([x (in-vector data)])
                                               (sqr (- x data-mean)))))))]
-                  [_ #f])))
+                  [_ #f]))
+  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor))))
 
 (define-fl-dist-type inverse-gamma-dist
   ([shape (>/c 0)]
@@ -201,7 +211,8 @@
               (define B (exp (- (/ x-m s))))
               (+ A
                  (lazy* ds (/ s))
-                 (* 2 (/ (+ 1 B)) B (- A)))))
+                 (* 2 (/ (+ 1 B)) B (- A))))
+  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
 
 (define-fl-dist-type pareto-dist
   ([scale (>/c 0)]  ;; x_m
@@ -222,7 +233,10 @@
                    (pareto-dist
                     (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
                     (+ shape (vector-length data)))]
-                  [_ #f])))
+                  [_ #f]))
+  #:drift (lambda (value scale-factor)
+            ;; FIXME: maybe drift:mult-exp-normal?
+            #f))
 
 (define-fl-dist-type normal-dist
   ([mean real?]
@@ -253,7 +267,8 @@
                                  (/ (+ (/ (sqr stddev))
                                        (/ (vector-length data)
                                           (sqr data-stddev))))))]
-                  [_ #f])))
+                  [_ #f]))
+  #:drift (lambda (value scale-factor) (drift:add-normal value (* stddev scale-factor))))
 
 (define-fl-dist-type uniform-dist
   ([min real?]
@@ -272,7 +287,17 @@
   #:Denergy (lambda (x [dx 1] [dmin 0] [dmax 0])
               (cond [(<= min x max)
                      (lazy* (- dmax dmin) (/ (- max min)))]
-                    [else 0])))
+                    [else 0]))
+  #:drift (lambda (value scale-factor)
+            ;; Use beta to get proposal for Uniform(0,1), adjust.
+            (define S 10) ;; "peakedness"
+            (define (to-01 x) (/ (- x min) (- max min)))
+            (define (from-01 x) (+ (* x (- max min)) min))
+            (defmatch (cons value* R-F)
+              (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x))))
+                                (to-01 value)))
+            (cons (from-01 value*) R-F)))
+
 
 ;; ----------------------------------------
 

@@ -21,6 +21,7 @@
   (*variance dist)
   (*conj dist obs-dist data)
   (*Denergy dist x . d/dts)
+  (*drift dist value scale-factor)
   #:fallbacks
   [(define (*enum d) #f)
    (define (*support d) #f)
@@ -30,7 +31,9 @@
    (define (*variance d) #f)
    (define (*conj d data-d data) #f)
    (define (*Denergy d x . d/dts)
-     (error 'dist-Denergy "not implemented"))])
+     (error 'dist-Denergy "not implemented"))
+   (define (*drift d value scale-factor)
+     #f)])
 
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))

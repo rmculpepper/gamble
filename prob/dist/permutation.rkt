@@ -17,7 +17,20 @@
 (define-dist-type permutation-dist
   ([n exact-nonnegative-integer?])
   #:pdf permutation-pdf
-  #:sample permutation-sample)
+  #:sample permutation-sample
+  #:drift (lambda (value scale-factor)
+            (cond [(<= n 1)
+                   value]
+                  [else
+                   (define v (vector-copy value))
+                   (define idx1 (random n))
+                   (define idx2-pre (random (sub1 n)))
+                   (define idx2 (+ idx2-pre (if (>= idx2-pre idx1) 1 0)))
+                   (define elt1 (vector-ref v idx1))
+                   (define elt2 (vector-ref v idx2))
+                   (vector-set! v idx1 elt1)
+                   (vector-set! v idx2 elt2)
+                   v])))
 
 (define (permutation-pdf n perm log?)
   (cond [(permutation? perm n)

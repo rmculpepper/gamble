@@ -287,6 +287,27 @@
 
 
 ;; ============================================================
+;; Drift Kernel Utils
+
+(define (sample-normal mean stddev)
+  (let ([mean (exact->inexact mean)]
+        [stddev (exact->inexact stddev)])
+    (flvector-ref (m:flnormal-sample mean stddev 1) 0)))
+
+(define (drift:add-normal value scale)
+  (cons (sample-normal value scale) 0))
+(define (drift:mult-exp-normal value scale)
+  (cons (* value (exp (sample-normal 0 scale))) 0))
+(define (drift:asymmetric f value)
+  (define forward-dist (f value))
+  (define value* (dist-sample forward-dist))
+  (define backward-dist (f value*))
+  (cons value*
+        (- (dist-pdf backward-dist value #t)
+           (dist-pdf forward-dist value* #t))))
+
+
+;; ============================================================
 ;; Utils
 
 (define (validate/normalize-weights who weights)
