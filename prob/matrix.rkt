@@ -316,7 +316,10 @@
 
 ;; == Section 7.3 Construction
 
-(Wrap identity-matrix : Integer -> Matrix)
+(Wrap* identity-matrix :
+       [Integer -> Matrix]
+       [Integer Real -> Matrix]
+       [Integer Real Real -> Matrix])
 (Wrap make-matrix : Integer Integer Real -> Matrix)
 (Wrap build-matrix : Integer Integer (Index Index -> Real) -> Matrix)
 (Wrap diagonal-matrix : (Listof Real) -> Matrix)
