@@ -355,3 +355,131 @@
 (define-dist-type improper-dist
   ([ldensity real?])
   #:pdf improper-pdf #:sample improper-sample)
+
+
+;; ============================================================
+;; Univariate dist functions
+
+;; ------------------------------------------------------------
+;; Bernoulli dist functions
+;; -- math/dist version converts exact->inexact
+
+(define (bernoulli-pdf prob v log?)
+  (define p
+    (cond [(= v 0) (- 1 prob)]
+          [(= v 1) prob]
+          [else 0]))
+  (convert-p p log? #f))
+(define (bernoulli-cdf prob v log? 1-p?)
+  (define p
+    (cond [(< v 0) 0]
+          [(< v 1) (- 1 prob)]
+          [else 1]))
+  (convert-p p log? 1-p?))
+(define (bernoulli-inv-cdf prob p0 log? 1-p?)
+  (define p (unconvert-p p0 log? 1-p?))
+  (cond [(<= p (- 1 prob)) 0]
+        [else 1]))
+(define (bernoulli-sample prob)
+  (if (<= (random) prob) 1 0))
+
+
+;; ------------------------------------------------------------
+;; Categorical weighted dist functions
+;; -- Assume weights are nonnegative, normalized.
+
+(define (categorical-pdf probs k log?)
+  (unless (< k (vector-length probs))
+    (error 'categorical-dist:pdf "index out of bounds\n  index: ~e\n  bounds: [0,~s]"
+           k (sub1 (vector-length probs))))
+  (define l (vector-ref probs k))
+  (if log? (log l) l))
+(define (categorical-cdf probs k log? 1-p?)
+  (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
+  (convert-p p log? 1-p?))
+(define (categorical-inv-cdf probs p0 log? 1-p?)
+  (define p (unconvert-p p0 log? 1-p?))
+  (let loop ([i 0] [p p])
+    (cond [(>= i (vector-length probs))
+           (error 'categorical-dist:inv-cdf "out of values")]
+          [(< p (vector-ref probs i))
+           i]
+          [else
+           (loop (add1 i) (- p (vector-ref probs i)))])))
+(define (categorical-sample probs)
+  (categorical-inv-cdf probs (random) #f #f))
+
+
+;; ------------------------------------------------------------
+;; Inverse gamma distribution
+
+(define (m:flinverse-gamma-pdf shape scale x log?)
+  (m:flgamma-pdf shape scale (/ x) log?))
+(define (m:flinverse-gamma-cdf shape scale x log? 1-p?)
+  (m:flgamma-cdf shape scale (/ x) log? 1-p?))
+(define (m:flinverse-gamma-inv-cdf shape scale x log? 1-p?)
+  (/ (m:flgamma-inv-cdf shape scale x log? 1-p?)))
+(define (m:flinverse-gamma-sample shape scale n)
+  (define flv (m:flgamma-sample shape scale n))
+  (for ([i (in-range n)])
+    (flvector-set! flv i (/ (flvector-ref flv i))))
+  flv)
+
+
+;; ------------------------------------------------------------
+;; Pareto distribution
+
+(define (m:flpareto-pdf scale shape x log?)
+  (define p
+    (if (>= x scale)
+        (/ (* shape (expt scale shape))
+           (expt x (add1 shape)))
+        0.0))
+  (convert-p p log? #f))
+(define (m:flpareto-cdf scale shape x log? 1-p?)
+  (define p
+    (if (> x scale)
+        (- 1.0 (expt (/ scale x) shape))
+        0.0))
+  (convert-p p log? 1-p?))
+(define (m:flpareto-inv-cdf scale shape p log? 1-p?)
+  (define p* (unconvert-p p log? 1-p?))
+  (* scale (expt p* (- (/ shape)))))
+(define (m:flpareto-sample scale shape n)
+  (define flv (make-flvector n))
+  (for ([i (in-range n)])
+    (flvector-set! flv i (m:flpareto-inv-cdf scale shape (random) #f #f)))
+  flv)
+
+
+;; ------------------------------------------------------------
+;; Dirichlet distribution
+
+(define-memoize1 (multinomial-beta alpha)
+  (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
+     (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
+
+(define (dirichlet-pdf alpha x log?)
+  (define p
+    (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
+       (multinomial-beta alpha)))
+  (convert-p p log? #f))
+(define (dirichlet-sample alpha)
+  ;; TODO: batch gamma sampling when all alphas same?
+  (define n (vector-length alpha))
+  (define x (make-vector n))
+  (for ([a (in-vector alpha)] [i (in-range n)])
+    (vector-set! x i (flvector-ref (m:flgamma-sample a 1.0 1) 0)))
+  (define gsum (for/sum ([g (in-vector x)]) g))
+  (for ([i (in-range n)])
+    (vector-set! x i (/ (vector-ref x i) gsum)))
+  x)
+
+
+;; ============================================================
+;; Improper dist functions
+
+(define (improper-pdf ldensity v log?)
+  (if log? ldensity (exp ldensity)))
+(define (improper-sample ldensity)
+  (error 'improper-dist:sample "not implemented"))
