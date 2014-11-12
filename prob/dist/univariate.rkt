@@ -23,13 +23,9 @@
          "../private/dist-impl.rkt")
 (provide #| implicit in define-dist-type |#)
 
-;; If every q is 0, returns 0 without evaluating e.
-(define-syntax-rule (ifnz [q ...] e)
-  (if (and (zero? q) ...) 0 e))
-
 ;; Multiply, but short-circuit if first arg evals to 0.
 (define-syntax-rule (lazy* a b ...)
-  (let ([av a]) (ifnz [av] (* av b ...))))
+  (let ([av a]) (if (zero? av) 0 (* av b ...))))
 
 (define (digamma x) (m:psi0 x))
 
@@ -430,12 +426,12 @@
 ;; Pareto distribution
 
 (define (m:flpareto-pdf scale shape x log?)
-  (define p
+  (define lp
     (if (>= x scale)
-        (/ (* shape (expt scale shape))
-           (expt x (add1 shape)))
-        0.0))
-  (convert-p p log? #f))
+        (- (+ (log shape) (* shape (log scale)))
+           (* (add1 shape) (log x)))
+        -inf.0))
+  (if log? lp (exp lp)))
 (define (m:flpareto-cdf scale shape x log? 1-p?)
   (define p
     (if (> x scale)
@@ -455,15 +451,15 @@
 ;; ------------------------------------------------------------
 ;; Dirichlet distribution
 
-(define-memoize1 (multinomial-beta alpha)
-  (/ (for/product ([ai (in-vector alpha)]) (m:gamma ai))
-     (m:gamma (for/sum ([ai (in-vector alpha)]) ai))))
+(define-memoize1 (log-multinomial-beta alpha)
+  (- (for/sum ([ai (in-vector alpha)]) (m:log-gamma ai))
+     (m:log-gamma (for/sum ([ai (in-vector alpha)]) ai))))
 
 (define (dirichlet-pdf alpha x log?)
-  (define p
-    (/ (for/product ([xi (in-vector x)] [ai (in-vector alpha)]) (expt xi (sub1 ai)))
-       (multinomial-beta alpha)))
-  (convert-p p log? #f))
+  (define lp
+    (- (for/sum ([xi (in-vector x)] [ai (in-vector alpha)]) (* (sub1 ai) (log xi)))
+       (log-multinomial-beta alpha)))
+  (if log? lp (exp lp)))
 (define (dirichlet-sample alpha)
   ;; TODO: batch gamma sampling when all alphas same?
   (define n (vector-length alpha))
