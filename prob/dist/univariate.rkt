@@ -109,7 +109,9 @@
             ;;   α = S * x
             ;;   β = S - α = S * (1 - x)
             (define S 10) ;; "peakedness" parameter
-            (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x)))) value)))
+            (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x)))) value))
+  #:slice-adjust (lambda (value scale-factor)
+                   (+ value scale-factor)))
 
 (define-fl-dist-type cauchy-dist
   ([mode real?]
@@ -125,7 +127,8 @@
                  (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
                     (- (/ (- dx dm) scale)
                        (lazy* ds (/ x-m scale scale))))))
-  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
+  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor)))
+  #:slice-adjust (lambda (value scale-factor) (+ value (* scale scale-factor))))
 
 (define-fl-dist-type exponential-dist
   ([mean (>/c 0)])
@@ -139,7 +142,8 @@
               (define /mean (/ mean))
               (+ (lazy* dm (- /mean (* x /mean /mean)))
                  (* dx /mean)))
-  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* mean scale-factor))))
+  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* mean scale-factor)))
+  #:slice-adjust (lambda (value scale-factor) (* value (exp (* mean scale-factor)))))
 
 (define-fl-dist-type gamma-dist
   ([shape (>/c 0)]
@@ -176,7 +180,8 @@
                                      (* 1/2 (for/sum ([x (in-vector data)])
                                               (sqr (- x data-mean)))))))]
                   [_ #f]))
-  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor))))
+  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor)))
+  #:slice-adjust (lambda (value scale-factor) (* value (exp (* scale (sqrt shape) scale-factor)))))
 
 (define-fl-dist-type inverse-gamma-dist
   ([shape (>/c 0)]
@@ -208,7 +213,8 @@
               (+ A
                  (lazy* ds (/ s))
                  (* 2 (/ (+ 1 B)) B (- A))))
-  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
+  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor)))
+  #:slice-adjust (lambda (value scale-factor) (+ value (* (/ pi (sqrt 3)) scale scale-factor))))
 
 (define-fl-dist-type pareto-dist
   ([scale (>/c 0)]  ;; x_m
@@ -264,7 +270,8 @@
                                        (/ (vector-length data)
                                           (sqr data-stddev))))))]
                   [_ #f]))
-  #:drift (lambda (value scale-factor) (drift:add-normal value (* stddev scale-factor))))
+  #:drift (lambda (value scale-factor) (drift:add-normal value (* stddev scale-factor)))
+  #:slice-adjust (lambda (value scale-factor) (+ value (* stddev scale-factor))))
 
 (define-fl-dist-type uniform-dist
   ([min real?]
@@ -292,7 +299,9 @@
             (defmatch (cons value* R-F)
               (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x))))
                                 (to-01 value)))
-            (cons (from-01 value*) R-F)))
+            (cons (from-01 value*) R-F))
+  #:slice-adjust (lambda (value scale-factor)
+                   (+ value (* scale-factor (- max min)))))
 
 
 ;; ----------------------------------------

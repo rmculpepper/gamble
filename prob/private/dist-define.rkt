@@ -43,7 +43,8 @@
           (~optional (~seq #:variance variance:expr))
           (~optional (~seq #:conjugate conj-fun:expr))
           (~optional (~seq #:Denergy Denergy-fun:expr))
-          (~optional (~seq #:drift drift-fun:expr)))))
+          (~optional (~seq #:drift drift-fun:expr))
+          (~optional (~seq #:slice-adjust slice-adjust-fun:expr)))))
   )
 
 (define-syntax (define-dist-type stx)
@@ -94,6 +95,10 @@
                    (?? (define (*drift d value scale-factor)
                          (let ([p.param (get-param d)] ...)
                            (o.drift-fun value scale-factor))))]
+                  (?? (?@ #:methods gen:slice-dist
+                          [(define (*slice-adjust d value scale-factor)
+                             (let ([p.param (get-param d)] ...)
+                               (o.slice-adjust-fun value scale-factor)))]))
                   extra-clause ...
                   #:transparent)
           #,(if (attribute no-provide)

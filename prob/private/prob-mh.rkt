@@ -9,8 +9,8 @@
          racket/vector
          "db.rkt"
          "interfaces.rkt"
-         "../dist.rkt"
-         (only-in "dist.rkt" *drift)
+         "dist.rkt"
+         "../dist/discrete.rkt"
          "hmc/system.rkt"
          "hmc/step.rkt"
          "hmc/acceptance-threshold.rkt"
@@ -63,21 +63,7 @@
 
 ;; used by slice sampler
 (define (real-dist-adjust-value dist value scale-factor)
-  (define (add scale)
-    (+ value (* scale-factor scale)))
-  (define (mult-exp scale)
-    (* value (exp (* scale-factor scale))))
-  ;; Default proposals
-  (match dist
-    [(normal-dist mean stddev) (add stddev)]
-    [(cauchy-dist mode scale) (add scale)]
-    [(logistic-dist mean scale) (add (* (/ pi (sqrt 3)) scale))]
-    [(gamma-dist shape scale) (mult-exp (* scale (sqrt shape)))]
-    [(exponential-dist mean) (mult-exp mean)]
-    [(beta-dist a b) (add 1)]
-    [(uniform-dist min max)
-     (add (- max min))]
-    [_ #f]))
+  (*slice-adjust dist value scale-factor))
 
 (proposal-map
  (extend-proposal-map
@@ -366,8 +352,8 @@
         (error 'slice:run "no key to change"))
       (match (hash-ref last-db key-to-change)
         [(entry zones dist value ll #f)
-         (unless (real-dist? dist)
-           (error 'slice:run "chosen distribution is not real-valued\n  dist: ~e" dist))
+         (unless (slice-dist? dist)
+           (error 'slice:run "chosen distribution does not support slice sampling\n  dist: ~e" dist))
          (perturb/slice key-to-change dist value zones thunk last-trace)]))
 
     (define/private (perturb/slice key-to-change dist value zones thunk last-trace)
