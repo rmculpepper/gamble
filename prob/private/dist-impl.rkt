@@ -3,13 +3,9 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/math
-         racket/flonum
-         racket/vector
+(require racket/vector
          math/flonum
          (prefix-in m: math/distributions)
-         (prefix-in m: math/special-functions)
-         "../matrix.rkt"
          "dist.rkt")
 (provide (all-defined-out))
 
