@@ -82,3 +82,12 @@
   (reverse best))
 
 (define (vector-sum v) (for/sum ([x (in-vector v)]) x))
+
+;; http://hips.seas.harvard.edu/blog/2013/01/09/computing-log-sum-exp/
+;; http://machineintelligence.tumblr.com/post/4998477107/the-log-sum-exp-trick
+(define (logspace+ x y)
+  (let ([M (max x y)])
+    (+ M (log (+ (exp (- x M)) (exp (- y M)))))))
+(define (logspace-sum xs)
+  (let ([M (apply max xs)])
+    (+ M (log (for/sum ([x (in-list xs)]) (exp (- x M)))))))
