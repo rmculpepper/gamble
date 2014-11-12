@@ -76,14 +76,15 @@
     (error 'multi-normal-dist:pdf
            "column matrix has wrong number of rows\n  expected: ~e\n  given: ~e"
            k x))
-  (define p (* (expt (* 2 pi) (- (/ k 2)))
-               (expt (matrix-determinant cov) -1/2)
-               (exp (* -1/2 (matrix11->value
-                             (let ([x-mean (matrix- x mean)])
-                               (matrix* (matrix-transpose x-mean)
-                                        (memo-matrix-inverse cov)
-                                        x-mean)))))))
-  (convert-p p log? #f))
+  (define lp
+    (+ (* -0.5 k (log (* 2 pi)))
+       (* -0.5 (log (matrix-determinant cov)))
+       (* -0.5 (matrix11->value
+                (let ([x-mean (matrix- x mean)])
+                  (matrix* (matrix-transpose x-mean)
+                           (memo-matrix-inverse cov)
+                           x-mean))))))
+  (if log? lp (exp lp)))
 
 (define (multi-normal-sample mean cov)
   (multi-normal-drift mean cov 1.0))
@@ -102,6 +103,11 @@
      (for/product ([j (in-range p)])
        (m:gamma (- a (/ j 2))))))
 
+(define (log-multigamma p a)
+  (+ (* p (sub1 p) 0.25 (log pi))
+     (for/sum ([j (in-range p)])
+       (m:log-gamma (- a (/ j 2))))))
+
 (define (wishart-pdf n V X log?)
   (define p (square-matrix-size V))
   (define lp
@@ -109,7 +115,7 @@
        (* -1/2 (matrix-trace (matrix* (memo-matrix-inverse V) X)))
        (* -1/2 n p (log 2))
        (* 1/2 n (log (memo-matrix-determinant V)))
-       (log (multigamma p (/ n 2)))))
+       (log-multigamma p (/ n 2))))
   (if log? lp (exp lp)))
 
 (define (wishart-sample/naive n V)
