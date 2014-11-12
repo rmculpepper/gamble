@@ -170,3 +170,27 @@
         [else
          (print/one-line port)])
   (void))
+
+
+;; ============================================================
+
+;; ------------------------------------------------------------
+;; Discrete dist support functions
+;; -- Weights are not normalized
+
+(define (discrete-pdf vs ws wsum x log?)
+  (define p
+    (or (for/or ([v (in-vector vs)]
+                 [w (in-vector ws)])
+          (and (equal? x v) (/ w wsum)))
+        0))
+  (convert-p p log? #f))
+(define (discrete-sample vs ws wsum)
+  (define p (* (random) wsum))
+  (let loop ([i 0] [p p])
+    (unless (< i (vector-length ws))
+      (error 'discrete-dist:sample "out of values"))
+    (cond [(< p (vector-ref ws i))
+           (vector-ref vs i)]
+          [else
+           (loop (add1 i) (- p (vector-ref ws i)))])))
