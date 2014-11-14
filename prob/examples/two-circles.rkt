@@ -25,12 +25,12 @@
    #:epsilon 0.01
    #:L 30))
 
-(send sh set-transition sh (multi-site))
+(send sh set-transition (multi-site))
 (void (for ([i HBURN-IN]) (sh)))
-(send sh set-transition sh
-      (cycle (multi-site #f)
-             (hmc 0.005 30 'Point)
-             (hmc 0.005 30 'Point)))
+(send sh set-transition
+      (cycle (multi-site)
+             (hmc 0.005 30 #:zone 'Point)
+             (hmc 0.005 30 #:zone 'Point)))
 
 (define samples-h (repeat sh HSAMPLES))
 
