@@ -30,7 +30,7 @@
   #:mean mean
   #:modes (list mean) ;; FIXME: degenerate cases?
   #:variance cov
-  #:drift (lambda (value scale-factor) (cons (multi-normal-drift cov value scale-factor) 0)))
+  #:drift (lambda (value scale-factor) (cons (multi-normal-drift value cov scale-factor) 0)))
 
 (define-dist-type wishart-dist
   ([n real?] [V square-matrix?])
