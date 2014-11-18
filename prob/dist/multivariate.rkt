@@ -42,7 +42,20 @@
             (unless (> n (- p 1))
               (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
             ;; FIXME: check V positive definite
-            (values n V)))
+            (values n V))
+  #:drift (lambda (value scale-factor)
+            (define w (/ scale-factor (+ 1 scale-factor)))
+            (define F-sample (wishart-sample n V))
+            (define value*
+              (matrix+ (array* value (array (- 1 w)))
+                       (array* (array w) F-sample)))
+            (define F (wishart-pdf n V F-sample #t))
+            ;; Reverse direction: solve value = (1 - w) * value* + w * R-sample
+            (define R-sample
+              (array* (matrix- value (array* (array (- 1 w)) value*))
+                      (array (/ w))))
+            (define R (wishart-pdf n V R-sample #t))
+            (cons value* (- R F))))
 ;; DRIFT: draw another wishart, weighted avg with current value
 ;; NOTE: not symmetric!
 ;; NOTE: for weight eps, let eps = sample-factor / (1 + sample-factor)
