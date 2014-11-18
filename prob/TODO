@@ -1,5 +1,10 @@
 Tentative plans for the near future:
 
+- enumerative gibbs not safe for structural choices
+  - infer/check structural choices
+
+- adaptive MH ?
+
 - unit-like components
   - infer signature macros???
 
