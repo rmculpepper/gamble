@@ -43,6 +43,9 @@
               (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
             ;; FIXME: check V positive definite
             (values n V)))
+;; DRIFT: draw another wishart, weighted avg with current value
+;; NOTE: not symmetric!
+;; NOTE: for weight eps, let eps = sample-factor / (1 + sample-factor)
 
 (define-dist-type inverse-wishart-dist
   ([n real?] [Vinv square-matrix?])
@@ -55,7 +58,7 @@
               (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
             ;; FIXME: check V positive definite
             (values n Vinv)))
-
+;; DRIFT: invert, do wishart drift, invert
 
 ;; ============================================================
 ;; Multivariate dist functions
