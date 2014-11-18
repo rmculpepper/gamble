@@ -208,8 +208,12 @@
                     (/ (+ (/ scale)
                           (* 1/2 (for/sum ([x (in-vector data)])
                                    (sqr (- x data-mean)))))))]
-                  [_ #f])))
-;; DRIFT: TODO
+                  [_ #f]))
+  #:drift (lambda (value scale-factor)
+            (defmatch (cons value* R-F)
+              (drift:mult-exp-normal (/ value) (* scale (sqrt shape) scale-factor)))
+            (cons (/ value*) R-F))
+  #:slice-adjust (lambda (value scale-factor) (* value (exp (* scale (sqrt shape) scale-factor)))))
 
 (define-fl-dist-type logistic-dist
   ([mean real?]
@@ -248,10 +252,8 @@
                    (pareto-dist
                     (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
                     (+ shape (vector-length data)))]
-                  [_ #f]))
-  #:drift (lambda (value scale-factor)
-            ;; FIXME: maybe drift:mult-exp-normal?
-            #f))
+                  [_ #f])))
+;; DRIFT: FIXME
 
 (define-fl-dist-type normal-dist
   ([mean real?]
