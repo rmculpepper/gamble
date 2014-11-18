@@ -8,7 +8,7 @@
 ;; - no polymorphic function instantiation problems from untyped Racket
 
 #lang typed/racket/base
-(require (for-syntax racket/base racket/syntax syntax/parse)
+(require (for-syntax racket/base racket/syntax syntax/parse unstable/list)
          racket/math
          (prefix-in t: math/array)
          (prefix-in t: math/matrix)
@@ -28,7 +28,7 @@
 (begin-for-syntax
   (define-syntax-class arraytype
     #:literals (Array Matrix ImmArray ImmMatrix MutArray MutMatrix
-                Listof Values)
+                U Listof Values)
     (pattern (~or Array Matrix)
              #:with unpack #'Array-contents
              #:with repack #'wrap-ImmArray)
@@ -40,7 +40,10 @@
              #:with repack #'MutArray)
     (pattern (Listof t:arraytype)
              #:with unpack #'(lambda (l) (map t.unpack l))
-             #:with repack #'(lambda (l) (map t.repack l))))
+             #:with repack #'(lambda (l) (map t.repack l)))
+    (pattern (U t:type (~or Array Matrix))
+             #:with unpack #'(lambda (v) (if (Array? v) (Array-contents v) (t.unpack v)))
+             #:with repack #'(lambda (v) (if (t:array? v) (wrap-ImmArray v) (t.repack v)))))
   (define-syntax-class type
     #:attributes (unpack repack)
     (pattern :arraytype)
@@ -49,37 +52,45 @@
              #:with repack #'begin)))
 
 (define-syntax (Wrap* stx)
-  (define (gen-clause t:fun clause)
-    (syntax-parse clause
-      #:literals (Values)
-      [[argtype:type ... -> restype:type]
-       (with-syntax ([(arg ...) (generate-temporaries #'(argtype ...))]
-                     [t:fun t:fun])
-         #'[([arg : argtype] ...)
-            (restype.repack (t:fun (argtype.unpack arg) ...))])]
-      [[argtype:type ... -> (Values restype:type ...)]
-       (with-syntax ([(arg ...) (generate-temporaries #'(argtype ...))]
-                     [(res ...) (generate-temporaries #'(restype ...))]
-                     [t:fun t:fun])
-         #'[([arg : argtype] ...)
-            (let-values ([(res ...) (t:fun (argtype.unpack arg) ...)])
-              (values (restype.repack res) ...))])]
-      [[argtype:type ... #:rest restargtype:type -> restype:type]
-       (with-syntax ([(arg ...) (generate-temporaries #'(argtype ...))]
-                     [t:fun t:fun])
-         #'[([arg : argtype] ... . [rest : restargtype *])
-            (restype.repack
-             (apply t:fun (argtype.unpack arg) ... (map restargtype.unpack rest)))])]))
+  (define-syntax-class (typeclause tfun)
+    #:attributes (arity code)
+    #:literals (-> Values)
+    (pattern [argtype:type ... -> restype:type]
+             #:attr arity (length (syntax->list #'(argtype ...)))
+             #:with (arg ...) (generate-temporaries #'(argtype ...))
+             #:with tfun tfun
+             #:with code
+             #'[([arg : argtype] ...)
+                (restype.repack (tfun (argtype.unpack arg) ...))])
+    (pattern [argtype:type ... -> (Values restype:type ...)]
+             #:attr arity (length (syntax->list #'(argtype ...)))
+             #:with (arg ...) (generate-temporaries #'(argtype ...))
+             #:with (res ...) (generate-temporaries #'(restype ...))
+             #:with tfun tfun
+             #:with code
+             #'[([arg : argtype] ...)
+                (let-values ([(res ...) (tfun (argtype.unpack arg) ...)])
+                  (values (restype.repack res) ...))])
+    (pattern [argtype:type ... #:rest restargtype:type -> restype:type]
+             #:attr arity (length (syntax->list #'(argtype ...))) ;; FIXME: approx
+             #:with (arg ...) (generate-temporaries #'(argtype ...))
+             #:with tfun tfun
+             #:with code
+             #'[([arg : argtype] ... . [rest : restargtype *])
+                (restype.repack
+                 (apply tfun (argtype.unpack arg) ... (map restargtype.unpack rest)))]))
   (syntax-parse stx
     #:datum-literals (: ->)
-    [(Wrap* fun:id : typeclause ...)
-     (define t:fun (format-id #'fun "t:~a" #'fun))
-     (with-syntax ([(clause ...) (for/list ([c (in-list (syntax->list #'(typeclause ...)))])
-                                   (gen-clause t:fun c))])
-       (syntax/loc stx
-         (begin
-           (define fun (case-lambda clause ...))
-           (provide fun))))]))
+    [(Wrap* fun:id : c ...)
+     #:declare c (typeclause (format-id #'fun "t:~a" #'fun))
+     (let ([code+arity-list (map cons (syntax->list #'(c ...)) (attribute c.arity))])
+       (cond [(check-duplicate code+arity-list #:key cdr)
+              => (lambda (code+arity)
+                   (raise-syntax-error #f "multiple cases with same arity" stx (car code+arity)))]))
+     (syntax/loc stx
+       (begin
+         (define fun (case-lambda c.code ...))
+         (provide fun)))]))
 
 (define-syntax (Wrap stx)
   (syntax-parse stx
@@ -334,12 +345,8 @@
 (Wrap vector->matrix : Integer Integer (Vectorof Real) -> Matrix)
 (Wrap matrix->vector : Matrix -> (Vectorof Real))
 
-(Wrap* ->row-matrix :
-       [(U (Listof Real) (Vectorof Real)) -> Matrix]
-       [Array -> Matrix])
-(Wrap* ->col-matrix :
-       [(U (Listof Real) (Vectorof Real)) -> Matrix]
-       [Array -> Matrix])
+(Wrap ->row-matrix : (U (U (Listof Real) (Vectorof Real)) Array) -> Matrix)
+(Wrap ->col-matrix : (U (U (Listof Real) (Vectorof Real)) Array) -> Matrix)
 
 (Wrap list*->matrix : (Listof (Listof Real)) -> Matrix)
 (Wrap matrix->list* : Matrix -> (Listof (Listof Real)))
