@@ -7,10 +7,11 @@
 #lang racket/base
 (require (for-syntax racket/base
                      "private/instrument-analysis.rkt")
-         (except-in typed/racket/base #%module-begin)
+         (rename-in typed/racket/base
+                    [#%module-begin typed-module-begin]
+                    [#%top-interaction typed-top-interaction])
          "private/instrument.rkt")
-(provide (except-out (all-from-out typed/racket/base)
-                     #%top-interaction)
+(provide (all-from-out typed/racket/base)
          (rename-out [typed-instrumenting-module-begin #%module-begin]
                      [typed-instrumenting-top-interaction #%top-interaction]))
 
@@ -19,13 +20,15 @@
     [(ti-module-begin form ...)
      (with-syntax ([e-module-body
                     (analyze
-                     (local-expand #'(#%module-begin form ...) 'module-begin null))])
-       #'(instrument e-module-body #:un))]))
+                     (local-expand #'(#%plain-module-begin form ...) 'module-begin null))])
+       (with-syntax ([(pmb instr-form ...)
+                      (local-expand #'(instrument e-module-body #:un) 'module-begin null)])
+         #'(typed-module-begin instr-form ...)))]))
 
 (define-syntax (typed-instrumenting-top-interaction stx)
   (syntax-case stx ()
     [(ti-top-interaction . e)
-     (let ([estx (local-expand #'(#%top-interaction . e) 'top-level #f)])
+     (let ([estx (local-expand #'(typed-top-interaction . e) 'top-level #f)])
        (syntax-case estx (begin)
          [(begin form ...)
           #'(begin (instrumenting-top-interaction . form) ...)]
@@ -36,21 +39,15 @@
 (require "private/prob-syntax.rkt")
 (provide (all-from-out "private/prob-syntax.rkt"))
 
-(module lib typed/racket/base
-  (require/typed "main.rkt"
-                 [flip (case->
-                        (-> Boolean)
-                        (Real -> Boolean))]
-                 ;; [mem (All (B A ... ) ((A ... -> B) -> (A ... -> B)))]
-                 [mem (All (A R) (A -> R))]
-                 [verbose? (Parameterof Boolean)]
-                 )
-  (provide flip
-           mem
-           verbose?))
+(module instrumentation-types typed-racket/base-env/extra-env-lang
+  (require "private/context.rkt"
+           (for-syntax typed-racket/rep/type-rep))
+  (type-environment
+   [obs-mark (make-Continuation-Mark-Keyof Univ)]
+   [observing? (-Param Univ Univ)]))
 
-(require 'lib)
-(provide (all-from-out 'lib))
+(require 'instrumentation-types)
+(provide (all-from-out 'instrumentation-types))
 
 ;; FIXME: extend type environment directly; require/typed is insufficient
 
