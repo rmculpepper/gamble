@@ -13,7 +13,8 @@
          describe-call-site
          instrumenting-module-begin
          instrumenting-top-interaction
-         instrument)
+         instrument
+         next-counter)
 
 (begin-for-syntax
   ;; display with: PLTSTDERR="info@instr" racket ....
@@ -196,8 +197,17 @@ distinct call-site indexes.
         (datum->syntax stx (syntax-e stx) loc-stx stx))))
 
 (define-syntax (recur-cc-to-nt stx)
-  (syntax-case stx ()
-    [(_ e) #'(wrap-nt (instrument e #:nt))]))
+  (syntax-parse stx
+    [(_ e)
+     (syntax-parse #'e
+       #:literal-sets (kernel-literals)
+       [(begin (quote-syntax _) (#%plain-app values))
+        ;; HACK: a TR `:' annotation expands into this pattern; no need to annotate,
+        ;; and annotation just confuses TR, so avoid (FIXME: better solution?)
+        #'e]
+       ;; Normal case:
+       [e #'(wrap-nt (instrument e #:nt))])]))
+
 (define-syntax (recur-nt-to-nt stx)
   (syntax-case stx ()
     [(_ e) #'(instrument e #:nt)]))
@@ -247,10 +257,10 @@ distinct call-site indexes.
      #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
     [(_ #:cc (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c #t f (wrap-nt (instrument e #:nt)) ...))]
+       #'(app/call-site c f (wrap-nt (instrument e #:nt)) ...))]
     [(_ #:cc (#%plain-app e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c #t (wrap-nt (instrument e #:nt)) ...))]
+       #'(app/call-site c (wrap-nt (instrument e #:nt)) ...))]
 
     ;; Non-conditionable contexts
     [(_ #:nt (#%plain-app f:id e ...))
@@ -261,10 +271,10 @@ distinct call-site indexes.
      #'(#%plain-app f (instrument e #:nt) ...)]
     [(_ #:nt (#%plain-app f:id e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c #f f (instrument e #:nt) ...))]
+       #'(app/call-site c f (instrument e #:nt) ...))]
     [(_ #:nt (#%plain-app f e ...))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c #f (instrument f #:nt) (instrument e #:nt) ...))]))
+       #'(app/call-site c (instrument f #:nt) (instrument e #:nt) ...))]))
 
 ;; wrap-cc : wrapped around CC args to CC function call
 (define-syntax (wrap-cc stx)
@@ -280,12 +290,19 @@ distinct call-site indexes.
 
 ;; Application w/ call-site added to context parameter.
 (define-syntax (app/call-site stx)
-  (syntax-case stx ()
-    [(app/call-site call-site wcm-function? f arg ...)
+  (syntax-parse stx
+    [(app/call-site call-site f:id arg ...)
+     ;; Special case where f is varref: keep f in operator position
+     (with-syntax ([(tmp-arg ...)
+                    (generate-temporaries #'(arg ...))])
+       #`(let ([tmp-arg arg] ...)
+           (parameterize ((the-context (cons call-site (the-context))))
+             (#%plain-app f tmp-arg ...))))]
+    [(app/call-site call-site f arg ...)
      (with-syntax ([(tmp-f)
                     (generate-temporaries #'(f))]
                    [(tmp-arg ...)
                     (generate-temporaries #'(arg ...))])
-       #`(let ([c call-site] [tmp-f f] [tmp-arg arg] ...)
-           (parameterize ((the-context (cons c (the-context))))
+       #`(let ([tmp-f f] [tmp-arg arg] ...)
+           (parameterize ((the-context (cons call-site (the-context))))
              (#%plain-app tmp-f tmp-arg ...))))]))

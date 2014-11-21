@@ -158,8 +158,8 @@
      (template
       (enumerate*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (?? (?@ #:limit limit))
-       (?? (?@ #:normalize? normalize?))))]))
+       (?? limit #f)
+       (?? normalize? #t)))]))
 
 (define-syntax (enum-importance-sampler stx)
   (syntax-parse stx
