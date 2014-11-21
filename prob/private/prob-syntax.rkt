@@ -16,27 +16,8 @@
          "prob-mh.rkt"
          "prob-enum.rkt"
          "interfaces.rkt")
-(provide observe
-         check-observe
-         rejection-sampler
-         importance-sampler
-         mh-sampler
-         hmc-sampler
-         enumerate
-         enum-importance-sampler
-         label
-         with-zone
-         derivative
-         ppromise?
-         pdelay
-         (contract-out
-          [pforce (-> ppromise? any)])
-         deflazy
-         defmem
-         (rename-out [table* table])
-         table?
-
-         importance-stochastic-ctx%)
+(provide (except-out (all-defined-out) table table*)
+         (rename-out [table* table]))
 
 ;; ----
 

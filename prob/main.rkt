@@ -143,8 +143,25 @@
          sampler->mean+variance)
 
 (require "private/prob-syntax.rkt")
-(provide (except-out (all-from-out "private/prob-syntax.rkt")
-                     importance-stochastic-ctx%))
+(provide observe
+         check-observe
+         rejection-sampler
+         importance-sampler
+         mh-sampler
+         hmc-sampler
+         enumerate
+         enum-importance-sampler
+         label
+         with-zone
+         derivative
+         ppromise?
+         pdelay
+         (contract-out
+          [pforce (-> ppromise? any)])
+         deflazy
+         defmem
+         table
+         table?)
 
 (require "private/ho-functions.rkt")
 (provide (all-from-out "private/ho-functions.rkt"))
