@@ -46,7 +46,7 @@
    [the-context (-Param Univ Univ)]
    [obs-mark (make-Continuation-Mark-Keyof Univ)]
    [observing? (-Param Univ Univ)]
-   [next-counter (-poly (a) (-> a -Integer))]))
+   [next-counter (-poly (a b) (-> a b -Integer))]))
 
 (require 'instrumentation-type-env)
 (provide (all-from-out 'instrumentation-type-env))
