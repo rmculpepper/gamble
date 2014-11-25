@@ -98,14 +98,14 @@
                        #:data [data-filter #f])
   (cond [(path-string? in)
          (call-with-input-file in
-           (lambda (p) (read-csv-file p #:header header #:data-filter data-filter))
+           (lambda (p) (read-csv-file p #:header header #:data data-filter))
            #:mode 'text)]
         [header
          (cons (read/check-header 'read-csv-file in header #f)
-               (read-csv-file in #:header #f #:data-filter data-filter))]
+               (read-csv-file in #:header #f #:data data-filter))]
         [else
          (let loop ([acc null])
-           (let ([next (read-csv-line in)])
+           (let ([next (read-csv-line in data-filter)])
              (cond [next
                     ;; data-filter
                     (loop (cons next acc))]
