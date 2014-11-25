@@ -90,7 +90,7 @@
 
 (define (convert-p p log? 1-p?)
   (define p* (if 1-p? (- 1 p) p))
-  (if log? (log p*) p*))
+  (if log? (log (exact->inexact p*)) p*))
 
 (define (filter-modes f ms)
   (define-values (best best-p)
