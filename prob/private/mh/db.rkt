@@ -8,10 +8,9 @@
          (rename-in racket/match [match-define defmatch])
          racket/vector
          data/order
-         "context.rkt"
-         "interfaces.rkt"
-         "../dist.rkt"
-         (only-in "dist.rkt" dists-same-type?))
+         "../context.rkt"
+         "../interfaces.rkt"
+         "../dist.rkt")
 (provide (all-defined-out))
 
 ;; A DB is (Hashof Address Entry)
@@ -135,6 +134,16 @@
   (db-copy-stale old-db new-db)
   (db-update! f new-db #:with-address with-address)
   new-db)
+
+;; pick-a-key : Nat DB ZonePattern -> (U Address #f)
+;; Returns a key s.t. the value is not pinned.
+(define (pick-a-key nchoices db zone)
+  ;; FIXME: what if zone has no choices?
+  (define nchoices/zone
+    (cond [(eq? zone #f) nchoices]
+          [else (db-count-unpinned db #:zone zone)]))
+  (and (positive? nchoices/zone)
+       (db-nth-unpinned db (random nchoices/zone) #:zone zone)))
 
 ;; ============================================================
 
