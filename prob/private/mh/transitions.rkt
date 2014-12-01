@@ -7,6 +7,8 @@
          (rename-in racket/match [match-define defmatch])
          "db.rkt"
          "../interfaces.rkt"
+         "../dist.rkt"
+         "../../dist/discrete.rkt"
          "base.rkt")
 (provide (all-defined-out))
 
@@ -194,47 +196,86 @@
 
 ;; ============================================================
 
-(define cycle-mh-transition%
+(define abstract-multi-tx-transition%
   (class* object% (mh-transition<%>)
-    (init-field transitions)
     (super-new)
 
-    (define ctransitions
-      (let ([p (make-placeholder (void))])
-        (placeholder-set! p (append transitions p))
-        (make-reader-graph p)))
-
     (define/public (info i)
-      (iprintf i "== Transition (cycle ...)\n")
-      (for ([tx (in-list transitions)])
+      (for ([tx (get-transitions)])
         (send tx info (+ i 2))))
 
     (define/public (run thunk last-trace)
-      (define r (send (car ctransitions) run thunk last-trace))
-      (when r  ;; only advance on success
-        (set! ctransitions (cdr ctransitions)))
+      (define r (send (get-transition) run thunk last-trace))
+      (update-transition (and r #t))
       r)
+
+    (abstract get-transition)
+    (abstract get-transitions)
+    (abstract update-transition)
+    ))
+
+(define cycle-mh-transition%
+  (class abstract-multi-tx-transition%
+    (init transitions)
+    (super-new)
+
+    (define transitions* (list->vector transitions))
+    (define current 0)
+
+    (define/override (info i)
+      (iprintf i "== Transition (cycle ...)\n")
+      (super info i))
+
+    (define/override (get-transition)
+      (vector-ref transitions* current))
+    (define/override (get-transitions)
+      transitions*)
+    (define/override (update-transition success?)
+      (when success?
+        (set! current (modulo (add1 current) (vector-length transitions*)))))
     ))
 
 (define sequence-mh-transition%
-  (class* object% (mh-transition<%>)
-    (init-field transitions)
+  (class abstract-multi-tx-transition%
+    (init transitions)
     (super-new)
 
-    (define ctransitions transitions)
+    (define transitions* (list->vector transitions))
+    (define current 0)
 
-    (define/public (info i)
+    (define/override (info i)
       (iprintf i "== Transition (sequence ...)\n")
-      (for ([tx (in-list transitions)])
-        (send tx info (+ i 2))))
+      (super info i))
 
-    (define/public (run thunk last-trace)
-      (define r (send (car ctransitions) run thunk last-trace))
-      (when (and r (pair? (cdr ctransitions)))
-        ;; only advance on success; stop on last tx
-        (set! ctransitions (cdr ctransitions)))
-      r)
+    (define/override (get-transition)
+      (vector-ref transitions* current))
+    (define/override (get-transitions)
+      transitions*)
+    (define/override (update-transition success?)
+      (when (and success?
+                 (< current (sub1 (vector-length transitions*))))
+        (set! current (add1 current))))
     ))
+
+(define mixture-mh-transition%
+  (class abstract-multi-tx-transition%
+    (init transitions weights)
+    (super-new)
+
+    (define tx-dist (make-discrete-dist* transitions weights #:normalize #f))
+
+    (define/override (info i)
+      (iprintf i "== Transition (mixture ...)\n")
+      (super info i))
+
+    (define/override (get-transition)
+      (dist-sample tx-dist))
+    (define/override (get-transitions)
+      (discrete-dist-values tx-dist))
+    (define/override (update-transition success?) (void))
+    ))
+
+;; ============================================================
 
 (define rerun-mh-transition%
   (class perturb-mh-transition-base%

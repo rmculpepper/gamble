@@ -31,6 +31,13 @@
   (new single-site-mh-transition% [zone zone] [record-obs? record-obs?]))
 (define (multi-site #:zone [zone #f] #:record-obs? [record-obs? #t])
   (new multi-site-mh-transition% [zone zone] [record-obs? record-obs?]))
+(define (mixture transitions [weights #f])
+  (define transitions* (if (list? transitions) (list->vector transitions) transitions))
+  (define weights*
+    (cond [(list? weights) (list->vector weights)]
+          [(vector? weights) weights]
+          [else (let ([len (length transitions)]) (make-vector len (/ len)))]))
+  (new mixture-mh-transition% [transitions transitions*] [weights weights*]))
 (define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
 (define (slice #:scale [scale-factor 1] #:zone [zone #f])
