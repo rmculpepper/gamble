@@ -145,6 +145,7 @@
 (require "private/prob-syntax.rkt")
 (provide observe
          check-observe
+         with-zone
          rejection-sampler
          importance-sampler
          mh-sampler
@@ -218,7 +219,11 @@
           [slice
            (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]
           [enumerative-gibbs
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]))
+           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
+          [mixture
+           (->* [(vectorof mh-transition?)] [(vectorof (>=/c 0))] mh-transition?)]
+          [rerun
+           (-> mh-transition?)]))
 
 (require "private/serializable-lambda.rkt")
 (provide lambda/s

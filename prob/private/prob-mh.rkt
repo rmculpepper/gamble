@@ -15,6 +15,8 @@
          mh-transition?
          cycle
          sequence
+         mixture
+         rerun
          single-site
          multi-site
          hmc
@@ -96,22 +98,29 @@
       (trace-value best-trace))
 
     (define/override (sample)
-      (sample/transition transition))
+      (sample! transition (if (eq? last-trace init-trace) +inf.0 0))
+      (trace-value last-trace))
 
-    (define/public (rerun)
-      (define lt last-trace)
-      (sample/transition the-rerun-mh-transition)
-      (not (eq? lt last-trace)))
-
-    (define/public (sample/transition tx)
+    ;; Updates last-sample; returns #t for new sample, #f if unchanged (tx failed).
+    (define/public (sample! tx retries)
       (match (send tx run thunk last-trace)
         [(? trace? t)
          (set! last-trace t)
-         (trace-value t)]
+         #t]
         [#f
-         (if (eq? last-trace init-trace)
-             (sample)
-             (trace-value last-trace))]))
+         (if (zero? retries)
+             #f
+             (sample! tx (sub1 retries)))]))
+
+    ;; Call reinitialize after model and/or observations have
+    ;; changed. To find a valid state that extends the current state,
+    ;; use default rerun transition; otherwise, can supply other
+    ;; transition to get back to legal state.
+    (define/public (reinitialize [transition the-rerun-mh-transition] [attempts +inf.0])
+      (sample! transition attempts))
+
+    (define/public (rerun [transition the-rerun-mh-transition])
+      (sample! transition 0))
 
     (define/public (info)
       (send transition info 0)
