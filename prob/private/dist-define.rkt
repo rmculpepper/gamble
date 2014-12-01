@@ -9,15 +9,8 @@
                      syntax/parse/experimental/eh
                      racket/syntax)
          racket/contract
-         racket/match
-         racket/math
-         racket/pretty
-         racket/dict
-         racket/generic
          racket/flonum
-         racket/vector
-         "dist.rkt"
-         "dist-impl.rkt")
+         "dist.rkt")
 (provide define-dist-type
          define-fl-dist-type)
 

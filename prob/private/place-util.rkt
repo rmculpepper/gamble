@@ -7,7 +7,6 @@
          racket/match
          racket/place
          racket/future
-         racket/promise
          racket/serialize
          "serializable-lambda.rkt")
 (provide (all-defined-out))

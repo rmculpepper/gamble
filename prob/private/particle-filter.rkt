@@ -4,11 +4,9 @@
 
 #lang racket/base
 (require racket/class
-         racket/contract
          racket/match
          racket/math
          racket/vector
-         "../dist.rkt"
          (only-in "prob-util.rkt" [resample u:resample])
          "prob-syntax.rkt")
 (provide (all-defined-out))
@@ -139,10 +137,6 @@
 ;; ============================================================
 
 (require racket/vector
-         racket/place
-         racket/future
-         racket/promise
-         racket/serialize
          "place-util.rkt"
          "serializable-lambda.rkt")
 (provide make-parallel-particles)

@@ -5,8 +5,6 @@
 #lang racket/base
 (require racket/class
          (rename-in racket/match [match-define defmatch])
-         racket/math
-         racket/vector
          "db.rkt"
          "../interfaces.rkt"
          "../dist.rkt"

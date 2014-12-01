@@ -8,7 +8,6 @@
                      syntax/parse/experimental/template
                      unstable/syntax
                      syntax/name)
-         racket/contract/base
          racket/class
          "dist.rkt"
          "context.rkt"
