@@ -35,7 +35,9 @@
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
       (unless key-to-change
-        (error 'enumerative-gibbs:run "no key to change"))
+        (error 'enumerative-gibbs:run "no key to change~a"
+               (cond [zone (format "\n  zone: ~e" zone)]
+                     [else ""])))
       (match (hash-ref last-db key-to-change)
         [(entry zones dist value ll #f)
          (unless (finite-dist? dist)
@@ -70,6 +72,11 @@
                     [(cons 'okay sample-value)
                      (define current-db (get-field current-db ctx))
                      (define nchoices (get-field nchoices ctx))
+                     (unless (= nchoices (trace-nchoices last-trace))
+                       ;; FIXME: This check is not sufficient to catch all structural choices:
+                       ;; if one choice is lost and another added, nchoices stays the same.
+                       ;; Could fix by also maintaining and checking number of fresh choices.
+                       (error 'enumerative-gibbs "illegal for structural choice"))
                      (define ll-free (get-field ll-free ctx))
                      (define ll-obs (get-field ll-obs ctx))
                      (define current-trace
