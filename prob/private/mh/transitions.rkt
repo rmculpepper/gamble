@@ -9,14 +9,16 @@
          "../interfaces.rkt"
          "../dist.rkt"
          "../../dist/discrete.rkt"
-         "base.rkt")
+         "base.rkt"
+         "proposal.rkt")
 (provide (all-defined-out))
 
 ;; ============================================================
 
 (define perturb-mh-transition-base%
   (class mh-transition-base%
-    (init-field record-obs?
+    (init-field proposal
+                record-obs?
                 [temperature 1])
     (field [proposed 0]
            [resampled 0])
@@ -25,7 +27,7 @@
     (define/override (info i)
       (super info i)
       (iprintf i "Proposal perturbs: ~s\n" proposed)
-      (iprintf i "Resample perturbs: ~s\n" resampled))
+      (iprintf i "Fall-through perturbs: ~s\n" resampled))
 
     ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
     (define/override (run* thunk last-trace)
@@ -58,34 +60,20 @@
 
     ;; perturb-a-key : Address Dist Value Zones -> (cons Entry Real)
     (define/public (perturb-a-key key dist value zones)
-      (or (perturb/proposal key dist value zones)
-          (perturb/resample key dist value zones)))
-
-    ;; perturb/resample : Address Dist Any List -> (cons Entry Real)
-    (define/public (perturb/resample key dist value zones)
-      ;; Fallback: Just resample from same dist.
-      ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
-      ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist value*)
-      (define value* (dist-sample dist))
-      (define R (dist-pdf dist value #t))
-      (define F (dist-pdf dist value* #t))
+      (defmatch (cons value* R-F)
+        (cond [(proposal key zones dist value)
+               => (lambda (r) (set! proposed (add1 proposed)) r)]
+              [else
+               (set! resampled (add1 resampled))
+               (propose:resample dist value)]))
       (when (verbose?)
-        (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
-        (eprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
-      (set! resampled (add1 resampled))
-      (cons (entry zones dist value* F #f) (- R F)))
-
-    ;; perturb/proposal : Address Dist Any List -> (U (cons Entry Real) #f)
-    (define/public (perturb/proposal key dist value zones)
-      (match (apply-proposal-map (proposal-map) zones dist value)
-        [(cons value* R-F)
-         (when (verbose?)
-           (eprintf "  PROPOSED from ~e to ~e\n" value value*)
-           (eprintf "  R-F = ~s\n" R-F))
-         (define ll* (dist-pdf dist value* #t))
-         (set! proposed (add1 proposed))
-         (cons (entry zones dist value* ll* #f) R-F)]
-        [#f #f]))
+        (eprintf "  PROPOSED from ~e to ~e\n" value value*)
+        (eprintf "    R/F = ~s\n" (exp R-F)))
+      (define ll* (dist-pdf dist value* #t))
+      (unless (ll-possible? ll*)
+        (error 'perturb "proposal produced impossible value\n  dist: ~e\n  value: ~e"
+               dist value*))
+      (cons (entry zones dist value* ll* #f) R-F))
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     (abstract accept-threshold)
@@ -279,7 +267,7 @@
 
 (define rerun-mh-transition%
   (class perturb-mh-transition-base%
-    (super-new [record-obs? #f])
+    (super-new [proposal propose:resample] [record-obs? #f])
     (define/override (info i)
       (iprintf "== Transition (rerun)\n")
       (super info i))

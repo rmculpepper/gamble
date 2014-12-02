@@ -7,6 +7,7 @@
          (rename-in racket/match [match-define defmatch])
          "interfaces.rkt"
          "mh/base.rkt"
+         "mh/proposal.rkt"
          "mh/transitions.rkt"
          "mh/slice.rkt"
          "mh/enum-gibbs.rkt"
@@ -21,18 +22,17 @@
          multi-site
          hmc
          slice
-         enumerative-gibbs)
+         enumerative-gibbs
+         (all-from-out "mh/proposal.rkt"))
 
 (define (mh-transition? x) (is-a? x mh-transition<%>))
 
 (define (sequence . txs)
   (new sequence-mh-transition% (transitions txs)))
+
 (define (cycle . txs)
   (new cycle-mh-transition% (transitions txs)))
-(define (single-site #:zone [zone #f] #:record-obs? [record-obs? #t])
-  (new single-site-mh-transition% [zone zone] [record-obs? record-obs?]))
-(define (multi-site #:zone [zone #f] #:record-obs? [record-obs? #t])
-  (new multi-site-mh-transition% [zone zone] [record-obs? record-obs?]))
+
 (define (mixture transitions [weights #f])
   (define transitions* (if (list? transitions) (list->vector transitions) transitions))
   (define weights*
@@ -40,12 +40,26 @@
           [(vector? weights) weights]
           [else (let ([len (length transitions)]) (make-vector len (/ len)))]))
   (new mixture-mh-transition% [transitions transitions*] [weights weights*]))
-(define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
-  (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
+
+(define (single-site #:proposal [proposal (default-proposal)]
+                     #:zone [zone #f]
+                     #:record-obs? [record-obs? #t])
+  (new single-site-mh-transition% [proposal proposal] [zone zone] [record-obs? record-obs?]))
+
+(define (multi-site #:proposal [proposal (default-proposal)]
+                    #:zone [zone #f]
+                    #:record-obs? [record-obs? #t])
+  (new multi-site-mh-transition% [zone zone] [record-obs? record-obs?]))
+
 (define (slice #:scale [scale-factor 1] #:zone [zone #f])
   (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
+
 (define (enumerative-gibbs #:zone [zone #f] #:record-obs? [record-obs? #t])
   (new enumerative-gibbs-mh-transition% (zone zone) (record-obs? record-obs?)))
+
+(define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
+  (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
+
 (define (rerun)
   the-rerun-mh-transition)
 

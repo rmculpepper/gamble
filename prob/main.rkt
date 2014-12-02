@@ -223,7 +223,13 @@
           [mixture
            (->* [(vectorof mh-transition?)] [(vectorof (>=/c 0))] mh-transition?)]
           [rerun
-           (-> mh-transition?)]))
+           (-> mh-transition?)]
+          [proposal:resample
+           (-> procedure?)]
+          [proposal:drift
+           (-> (>/c 0) procedure?)]
+          [default-proposal
+           (parameter/c procedure?)]))
 
 (require "private/serializable-lambda.rkt")
 (provide lambda/s

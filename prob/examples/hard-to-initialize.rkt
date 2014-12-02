@@ -69,9 +69,6 @@
      (unless (list-ref xs i) (fail)))
    xs))
 
-(require (only-in prob/private/mh/base proposal-map))
-(proposal-map '#hash())
-
 ;; Incrementally initialize incr1, one observation at a time.
 (for ([k (in-range 1 (add1 N))])
   (stage k)

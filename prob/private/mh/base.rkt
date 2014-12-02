@@ -74,53 +74,6 @@
 
 ;; ============================================================
 
-;; ProposalMap = hash[ Zone => (listof ProposalFun) ])
-;; where ProposalFun = (Dist Value -> (U (cons Value Real) #f))
-;; The function returns a new value and the proposal's R-F.
-
-;; extend-proposal-map : ProposalMap {Zone ProposalFun}* -> ProposalMap
-(define (extend-proposal-map pm . args)
-  (unless (even? (length args))
-    (error 'extend-proposal-map "expected an even number of {zone,function} arguments"))
-  (let loop ([args args])
-    (cond [(and (pair? args) (pair? (cdr args)))
-           (extend-proposal-map1 (loop (cddr args)) (car args) (cadr args))]
-          [else pm])))
-
-;; extend-proposal-map1 : ProposalMap Zone ProposalFun -> ProposalMap
-(define (extend-proposal-map1 pm zone fun)
-  (hash-set pm zone (cons fun (hash-ref pm zone null))))
-
-;; apply-proposal-map : ProposalMap (Listof Zone) Dist Value -> (U (cons Value Real) #f)
-;; Try all functions for primary (closest enclosing) zone, then for second zone, etc.
-(define (apply-proposal-map pm zones dist val)
-  (or (apply-proposal-map* pm zones dist val)
-      (apply-proposal-map* pm '(#f) dist val)))
-
-(define (apply-proposal-map* pm zonelist dist val)
-  (for/or ([z (in-list zonelist)])
-    (for/or ([fun (in-list (hash-ref pm z null))])
-      (fun dist val))))
-
-;; proposal-map : (parameterof ProposalMap)
-(define proposal-map (make-parameter '#hash()))
-
-(define (make-default-proposal scale-factor)
-  (lambda (dist value)
-    (or (*drift dist value scale-factor)
-        #f)))
-
-;; used by slice sampler
-(define (real-dist-adjust-value dist value scale-factor)
-  (*slice-adjust dist value scale-factor))
-
-(proposal-map
- (extend-proposal-map
-  (proposal-map)
-  #f (make-default-proposal 1/4)))
-
-;; ============================================================
-
 (define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
 
 (define (iprintf i fmt . args)
@@ -129,3 +82,7 @@
 
 (define (%age nom denom)
   (/ (* 100.0 nom) (exact->inexact denom)))
+
+;; used by slice sampler
+(define (real-dist-adjust-value dist value scale-factor)
+  (*slice-adjust dist value scale-factor))

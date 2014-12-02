@@ -48,6 +48,8 @@
   (*sample d))
 (define (dist-enum d)
   (*enum d))
+(define (dist-drift d v scale-factor)
+  (*drift d v scale-factor))
 
 (define (dist-energy d x)
   ;; -log(pdf(d,x))
