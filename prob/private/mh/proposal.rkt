@@ -14,8 +14,8 @@
 ;; Proposal = (Zones Dist Value -> (U (cons Value Real) #f))
 ;; The function returns a new value and the proposal's R-F.
 
-(define ((proposal:drift scale-factor) key zones dist value)
-  (define r (*drift dist value))
+(define (propose:drift scale-factor key zones dist value)
+  (define r (*drift dist value scale-factor))
   (when (verbose?)
     (match r
       [(cons value* R-F)
@@ -23,6 +23,9 @@
        (eprintf "    R/F = ~s\n" (exp R-F))]
       [_ (void)]))
   r)
+
+(define ((proposal:drift scale-factor) key zones dist value)
+  (propose:drift scale-factor key zones dist value))
 
 (define (propose:resample key zones dist value)
   ;; Just resample from same dist.

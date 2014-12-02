@@ -211,9 +211,11 @@
           [sequence
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
+           (->* [] [#:proposal procedure? #:zone any/c #:record-obs? any/c] mh-transition?)]
+          [adaptive-single-site
            (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
           [multi-site
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [#:proposal procedure? #:zone any/c #:record-obs? any/c] mh-transition?)]
           [hmc
            (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice

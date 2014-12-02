@@ -139,6 +139,72 @@
              (- R F)]))
     ))
 
+;; An Adapt is (adapt Real Nat Nat)
+;; - scale-factor is the current scale factor
+;; - trials is the number of trials since the last adjustment
+;; - successes is the number of successes since the last adjustment
+(struct adapt (scale trials successes) #:mutable)
+
+(define ADAPT-BATCH 100)
+(define ADAPT-GOAL-HI 0.42)
+(define ADAPT-GOAL-LO 0.38)
+(define ADAPT-INIT 1.0)
+(define ADAPT-UP 1.25)
+(define ADAPT-DOWN 0.80)
+(define ADAPT-MIN (exp -50))
+(define ADAPT-MAX (exp 50))
+
+(define adaptive-single-site-mh-transition%
+  (class single-site-mh-transition%
+    (field [incr-count 0]
+           [decr-count 0]
+           [stay-count 0])
+    (super-new [proposal (lambda (key zones dist value) (propose key zones dist value))])
+
+    ;; t : Hash[ Address => Adapt ]
+    (define t (make-hash))
+
+    ;; last-key : Address
+    (define last-key #f)
+
+    (define/override (info i)
+      (super info i)
+      (iprintf i "Scale increased: ~s\n" incr-count)
+      (iprintf i "Scale decreased: ~s\n" decr-count)
+      (iprintf i "Scale maintained: ~s\n" stay-count))
+
+    (define/override (run thunk last-trace)
+      (define r (super run thunk last-trace))
+      (when last-key (adapt-update last-key (and r #t)))
+      r)
+
+    (define/public (adapt-update key success?)
+      (define a (hash-ref t key))
+      (set-adapt-trials! a (add1 (adapt-trials a)))
+      (when success? (set-adapt-successes! a (add1 (adapt-successes a))))
+      (when (> (adapt-trials a) ADAPT-BATCH)
+        (cond [(> (adapt-successes a) (* ADAPT-GOAL-HI (adapt-trials a))) ;; high
+               (eprintf "increasing scale for ~s from ~s\n" key (adapt-scale a))
+               (set! incr-count (add1 incr-count))
+               (set-adapt-scale! a (min ADAPT-MAX (* ADAPT-UP (adapt-scale a))))]
+              [(< (adapt-successes a) (* ADAPT-GOAL-LO (adapt-trials a))) ;; low
+               (eprintf "decreasing scale for ~s from ~s\n" key (adapt-scale a))
+               (set! decr-count (add1 decr-count))
+               (set-adapt-scale! a (max ADAPT-MIN (* ADAPT-DOWN (adapt-scale a))))]
+              [else
+               (set! stay-count (add1 stay-count))
+               (void)])
+        (set-adapt-trials! a 0)
+        (set-adapt-successes! a 0))
+      (set! last-key #f))
+
+    (define/private (propose key zones dist value)
+      (define a (hash-ref! t key (lambda () (adapt ADAPT-INIT 0 0))))
+      (set! last-key key)
+      (propose:drift (adapt-scale a) key zones dist value))
+    ))
+
+
 ;; ============================================================
 
 (define multi-site-mh-transition%

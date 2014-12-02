@@ -19,6 +19,7 @@
          mixture
          rerun
          single-site
+         adaptive-single-site
          multi-site
          hmc
          slice
@@ -45,6 +46,10 @@
                      #:zone [zone #f]
                      #:record-obs? [record-obs? #t])
   (new single-site-mh-transition% [proposal proposal] [zone zone] [record-obs? record-obs?]))
+
+(define (adaptive-single-site #:zone [zone #f]
+                              #:record-obs? [record-obs? #t])
+  (new adaptive-single-site-mh-transition% [zone zone] [record-obs? record-obs?]))
 
 (define (multi-site #:proposal [proposal (default-proposal)]
                     #:zone [zone #f]
