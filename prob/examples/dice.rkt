@@ -29,9 +29,9 @@ Several solutions are presented below.
 
 (define (naive)
   (define n (draw-slip))
-  (define sum (for/sum ([i n]) (roll-die)))
+  (define (sum) (for/sum ([i n]) (roll-die)))
   (for ([obs OBSERVED-TOTALS])
-    (unless (= sum obs) (fail)))
+    (unless (= (sum) obs) (fail)))
   n)
 
 (define s-naive (rejection-sampler (naive)))
@@ -44,9 +44,9 @@ Several solutions are presented below.
 
 (define (softened)
   (define n (draw-slip))
-  (define sum (for/sum ([i n]) (roll-die)))
+  (define (sum) (for/sum ([i n]) (roll-die)))
   (for ([obs OBSERVED-TOTALS])
-    (observe (normal sum 1) obs))
+    (observe (normal (sum) 1) obs))
   n)
 
 (define s-softened (mh-sampler (softened)))
