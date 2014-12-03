@@ -205,17 +205,20 @@
 
 (require "private/prob-mh.rkt")
 (provide mh-transition?
+         proposal?
+         proposal:resample
+         proposal:drift
          (contract-out
+          [default-make-proposal
+           (parameter/c (-> proposal?))]
           [cycle
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [sequence
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
-           (->* [] [#:proposal procedure? #:zone any/c #:record-obs? any/c] mh-transition?)]
-          [adaptive-single-site
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [#:proposal proposal? #:zone any/c #:record-obs? any/c] mh-transition?)]
           [multi-site
-           (->* [] [#:proposal procedure? #:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [#:proposal proposal? #:zone any/c #:record-obs? any/c] mh-transition?)]
           [hmc
            (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice
@@ -225,13 +228,7 @@
           [mixture
            (->* [(vectorof mh-transition?)] [(vectorof (>=/c 0))] mh-transition?)]
           [rerun
-           (-> mh-transition?)]
-          [proposal:resample
-           (-> procedure?)]
-          [proposal:drift
-           (-> (>/c 0) procedure?)]
-          [default-proposal
-           (parameter/c procedure?)]))
+           (-> mh-transition?)]))
 
 (require "private/serializable-lambda.rkt")
 (provide lambda/s

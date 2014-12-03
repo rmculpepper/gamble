@@ -19,12 +19,14 @@
          mixture
          rerun
          single-site
-         adaptive-single-site
          multi-site
          hmc
          slice
          enumerative-gibbs
-         (all-from-out "mh/proposal.rkt"))
+         proposal?
+         proposal:resample
+         proposal:drift
+         default-make-proposal)
 
 (define (mh-transition? x) (is-a? x mh-transition<%>))
 
@@ -42,16 +44,12 @@
           [else (let ([len (length transitions)]) (make-vector len (/ len)))]))
   (new mixture-mh-transition% [transitions transitions*] [weights weights*]))
 
-(define (single-site #:proposal [proposal (default-proposal)]
+(define (single-site #:proposal [proposal ((default-make-proposal))]
                      #:zone [zone #f]
                      #:record-obs? [record-obs? #t])
   (new single-site-mh-transition% [proposal proposal] [zone zone] [record-obs? record-obs?]))
 
-(define (adaptive-single-site #:zone [zone #f]
-                              #:record-obs? [record-obs? #t])
-  (new adaptive-single-site-mh-transition% [zone zone] [record-obs? record-obs?]))
-
-(define (multi-site #:proposal [proposal (default-proposal)]
+(define (multi-site #:proposal [proposal ((default-make-proposal))]
                     #:zone [zone #f]
                     #:record-obs? [record-obs? #t])
   (new multi-site-mh-transition% [zone zone] [record-obs? record-obs?]))

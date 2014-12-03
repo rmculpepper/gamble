@@ -24,15 +24,19 @@
            [resampled 0])
     (super-new)
 
+    (field [last-delta-db #f]) ;; HACK: used in feedback (FIXME)
+
     (define/override (info i)
       (super info i)
       (iprintf i "Proposal perturbs: ~s\n" proposed)
-      (iprintf i "Fall-through perturbs: ~s\n" resampled))
+      (iprintf i "Fall-through perturbs: ~s\n" resampled)
+      (send proposal info i))
 
     ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
     (define/override (run* thunk last-trace)
       (define last-db (trace-db last-trace))
       (defmatch (cons delta-db R-F) (perturb last-trace))
+      (set! last-delta-db delta-db)
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
@@ -61,7 +65,7 @@
     ;; perturb-a-key : Address Dist Value Zones -> (cons Entry Real)
     (define/public (perturb-a-key key dist value zones)
       (defmatch (cons value* R-F)
-        (cond [(proposal key zones dist value)
+        (cond [(send proposal propose key zones dist value)
                => (lambda (r) (set! proposed (add1 proposed)) r)]
               [else
                (set! resampled (add1 resampled))
@@ -77,6 +81,12 @@
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     (abstract accept-threshold)
+
+    (define/override (feedback success?)
+      (for ([key (in-hash-keys last-delta-db)])
+        (send proposal feedback key success?))
+      (set! last-delta-db #f)
+      (super feedback success?))
     ))
 
 ;; ============================================================
@@ -84,7 +94,7 @@
 (define single-site-mh-transition%
   (class perturb-mh-transition-base%
     (inherit perturb-a-key)
-    (inherit-field temperature)
+    (inherit-field temperature last-delta-db)
     (init-field [zone #f])
     (super-new)
 
@@ -138,72 +148,6 @@
              (define F (- (log (exact->inexact last-nchoices*))))
              (- R F)]))
     ))
-
-;; An Adapt is (adapt Real Nat Nat)
-;; - scale-factor is the current scale factor
-;; - trials is the number of trials since the last adjustment
-;; - successes is the number of successes since the last adjustment
-(struct adapt (scale trials successes) #:mutable)
-
-(define ADAPT-BATCH 100)
-(define ADAPT-GOAL-HI 0.42)
-(define ADAPT-GOAL-LO 0.38)
-(define ADAPT-INIT 1.0)
-(define ADAPT-UP 1.25)
-(define ADAPT-DOWN 0.80)
-(define ADAPT-MIN (exp -50))
-(define ADAPT-MAX (exp 50))
-
-(define adaptive-single-site-mh-transition%
-  (class single-site-mh-transition%
-    (field [incr-count 0]
-           [decr-count 0]
-           [stay-count 0])
-    (super-new [proposal (lambda (key zones dist value) (propose key zones dist value))])
-
-    ;; t : Hash[ Address => Adapt ]
-    (define t (make-hash))
-
-    ;; last-key : Address
-    (define last-key #f)
-
-    (define/override (info i)
-      (super info i)
-      (iprintf i "Scale increased: ~s\n" incr-count)
-      (iprintf i "Scale decreased: ~s\n" decr-count)
-      (iprintf i "Scale maintained: ~s\n" stay-count))
-
-    (define/override (run thunk last-trace)
-      (define r (super run thunk last-trace))
-      (when last-key (adapt-update last-key (and r #t)))
-      r)
-
-    (define/public (adapt-update key success?)
-      (define a (hash-ref t key))
-      (set-adapt-trials! a (add1 (adapt-trials a)))
-      (when success? (set-adapt-successes! a (add1 (adapt-successes a))))
-      (when (> (adapt-trials a) ADAPT-BATCH)
-        (cond [(> (adapt-successes a) (* ADAPT-GOAL-HI (adapt-trials a))) ;; high
-               (eprintf "increasing scale for ~s from ~s\n" key (adapt-scale a))
-               (set! incr-count (add1 incr-count))
-               (set-adapt-scale! a (min ADAPT-MAX (* ADAPT-UP (adapt-scale a))))]
-              [(< (adapt-successes a) (* ADAPT-GOAL-LO (adapt-trials a))) ;; low
-               (eprintf "decreasing scale for ~s from ~s\n" key (adapt-scale a))
-               (set! decr-count (add1 decr-count))
-               (set-adapt-scale! a (max ADAPT-MIN (* ADAPT-DOWN (adapt-scale a))))]
-              [else
-               (set! stay-count (add1 stay-count))
-               (void)])
-        (set-adapt-trials! a 0)
-        (set-adapt-successes! a 0))
-      (set! last-key #f))
-
-    (define/private (propose key zones dist value)
-      (define a (hash-ref! t key (lambda () (adapt ADAPT-INIT 0 0))))
-      (set! last-key key)
-      (propose:drift (adapt-scale a) key zones dist value))
-    ))
-
 
 ;; ============================================================
 
@@ -333,7 +277,7 @@
 
 (define rerun-mh-transition%
   (class perturb-mh-transition-base%
-    (super-new [proposal propose:resample] [record-obs? #f])
+    (super-new [proposal (proposal:resample)] [record-obs? #f])
     (define/override (info i)
       (iprintf "== Transition (rerun)\n")
       (super info i))

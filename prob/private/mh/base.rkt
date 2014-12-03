@@ -56,20 +56,26 @@
                 (when (verbose?)
                   (eprintf "# Accepted MH step with ~s\n" (exp u)))
                 (set! accepts (add1 accepts))
+                (feedback #t)
                 trace]
                [else
                 (when (verbose?)
                   (eprintf "# Rejected MH step with ~s\n" (exp u)))
                 (set! mh-rejects (add1 mh-rejects))
+                (feedback #f)
                 #f])]
         [(cons 'fail reason)
          (set! cond-rejects (add1 cond-rejects))
+         (feedback #f)
          (when (verbose?)
            (eprintf "# Rejected condition (~s)\n" reason))
          #f]))
 
     ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
     (abstract run*)
+
+    ;; feedback : Boolean -> Void
+    (define/public (feedback success?) (void))
     ))
 
 ;; ============================================================
