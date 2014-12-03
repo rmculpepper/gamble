@@ -203,22 +203,24 @@
           [in-particles
            (-> particles? sequence?)]))
 
+(define proposal/c (or/c proposal? (-> proposal?)))
+
 (require "private/prob-mh.rkt")
 (provide mh-transition?
          proposal?
          proposal:resample
          proposal:drift
          (contract-out
-          [default-make-proposal
-           (parameter/c (-> proposal?))]
+          [default-proposal
+           (parameter/c proposal/c)]
           [cycle
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [sequence
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
-           (->* [] [#:proposal proposal? #:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [proposal/c #:zone any/c #:record-obs? any/c] mh-transition?)]
           [multi-site
-           (->* [] [#:proposal proposal? #:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [proposal/c #:zone any/c #:record-obs? any/c] mh-transition?)]
           [hmc
            (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice

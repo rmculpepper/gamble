@@ -53,7 +53,7 @@
 (for ([k N])
   (stage k)
   (send incr1 reinitialize (single-site)))
-(printf "`incr1' sampler initialized\n")
+(printf "`incr1' sampler initialized (slowly)\n")
 
 ;; ----
 
@@ -72,7 +72,7 @@
 ;; Incrementally initialize incr1, one observation at a time.
 (for ([k (in-range 1 (add1 N))])
   (stage k)
-  (send incr1a reinitialize (single-site #:zone (sub1 k))))
+  (send incr1a reinitialize (single-site proposal:resample #:zone (sub1 k))))
 (printf "`incr1a' sampler initialized\n")
 
 ;; ----

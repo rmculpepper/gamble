@@ -18,8 +18,8 @@
 (define (proposal:resample) (new resample-proposal%))
 (define (proposal:drift) (new adaptive-drift-proposal%))
 
-;; default-make-proposal : (parameterof Proposer)
-(define default-make-proposal (make-parameter proposal:drift))
+;; default-proposal : (parameterof Proposer)
+(define default-proposal (make-parameter proposal:drift))
 
 ;; ============================================================
 
@@ -125,18 +125,20 @@
         (cond [(> (adapt-batch-successes a) (* ADAPT-GOAL-HI (adapt-batch-trials a))) ;; high
                ;; (eprintf "increasing scale for ~s from ~s\n" key (adapt-scale a))
                (set! incr-count (add1 incr-count))
-               (set-adapt-scale! a (min ADAPT-MAX (* ADAPT-UP (adapt-scale a))))]
+               (set-adapt-scale! a (* ADAPT-UP (adapt-scale a)))]
               [(< (adapt-batch-successes a) (* ADAPT-GOAL-LO (adapt-batch-trials a))) ;; low
                ;; (eprintf "decreasing scale for ~s from ~s\n" key (adapt-scale a))
                (set! decr-count (add1 decr-count))
-               (set-adapt-scale! a (max ADAPT-MIN (* ADAPT-DOWN (adapt-scale a))))]
+               (set-adapt-scale! a (* ADAPT-DOWN (adapt-scale a)))]
               [else
                (set! stay-count (add1 stay-count))
                (void)])
         (when (> (adapt-scale a) ADAPT-MAX)
-          (eprintf 'adaptive-drift-proposal "scale increased out of range"))
+          (eprintf 'adaptive-drift-proposal "scale increased out of range")
+          (set-adapt-scale! a ADAPT-MAX))
         (when (< (adapt-scale a) ADAPT-MIN)
-          (eprintf 'adaptive-drift-proposal "scale decreased out of range"))
+          (eprintf 'adaptive-drift-proposal "scale decreased out of range")
+          (set-adapt-scale! a ADAPT-MIN))
         (set-adapt-old-trials! a (+ (adapt-old-trials a) (adapt-batch-trials a)))
         (set-adapt-old-successes! a (+ (adapt-old-successes a) (adapt-batch-successes a)))
         (set-adapt-batch-trials! a 0)

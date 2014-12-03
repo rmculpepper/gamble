@@ -26,7 +26,7 @@
          proposal?
          proposal:resample
          proposal:drift
-         default-make-proposal)
+         default-proposal)
 
 (define (mh-transition? x) (is-a? x mh-transition<%>))
 
@@ -44,15 +44,21 @@
           [else (let ([len (length transitions)]) (make-vector len (/ len)))]))
   (new mixture-mh-transition% [transitions transitions*] [weights weights*]))
 
-(define (single-site #:proposal [proposal ((default-make-proposal))]
+(define (single-site [proposal (default-proposal)]
                      #:zone [zone #f]
                      #:record-obs? [record-obs? #t])
-  (new single-site-mh-transition% [proposal proposal] [zone zone] [record-obs? record-obs?]))
+  (new single-site-mh-transition%
+       [proposal (->proposal proposal)]
+       [zone zone]
+       [record-obs? record-obs?]))
 
-(define (multi-site #:proposal [proposal ((default-make-proposal))]
+(define (multi-site [proposal (default-proposal)]
                     #:zone [zone #f]
                     #:record-obs? [record-obs? #t])
-  (new multi-site-mh-transition% [zone zone] [record-obs? record-obs?]))
+  (new multi-site-mh-transition%
+       [proposal (->proposal proposal)]
+       [zone zone]
+       [record-obs? record-obs?]))
 
 (define (slice #:scale [scale-factor 1] #:zone [zone #f])
   (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
@@ -146,3 +152,7 @@
         (for ([tx (in-list transition-stack)])
           (send tx info 2))))
     ))
+
+(define (->proposal x)
+  (cond [(proposal? x) x]
+        [(procedure? x) (x)]))
