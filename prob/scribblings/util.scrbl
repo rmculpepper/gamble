@@ -42,7 +42,9 @@ covariance matrix.
 @deftogether[[
 @defproc[(sampler->statistics [s sampler?]
                               [n exact-positive-integer?]
-                              [f (-> any/c @#,(elem "RealVector")) values])
+                              [f (-> any/c @#,(elem "RealVector")) values]
+                              [#:burn burn exact-nonnegative-integer? 0]
+                              [#:thin thin exact-nonnegative-integer? 0])
          statistics?]
 @defproc[(samples->statistics [samples (vectorof (vectorof real?))])
          statistics?]
@@ -58,7 +60,9 @@ drawn from @racket[s] and passed through @racket[f].
 
 @defproc[(sampler->mean+variance [sampler sampler?]
                                  [n exact-positive-integer?]
-                                 [f (-> any/c real?) values])
+                                 [f (-> any/c real?) values]
+                                 [#:burn burn exact-nonnegative-integer? 0]
+                                 [#:thin thin exact-nonnegative-integer? 0])
          (values real? real?)]{
 
 Like @racket[sample->statistics], but returns the mean and variance as

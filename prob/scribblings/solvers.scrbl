@@ -79,15 +79,25 @@ Every @tech{sampler} is also a @tech{weighted sampler}; the samples it
 produces always have weight @racket[1].
 }
 
-@defproc[(generate-samples [s sampler?] 
-                           [n exact-nonnegative-integer?])
+@defproc[(generate-samples [s weighted-sampler?]
+                           [n exact-nonnegative-integer?]
+                           [#:burn burn exact-nonnegative-integer? 0]
+                           [#:thin thin exact-nonnegative-integer? 0])
          (vectorof any/c)]{
 
-Generates @racket[n] samples from the sampler @racket[s].
+Generates @racket[n] samples from the sampler @racket[s]. If
+@racket[s] is not a sampler but only a weighted sampler, unweighted
+samples are produced by residual resampling (see @racket[resample]).
+
+The sampler is first called @racket[burn] times and the results are
+discarded. In addition, the sampler is called @racket[thin] times
+before every sample to be retained.
 }
 
 @defproc[(generate-weighted-samples [s weighted-sampler?] 
-                                    [n exact-nonnegative-integer?])
+                                    [n exact-nonnegative-integer?]
+                                    [#:burn burn exact-nonnegative-integer? 0]
+                                    [#:thin thin exact-nonnegative-integer? 0])
          (vectorof (cons/c any/c (>=/c 0)))]{
 
 Generates @racket[n] weighted samples from the @tech{weighted sampler}
@@ -96,7 +106,9 @@ Generates @racket[n] weighted samples from the @tech{weighted sampler}
 
 @defproc[(sampler->discrete-dist [sampler weighted-sampler?]
                                  [n exact-positive-integer?]
-                                 [f (-> any/c any/c) (lambda (x) x)])
+                                 [f (-> any/c any/c) (lambda (x) x)]
+                                 [#:burn burn exact-nonnegative-integer? 0]
+                                 [#:thin thin exact-nonnegative-integer? 0])
          discrete-dist?]{
 
 Returns the empirical distribution obtained by generating @racket[n]
@@ -253,13 +265,15 @@ Returns @racket[#t] if @racket[v] represents a @tech{MH transition},
 @racket[#f] otherwise.
 }
 
-@defproc[(single-site [#:zone zone-pattern any/c #f]
+@defproc[(single-site [proposal (or/c proposal? (-> proposal?)) (default-proposal)]
+                      [#:zone zone-pattern any/c #f]
                       [#:record-obs? record-obs? boolean? #t])
          mh-transition?]{
 
 A transition that proposes a new state by randomly (uniformly)
 selecting a single random choice in any zone matching
-@racket[zone-pattern] and perturbing it.
+@racket[zone-pattern] and perturbing it according to @racket[proposal]
+(see @secref["mh-proposals"]).
 
 @; FIXME: perturbation parameters!!!
 
@@ -275,7 +289,8 @@ programs. If the observation set changes from run to run, however,
 then @racket[record-obs?] must be @racket[#t].
 }
 
-@defproc[(multi-site [#:zone zone-pattern any/c #f]
+@defproc[(multi-site [proposal (or/c proposal? (-> proposal?)) (default-proposal)]
+                     [#:zone zone-pattern any/c #f]
                      [#:record-obs? record-obs? boolean? #t])
          mh-transition?]{
 
@@ -303,7 +318,10 @@ A transition that chooses a single random choice from a zone matching
 @racket[zone-pattern] and resamples it from its full conditional
 probability distribution given the values of all of the other choices
 in the program. The distribution of the choice to be perturbed must be
-finite; otherwise, an error is raised.
+finite; otherwise, an error is raised. The choice to be perturbed must
+be @emph{non-structural}---that is, its value must not determine
+whether subsequent choices are made or not---otherwise, an error is
+raised.
 
 Note: unlike traditional Gibbs sampling, this transition picks a
 choice at random rather than perturbing all choices round-robin.
@@ -356,6 +374,49 @@ Returns a transition that uses an endless cycle of the @racket[tx]s to
 produce samples.
 }
 
+@defproc[(mixture [txs (listof mh-transition?)]
+                  [weights (listof (>/c 0)) (map (lambda (tx) 1) txs)])
+         mh-transition?]{
+
+Returns a transition that randomly selects a transition from
+@racket[txs], weighted by @racket[weights], on each step.
+}
+
+@; ----------------------------------------
+@subsection[#:tag "mh-proposals"]{Metropolis-Hastings Proposals}
+
+The @racket[single-site] and @racket[multi-site] transitions are
+parameterized by the proposal distribution used to perturb a single
+random choice.
+
+@defproc[(proposal? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a proposal object, @racket[#f]
+otherwise.
+}
+
+@defproc[(proposal:resample) proposal?]{
+
+Returns a proposal that chooses the new value of a variable by simply
+resampling from the variable's prior distribution.
+}
+
+@defproc[(proposal:drift) proposal?]{
+
+Returns a proposal that chooses the new value of a variable by
+choosing a value near the current value, with an adaptive variance.
+}
+
+@defparam[default-proposal proposal
+          (or/c proposal? (-> proposal?))]{
+
+Parameter for the default proposal used by MH transitions such as
+@racket[single-site] and @racket[multi-site]. If the value of the
+parameter is a function, it is applied when the transition is created
+to get an actual proposal.
+
+The initial value is @racket[proposal:drift].
+}
 
 @; ----------------------------------------
 @subsection[#:tag "hmc-utils"]{Specifying Derivatives for HMC}
