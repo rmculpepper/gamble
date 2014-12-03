@@ -11,8 +11,6 @@
          sampler<%>
          weighted-sampler?
          sampler?
-         generate-samples
-         generate-weighted-samples
          sampler-base%
          stochastic-ctx<%>
          stochastic-ctx/run<%>
@@ -52,12 +50,6 @@
 
 (define (weighted-sampler? x) (is-a? x weighted-sampler<%>))
 (define (sampler? x) (is-a? x sampler<%>))
-
-(define (generate-samples s n)
-  ;; FIXME: use SIR to generate samples from weighted sampler
-  (build-vector n (lambda (_i) (send s sample))))
-(define (generate-weighted-samples s n)
-  (build-vector n (lambda (_i) (send s sample/weight))))
 
 ;; Automatic impl of weighted sampler from "ordinary" sampler.
 (define sampler-base%

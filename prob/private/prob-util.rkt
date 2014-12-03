@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/class
+         (rename-in racket/match [match-define defmatch])
          "interfaces.rkt"
          "context.rkt"
          "../dist.rkt")
@@ -195,6 +196,35 @@
                   #:when (zero? (dist-pdf a bval)))
           (define bweight (dist-pdf b bval))
           (abs bweight)))))
+
+;; ----------------------------------------
+
+;; Sampling
+
+(define (generate-samples s n #:burn [burn 0] #:thin [thin 0])
+  (cond [(sampler? s)
+         (for ([_i (in-range burn)]) (send s sample))
+         (define vs (make-vector n))
+         (for ([i (in-range n)])
+           (for ([_ (in-range thin)]) (send s sample))
+           (vector-set! vs i (send s sample)))
+         vs]
+        [(weighted-sampler? s)
+         (define vs (make-vector n))
+         (define ws (make-vector n))
+         (for ([i (in-range n)])
+           (defmatch (cons v w) (send s sample/weight))
+           (vector-set! vs i v)
+           (vector-set! ws i w))
+         (resample-residual vs ws n)]))
+
+(define (generate-weighted-samples s n #:burn [burn 0] #:thin [thin 0])
+  (for ([_i (in-range burn)]) (send s sample))
+  (define wvs (make-vector n))
+  (for ([i (in-range n)])
+    (for ([_ (in-range thin)]) (send s sample))
+    (vector-set! wvs i (send s sample)))
+  wvs)
 
 ;; ----------------------------------------
 

@@ -35,12 +35,7 @@
 (require "private/interfaces.rkt")
 (provide verbose?
          weighted-sampler?
-         sampler?
-         (contract-out
-          [generate-samples
-           (-> sampler? exact-nonnegative-integer? any)]
-          [generate-weighted-samples
-           (-> weighted-sampler? exact-nonnegative-integer? any)]))
+         sampler?)
 
 (require "private/prob-util.rkt")
 (provide (contract-out
@@ -63,6 +58,14 @@
           [repeat
            (-> (-> any) exact-nonnegative-integer? 
                list?)]
+          [generate-samples
+           (->* [weighted-sampler? exact-nonnegative-integer?]
+                [#:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
+                any)]
+          [generate-weighted-samples
+           (->* [weighted-sampler? exact-nonnegative-integer?]
+                [#:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
+                any)]
           [resample
            (->* [vector? vector?] 
                 [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
