@@ -71,20 +71,38 @@
 
 ;; ----------------------------------------
 
-(define (sampler->mean+variance s n [f values])
-  (define st (sampler->statistics* 'sampler->mean+variance s n f))
+(define (sampler->mean+variance s n [f values]
+                                #:burn [burn 0]
+                                #:thin [thin 0])
+  (define s* (wrap-sampler s f burn thin))
+  (define st (sampler->statistics* 'sampler->mean+variance s* n))
   (unless (= 1 (statistics-dim st))
     (error 'sampler->mean+variance
            "statistics has wrong dimension (non-scalar)\n  statistics: ~e" st))
   (values (statistics-scalar-mean st)
           (statistics-scalar-variance st)))
 
-(define (sampler->mean s n [f values])
-  (define st (sampler->statistics* 'sampler->mean s n f))
+(define (sampler->mean s n [f values]
+                       #:burn [burn 0]
+                       #:thin [thin 0])
+  (define s* (wrap-sampler s f burn thin))
+  (define st (sampler->statistics* 'sampler->mean s* n))
   (unless (= 1 (statistics-dim st))
     (error 'sampler->mean
            "statistics has wrong dimension (non-scalar)\n  statistics: ~e" st))
   (statistics-scalar-mean st))
+
+(define (wrap-sampler s f burn thin)
+  (cond [(sampler? s)
+         (for ([_ (in-range burn)]) (send s sample))
+         (lambda ()
+           (for ([_ (in-range thin)]) (send s sample))
+           (f (send s sample)))]
+        [(procedure? s)
+         (for ([_ (in-range burn)]) (s))
+         (lambda ()
+           (for ([_ (in-range thin)]) (s))
+           (f (s)))]))
 
 ;; ----------------------------------------
 
@@ -103,13 +121,13 @@
 ;; ----
 
 ;; sampler->statistics : (Sampler A) Nat [(A -> Vector)] -> Statistics
-(define (sampler->statistics s n [f values])
-  (sampler->statistics* 'sampler->statistics s n f))
+(define (sampler->statistics s n [f values]
+                             #:burn [burn 0]
+                             #:thin [thin 0])
+  (sampler->statistics* 'sampler->statistics (wrap-sampler s f burn thin) n))
 
-(define (sampler->statistics* who s n f)
-  (sampler->statistics** who (lambda () (f (send s sample))) n))
-
-(define (sampler->statistics** who s n)
+;; sampler->statistics : (-> (cons A Real)) Nat -> Statistics
+(define (sampler->statistics* who s n)
   (define v (s))
   (check-rv 'sampler->statistics v #f)
   (define dim (rv-length v))

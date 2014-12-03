@@ -45,7 +45,8 @@
           [fail (->* [] [any/c] any)]
           ;; ----
           [sampler->discrete-dist
-           (->* [weighted-sampler? exact-nonnegative-integer?] [procedure?]
+           (->* [weighted-sampler? exact-nonnegative-integer?]
+                [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
                 discrete-dist?)]
           [indicator/value
            (-> any/c procedure?)]
@@ -133,7 +134,8 @@
              [mean vector?]
              [cov vector?])]
           [sampler->statistics
-           (->* [procedure? exact-positive-integer?] [procedure?]
+           (->* [(or/c sampler? procedure?) exact-positive-integer?]
+                [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
                 statistics?)]
           [samples->statistics
            (-> vector? statistics?)]
@@ -142,8 +144,11 @@
                real?)]
           [samples->KS
            (-> vector? dist?
-               real?)])
-         sampler->mean+variance)
+               real?)]
+          [sampler->mean+variance
+           (->* [(or/c sampler? procedure?) exact-positive-integer?]
+                [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
+                any)]))
 
 (require "private/prob-syntax.rkt")
 (provide observe

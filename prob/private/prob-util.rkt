@@ -154,19 +154,21 @@
 (define ((indicator/predicate p?) x)
   (if (p? x) 1 0))
 
-(define (sampler->discrete-dist s n [f values] #:normalize? [normalize? #t])
+(define (sampler->discrete-dist s n [f values]
+                                #:burn [burn 0]
+                                #:thin [thin 0]
+                                #:normalize? [normalize? #t])
   (define h (make-hash))
-  (cond [(is-a? s sampler<%>)
-         (for ([i (in-range n)])
-           (let ([a (f (send s sample))])
-             (hash-set! h a (add1 (hash-ref h a 0)))))]
-        [(is-a? s weighted-sampler<%>)
-         (for ([i (in-range n)])
-           (let* ([a+p (send s sample/weight)]
-                  [a (f (car a+p))]
-                  [p (cdr a+p)])
-             (hash-set! h a (+ p (hash-ref h a 0)))))]
-        [else (raise-argument-error 'sampler->discrete-dist "sampler" s)])
+  (define (s*)
+    (for ([_ (in-range thin)]) (send s sample/weight))
+    (defmatch (cons v w) (send s sample/weight))
+    (cons (f v) w))
+  (for ([_ (in-range burn)]) (send s sample/weight))
+  (for ([i (in-range n)])
+    (let* ([a+p (send s sample/weight)]
+           [a (car a+p)]
+           [p (cdr a+p)])
+      (hash-set! h a (+ p (hash-ref h a 0)))))
   (table->discrete-dist h normalize?))
 
 (define (table->discrete-dist h normalize?)
