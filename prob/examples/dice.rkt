@@ -95,3 +95,27 @@ Several solutions are presented below.
 
 ;; Can also solve exactly:
 ;; (enumerate (smart))
+
+;; ============================================================
+
+;; Here's a solution that uses incremental initialization.
+;; See also prob/examples/hard-to-initialize.rkt.
+
+(require racket/class)
+(define stage (make-parameter 0))
+
+(define (staged)
+  (define n (draw-slip))
+  (define (sum) (for/sum ([i n]) (with-zone i (roll-die))))
+  (for ([obs OBSERVED-TOTALS]
+        [i (stage)])
+    (unless (= (sum) obs) (fail)))
+  n)
+
+(define s-staged (mh-sampler (staged)))
+
+(define (initialize-s-staged)
+  (for ([k (in-range 1 (add1 (length OBSERVED-TOTALS)))])
+    ;; (eprintf "stage ~s\n" k)
+    (stage k)
+    (send s-staged reinitialize (multi-site proposal:resample #:zone k))))
