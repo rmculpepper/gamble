@@ -121,7 +121,9 @@
       (trace-value best-trace))
 
     (define/override (sample)
-      (sample! transition (if (eq? last-trace init-trace) +inf.0 0))
+      (if (eq? last-trace init-trace)
+          (sample! the-rerun-mh-transition +inf.0)
+          (sample! transition 0))
       (trace-value last-trace))
 
     ;; Updates last-sample; returns #t for new sample, #f if unchanged (tx failed).
