@@ -145,7 +145,8 @@
     (define/public (rerun [transition the-rerun-mh-transition])
       (sample! transition 0))
 
-    (define/public (info)
+    (define/override (info)
+      (printf "== MH sampler\n")
       (send transition info 0)
       (when (pair? transition-stack)
         (printf "\n== Pushed transitions\n")

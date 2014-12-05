@@ -38,6 +38,7 @@
 (define weighted-sampler<%>
   (interface ()
     sample/weight  ;; -> (cons Any PositiveReal)
+    info           ;; -> Void
     ))
 
 ;; A sampler is an applicable object taking zero arguments. When
@@ -56,6 +57,7 @@
   (class* object% (sampler<%>)
     (super-new)
     (abstract sample)
+    (abstract info)
     (define/public (sample/weight) (cons (sample) 1))))
 
 ;; ============================================================

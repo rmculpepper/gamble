@@ -53,13 +53,25 @@
 (define rejection-sampler%
   (class sampler-base%
     (init-field thunk)
+    (field [successes 0]
+           [rejections 0])
     (super-new)
+
+    (define/override (info)
+      (printf "== Rejection sampler\n")
+      (printf "Samples produced: ~s\n" successes)
+      (printf "Rejections: ~s\n" rejections))
+
     (define/override (sample)
       (define ctx (new rejection-stochastic-ctx%))
       (define v (send ctx run thunk))
       (case (car v)
-        [(okay) (cdr v)]
-        [(fail) (sample)]))
+        [(okay)
+         (set! successes (add1 successes))
+         (cdr v)]
+        [(fail)
+         (set! rejections (add1 rejections))
+         (sample)]))
     ))
 
 (define rejection-stochastic-ctx%
@@ -95,14 +107,25 @@
 (define importance-sampler%
   (class* object% (weighted-sampler<%>)
     (init-field thunk)
+    (field [successes 0]
+           [rejections 0])
     (super-new)
+
+    (define/public (info)
+      (printf "== Importance sampler\n")
+      (printf "Samples produced: ~s\n" successes)
+      (printf "Rejections: ~s\n" rejections))
 
     (define/public (sample/weight)
       (define ctx (new importance-stochastic-ctx%))
       (define v (send ctx run thunk))
       (case (car v)
-        [(okay) (cons (cdr v) (get-field weight ctx))]
-        [(fail) (sample/weight)]))
+        [(okay)
+         (set! successes (add1 successes))
+         (cons (cdr v) (get-field weight ctx))]
+        [(fail)
+         (set! rejections (add1 rejections))
+         (sample/weight)]))
     ))
 
 (define importance-stochastic-ctx%

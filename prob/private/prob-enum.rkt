@@ -162,6 +162,10 @@
     ;; cache : (listof (Cons A Positive-Real))
     (define cache null)
 
+    (define/public (info)
+      (printf "== Enum-importance sampler\n")
+      (printf "No information available.\n"))
+
     ;; get-one-sample : -> (Cons A Prob)
     (define/public (sample/weight)
       (cond [(pair? cache)
