@@ -103,4 +103,6 @@
            (if (< value* value)
                (loop value* hi)
                (loop lo value*))])))
+
+    (define/public (feedback success?) (void))
     ))

@@ -16,6 +16,7 @@
   (interface ()
     run  ;; (-> A) Trace -> TransitionResult
     info ;; Nat -> Void
+    feedback ;; Boolean -> Void
     ))
 
 ;; A TransitionResult is one of
@@ -45,7 +46,7 @@
       (iprintf i "Traces rejected by MH threshold: ~s, ~a%\n"
                mh-rejects (%age mh-rejects total)))
 
-    ;; run : (-> A) Trace -> RunResult
+    ;; run : (-> A) Trace -> TransitionResult
     (define/public (run thunk last-trace)
       (match (run* thunk last-trace)
         [(cons (? real? threshold) trace)

@@ -80,8 +80,8 @@
 (define (adapt-all-successes a) (+ (adapt-batch-successes a) (adapt-old-successes a)))
 
 (define ADAPT-BATCH 100)
-(define ADAPT-GOAL-HI 0.42)
-(define ADAPT-GOAL-LO 0.38)
+(define ADAPT-GOAL-HI 0.45)
+(define ADAPT-GOAL-LO 0.25)
 (define ADAPT-INIT 1.0)
 (define ADAPT-UP 1.25)
 (define ADAPT-DOWN 0.80)
@@ -94,7 +94,7 @@
 
 (define adaptive-drift-proposal%
   (class proposal-base%
-    (field [table (make-hash)]
+    (field [table (make-hash)] ;; Hash[ Key => Adapt ]
            [incr-count 0]
            [decr-count 0]
            [stay-count 0])

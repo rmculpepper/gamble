@@ -207,6 +207,8 @@
       (update-transition (and r #t))
       r)
 
+    (define/public (feedback success?) (void))
+
     (abstract get-transition)
     (abstract get-transitions)
     (abstract update-transition)

@@ -91,5 +91,6 @@
                  (entry-value (hash-ref (trace-db t) key-to-change))
                  (dist-pdf conditional-dist t)))
       t)
-    ))
 
+    (define/public (feedback success?) (void))
+    ))

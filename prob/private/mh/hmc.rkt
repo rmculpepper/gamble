@@ -494,4 +494,5 @@ choices do not affect control flow through the probabilistic program).
       (define ll-free 0.0)
       (define ll-obs 0.0)
       (trace sample-value proposal-db last-nchoices ll-free ll-obs))
+
     ))
