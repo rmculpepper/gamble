@@ -43,7 +43,8 @@
   #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
   #:modes (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)])
   #:variance (* p (- 1 p))
-  #:drift (lambda (value scale-factor) (cons (- 1 value) 0.0)))
+  #:drift (lambda (value scale-factor) (cons (- 1 value) 0.0))
+  #:slice-adjust (lambda (value scale-factor) (+ value (round-from-zero scale-factor))))
 
 (define-fl-dist-type binomial-dist
   ([n exact-positive-integer?]
@@ -56,7 +57,9 @@
                           (list m (sub1 m))))
   #:variance (* n p (- 1 p))
   #:drift (lambda (value scale-factor)
-            (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n)))
+            (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n))
+  #:slice-adjust (lambda (value scale-factor)
+                   (+ value (round-from-zero (* scale-factor (sqrt (* n p (- 1 p))))))))
 ;; DRIFT: normal w/ computed scale, discretize (round away from zero), add, reject if not in range
 ;; (Q: can any reasonable scale lead to high rejection rate?)
 ;; NOTE: it's harder than it looks: asymmetric, need to normalize for rejecting, etc
@@ -71,7 +74,9 @@
   #:modes '(0)
   #:variance (/ (- 1 p) (* p p))
   #:drift (lambda (value scale-factor)
-            (drift:add-discrete-normal value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0)))
+            (drift:add-discrete-normal value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0))
+  #:slice-adjust (lambda (value scale-factor)
+                   (+ value (round-from-zero (* scale-factor (sqrt (- 1 p)) (/ p))))))
 
 (define-fl-dist-type poisson-dist
   ([mean (>/c 0)])
@@ -83,7 +88,9 @@
               (list (inexact->exact (floor mean))))
   #:variance mean
   #:drift (lambda (value scale-factor)
-            (drift:add-discrete-normal value (* scale-factor (sqrt mean)) 0 +inf.0)))
+            (drift:add-discrete-normal value (* scale-factor (sqrt mean)) 0 +inf.0))
+  #:slice-adjust (lambda (value scale-factor)
+                   (+ value (round-from-zero (* scale-factor (sqrt mean))))))
 
 (define-fl-dist-type beta-dist
   ([a (>=/c 0)]

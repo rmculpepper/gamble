@@ -53,7 +53,6 @@
   (define scale (exact->inexact scale0))
   (define lo (exact->inexact lo0))
   (define hi (exact->inexact hi0))
-  (define (round-from-zero x) (if (> x 0) (ceiling x) (floor x)))
   (define (discrete-normal-sample mean stddev)
     (let loop ()
       (define s (flvector-ref (m:flnormal-sample 0.0 stddev 1) 0))
@@ -75,6 +74,8 @@
 
 ;; ============================================================
 ;; Utils
+
+(define (round-from-zero x) (if (> x 0) (ceiling x) (floor x)))
 
 (define (validate/normalize-weights who weights)
   (unless (and (vector? weights)

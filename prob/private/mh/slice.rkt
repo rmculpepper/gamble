@@ -68,12 +68,17 @@
                   (find-slice-bound value* W)])]
           [(cons 'fail fail-reason)
            value*]))
+      ;; inclusive bounds
       (define lo (find-slice-bound value (- scale-factor)))
       (define hi (find-slice-bound value scale-factor))
+      ;; FIXME: clip lo,hi to support upper and lower bounds
       (let loop ([lo lo] [hi hi])
         (when (verbose?)
           (eprintf "* slice [~s, ~s]\n" lo hi))
-        (define value* (+ lo (* (random) (- hi lo))))
+        (define value*
+          (if (integer-dist? dist)
+              (+ lo (random (add1 (inexact->exact (- hi lo)))))
+              (+ lo (* (random) (- hi lo)))))
         (define entry* (entry zones dist value* (dist-pdf dist value* #t) #f))
         (define delta-db (hash key-to-change entry*))
         (define ctx
