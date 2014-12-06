@@ -85,8 +85,8 @@
 (define ADAPT-INIT 1.0)
 (define ADAPT-UP 1.25)
 (define ADAPT-DOWN 0.80)
-(define ADAPT-MIN (exp -50))
-(define ADAPT-MAX (exp 50))
+(define ADAPT-MIN (exp -20))
+(define ADAPT-MAX (exp 20))
 
 ;; FIXME: alternatives to Address as adaptation key?
 ;; FIXME: check single-site goal range
@@ -98,6 +98,7 @@
            [incr-count 0]
            [decr-count 0]
            [stay-count 0])
+    (define warned-out-of-range? #f) ;; suppresses multiple warnings
     (super-new)
 
     (define/override (info i)
@@ -134,10 +135,14 @@
                (set! stay-count (add1 stay-count))
                (void)])
         (when (> (adapt-scale a) ADAPT-MAX)
-          (eprintf 'adaptive-drift-proposal "scale increased out of range")
+          (unless warned-out-of-range?
+            (eprintf "adaptive-drift-proposal: scale increased out of range\n")
+            (set! warned-out-of-range? #t))
           (set-adapt-scale! a ADAPT-MAX))
         (when (< (adapt-scale a) ADAPT-MIN)
-          (eprintf 'adaptive-drift-proposal "scale decreased out of range")
+          (unless warned-out-of-range?
+            (eprintf "adaptive-drift-proposal: scale decreased out of range\n")
+            (set! warned-out-of-range? #t))
           (set-adapt-scale! a ADAPT-MIN))
         (set-adapt-old-trials! a (+ (adapt-old-trials a) (adapt-batch-trials a)))
         (set-adapt-old-successes! a (+ (adapt-old-successes a) (adapt-batch-successes a)))
