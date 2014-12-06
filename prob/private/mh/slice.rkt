@@ -49,9 +49,19 @@
       (define threshold (log (* (random) (exp (trace-ll last-trace)))))
       (when (verbose?)
         (eprintf "* slice threshold = ~s\n" (exp threshold)))
+      (define-values (support-min support-max)
+        (match (dist-support dist)
+          [(integer-range min max) (values min max)]
+          [(real-range min max) (values min max)]
+          [_ (values -inf.0 +inf.0)]))
       (define (find-slice-bound value W)
         (define value* (real-dist-adjust-value dist value W))
-        (define entry* (entry zones dist value* (dist-pdf dist value* #t) #f))
+        ;; clip value* to [support-min, support-max]
+        (cond [(<= value* support-min) support-min]
+              [(>= value* support-max) support-max]
+              [else (find-slice-bound* value* W)]))
+      (define (find-slice-bound* value* W)
+        (define entry* (make-entry value*))
         (define delta-db (hash key-to-change entry*))
         (define ctx
           (new db-stochastic-ctx% 
@@ -62,6 +72,7 @@
         (match (send ctx run thunk)
           [(cons 'okay sample-value)
            (define ll (+ (get-field ll-obs ctx) (get-field ll-free ctx)))
+           (check-not-structural 'slice (get-field nchoices ctx) last-trace)
            (cond [(<= ll threshold)
                   value*]
                  [else
@@ -71,7 +82,6 @@
       ;; inclusive bounds
       (define lo (find-slice-bound value (- scale-factor)))
       (define hi (find-slice-bound value scale-factor))
-      ;; FIXME: clip lo,hi to support upper and lower bounds
       (let loop ([lo lo] [hi hi])
         (when (verbose?)
           (eprintf "* slice [~s, ~s]\n" lo hi))
@@ -98,7 +108,7 @@
                   (define ll-obs (get-field ll-obs ctx))
                   (define current-trace
                     (trace sample-value current-db nchoices ll-free ll-obs))
-                  (define threshold 1)
+                  (check-not-structural 'slice nchoices last-trace)
                   current-trace]
                  [else ;; whoops, found hole in slice interval
                   (if (< value* value)

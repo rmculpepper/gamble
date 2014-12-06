@@ -72,16 +72,12 @@
                     [(cons 'okay sample-value)
                      (define current-db (get-field current-db ctx))
                      (define nchoices (get-field nchoices ctx))
-                     (unless (= nchoices (trace-nchoices last-trace))
-                       ;; FIXME: This check is not sufficient to catch all structural choices:
-                       ;; if one choice is lost and another added, nchoices stays the same.
-                       ;; Could fix by also maintaining and checking number of fresh choices.
-                       (error 'enumerative-gibbs "illegal for structural choice"))
                      (define ll-free (get-field ll-free ctx))
                      (define ll-obs (get-field ll-obs ctx))
                      (define current-trace
                        (trace sample-value current-db nchoices ll-free ll-obs))
                      (define ll (+ ll-free ll-obs))
+                     (check-not-structural 'enumerative-gibbs nchoices last-trace)
                      (cons current-trace (exp ll))]
                     [(cons 'fail fail-reason)
                      (cons #f 0)])]))))

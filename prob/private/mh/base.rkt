@@ -93,3 +93,10 @@
 ;; used by slice sampler
 (define (real-dist-adjust-value dist value scale-factor)
   (*slice-adjust dist value scale-factor))
+
+(define (check-not-structural who nchoices last-trace)
+  (unless (= nchoices (trace-nchoices last-trace))
+    ;; FIXME: This check is not sufficient to catch all structural choices:
+    ;; if one choice is lost and another added, nchoices stays the same.
+    ;; Could fix by also maintaining and checking number of fresh choices.
+    (error who "illegal for structural choice")))
