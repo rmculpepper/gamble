@@ -34,16 +34,11 @@
       (define key-to-change (pick-a-key last-nchoices last-db zone))
       (when (verbose?)
         (eprintf "# perturb: changing ~s\n" key-to-change))
-      (unless key-to-change
-        (error 'enumerative-gibbs:run "no key to change~a"
-               (cond [zone (format "\n  zone: ~e" zone)]
-                     [else ""])))
+      (unless key-to-change (error-no-key 'enumerative-gibbs zone))
       (match (hash-ref last-db key-to-change)
         [(entry zones dist value ll #f)
          (unless (finite-dist? dist)
-           (error 'enumerative-gibbs:run
-                  "chosen distribution is not finite\n  dist: ~e"
-                  dist))
+           (error 'enumerative-gibbs "distribution is not finite\n  dist: ~e" dist))
          (perturb/gibbs key-to-change value dist zones thunk last-trace)]))
 
     (define/private (perturb/gibbs key-to-change value dist zones thunk last-trace)

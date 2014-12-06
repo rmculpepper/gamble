@@ -94,6 +94,10 @@
 (define (real-dist-adjust-value dist value scale-factor)
   (*slice-adjust dist value scale-factor))
 
+(define (error-no-key who zone)
+  (error who "no random choice available to change~a"
+         (if zone (format "\n  zone: ~e" zone) "")))
+
 (define (check-not-structural who nchoices last-trace)
   (unless (= nchoices (trace-nchoices last-trace))
     ;; FIXME: This check is not sufficient to catch all structural choices:
