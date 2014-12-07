@@ -154,12 +154,7 @@
 
 (define (propose:drift scale-factor dist value)
   (define r (*drift dist value scale-factor))
-  (when (verbose?)
-    (match r
-      [(cons value* R-F)
-       (eprintf "  DRIFTED from ~e to ~e\n" value value*)
-       (eprintf "    R/F = ~s\n" (exp R-F))]
-      [_ (void)]))
+  (vprintf "DRIFTED from ~e to ~e\n" value (car r))
   r)
 
 (define (propose:resample dist value)
@@ -170,6 +165,6 @@
   (define R (dist-pdf dist value #t))
   (define F (dist-pdf dist value* #t))
   (when (verbose?)
-    (eprintf "  RESAMPLED from ~e to ~e\n" value value*)
-    (eprintf "    R = ~s, F = ~s\n" (exp R) (exp F)))
+    (vprintf "RESAMPLED from ~e to ~e\n" value value*)
+    (vprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
   (cons value* (- R F)))

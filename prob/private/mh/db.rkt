@@ -214,17 +214,13 @@
             [else (sample/new dist context #t)]))
 
     (define/private (sample/collision dist context e)
-      (when (verbose?)
-        (eprintf "- COLLISION~a ~e: ~s\n"
-                 (if (mem-context? context) " (MEM)" "")
-                 dist context))
+      (vprintf "- COLLISION~a ~e: ~s\n" (if (mem-context? context) " (MEM)" "") dist context)
       (collision-error context))
 
     (define/private (sample/new dist context print?)
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
-      (when (and print? (verbose?))
-        (eprintf "- NEW ~e: ~s = ~e\n" dist context value))
+      (when print? (vprintf "NEW ~e: ~s = ~e\n" dist context value))
       (db-add! context (entry (current-zones) dist value ll #f))
       value)
 
@@ -234,9 +230,7 @@
              (error 'sample "internal error: choice in delta but not last\n  context: ~e"
                     context)]
             [(equal? (entry-dist e) dist)
-             (when (verbose?)
-               (eprintf "- PERTURBED ~e: ~s = ~e\n"
-                        dist context (entry-value e)))
+             (vprintf "PERTURBED ~e: ~s = ~e\n" dist context (entry-value e))
              (db-add! context e)
              (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
              (entry-value e)]
@@ -245,23 +239,19 @@
                     (and (ll-possible? new-ll) new-ll)))
              => (lambda (new-ll)
                   (define value (entry-value e))
-                  (when (verbose?)
-                    (eprintf "- PERTURBED* ~e: ~s = ~e\n" dist context value))
+                  (vprintf "PERTURBED* ~e: ~s = ~e\n" dist context value)
                   (db-add! context
                            (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
             [else
-             (when (verbose?)
-               (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
+             (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
              (error 'sample "internal error: choice in delta has wrong type\n  context: ~e"
                     context)]))
 
     (define/private (sample/last dist context e)
       (cond [(equal? (entry-dist e) dist)
-             (when (verbose?)
-               (eprintf "- REUSED ~e: ~s = ~e\n"
-                        dist context (entry-value e)))
+             (vprintf "REUSED ~e: ~s = ~e\n" dist context (entry-value e))
              (db-add! context e)
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
@@ -269,15 +259,13 @@
                     (and (ll-possible? new-ll) new-ll)))
              => (lambda (new-ll)
                   (define value (entry-value e))
-                  (when (verbose?)
-                    (eprintf "- RESCORE ~e: ~s = ~e\n" dist context value))
+                  (vprintf "RESCORE ~e: ~s = ~e\n" dist context value)
                   (db-add! context
                            (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
             [else
-             (when (verbose?)
-               (eprintf "- MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context))
+             (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
              (sample/new dist context #f)]))
 
     (define/public (observe-at dist val)
@@ -287,9 +275,7 @@
     (define/private (observe-at* dist val context)
       (cond [(hash-ref current-db context #f) ;; COLLISION
              => (lambda (e)
-                  (when (verbose?)
-                    (eprintf "- OBS COLLISION ~e / ~e: ~s\n"
-                             (entry-dist e) dist context))
+                  (vprintf "OBS COLLISION ~e / ~e: ~s\n" (entry-dist e) dist context)
                   (collision-error context))]
             [(hash-ref delta-db context #f) ;; impossible
              => (lambda (e)
@@ -298,8 +284,7 @@
              => (lambda (e)
                   ;; FIXME: better diagnostic messages. What are the
                   ;; relevant cases? Do we care if an obs value changed?
-                  (when (verbose?)
-                    (eprintf "- OBS UPDATE ....\n"))
+                  (vprintf "OBS UPDATE ....\n")
                   (define ll (dist-pdf dist val #t))
                   (cond [(ll-possible? ll)
                          (db-add! context (entry (current-zones) dist val ll #t))
@@ -307,10 +292,7 @@
                          (void)]
                         [else (fail 'observation)]))]
             [else
-             (when (verbose?)
-               (eprintf "- OBS~a ~e: ~s = ~e\n" 
-                        (if record-obs? "" " NEW")
-                        dist context val))
+             (vprintf "OBS~a ~e: ~s = ~e\n" (if record-obs? "" " NEW") dist context val)
              (define ll (dist-pdf dist val #t))
              (cond [(ll-possible? ll)
                     (cond [record-obs?

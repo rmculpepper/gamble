@@ -7,6 +7,10 @@
          (only-in "context.rkt" obs-mark)
          (only-in "dist.rkt" dist-sample dist-pdf))
 (provide verbose?
+         with-verbose>
+         vprintf
+         iprintf
+         %age
          weighted-sampler<%>
          sampler<%>
          weighted-sampler?
@@ -31,6 +35,23 @@
 ;; FIXME: add logger?
 
 (define verbose? (make-parameter #f))
+(define verbose-indent (make-parameter 0))
+
+(define-syntax-rule (with-verbose> body ...)
+  (parameterize ((verbose-indent (+ (verbose-indent) 2))) body ...))
+
+(define-syntax-rule (vprintf fmt arg ...)
+  (when #t
+    (when (verbose?)
+      (eprintf "# ~a" (make-string (verbose-indent) #\space))
+      (eprintf fmt arg ...))))
+
+(define (iprintf i fmt . args)
+  (write-string (make-string i #\space))
+  (apply printf fmt args))
+
+(define (%age nom denom)
+  (/ (* 100.0 nom) (exact->inexact denom)))
 
 ;; ============================================================
 ;; Samplers

@@ -30,11 +30,11 @@
 
     ;; run : (-> A) Trace -> TransitionResult
     (define/public (run thunk last-trace)
+      (vprintf "Starting transition (~s)\n" (object-name this%))
       (set! run-counter (add1 run-counter))
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (define key-to-change (pick-a-key last-nchoices last-db zone))
-      (when (verbose?)
-        (eprintf "# perturb: changing ~s\n" key-to-change))
+      (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'slice zone))
       (match (hash-ref last-db key-to-change)
         [(entry zones dist value ll #f)
@@ -46,8 +46,7 @@
       (define (make-entry value*)
         (entry zones dist value* (dist-pdf dist value* #t) #f))
       (define threshold (log (* (random) (exp (trace-ll last-trace)))))
-      (when (verbose?)
-        (eprintf "* slice threshold = ~s\n" (exp threshold)))
+      (vprintf "slice threshold = ~s\n" (exp threshold))
       (define-values (support-min support-max)
         (match (dist-support dist)
           [(integer-range min max) (values min max)]
@@ -79,15 +78,20 @@
           [(cons 'fail fail-reason)
            value*]))
       ;; inclusive bounds
-      (define lo (find-slice-bound value (- scale-factor)))
-      (define hi (find-slice-bound value scale-factor))
+      (vprintf "Finding slice lower bound\n")
+      (define lo (with-verbose> (find-slice-bound value (- scale-factor))))
+      (vprintf "Finding slice upper bound\n")
+      (define hi (with-verbose> (find-slice-bound value scale-factor)))
       (let loop ([lo lo] [hi hi])
-        (when (verbose?)
-          (eprintf "* slice [~s, ~s]\n" lo hi))
+        (vprintf "slice = [~s, ~s]\n" lo hi)
         (define value*
-          (if (integer-dist? dist)
-              (+ lo (random (add1 (inexact->exact (- hi lo)))))
-              (+ lo (* (random) (- hi lo)))))
+          (cond [(> lo hi)
+                 (error 'slice "empty slice; program is inconsistent with last trace")]
+                [(= lo hi) lo]
+                [(integer-dist? dist)
+                 (+ lo (random (add1 (inexact->exact (- hi lo)))))]
+                [else
+                 (+ lo (* (random) (- hi lo)))]))
         (define entry* (entry zones dist value* (dist-pdf dist value* #t) #f))
         (define delta-db (hash key-to-change entry*))
         (define ctx
@@ -96,7 +100,16 @@
                (delta-db delta-db)
                (record-obs? #f)))
         (set! in-slice-counter (add1 in-slice-counter))
-        (match (send ctx run thunk)
+        (define (retry)
+          (if (integer-dist? dist)
+              (if (< value* value)
+                  (loop (add1 value*) hi)
+                  (loop lo (sub1 value*)))
+              (if (< value* value)
+                  (loop value* hi)
+                  (loop lo value*))))
+        (vprintf "Trying value* = ~e\n" value*)
+        (match (with-verbose> (send ctx run thunk))
           [(cons 'okay sample-value)
            (define ll (+ (get-field ll-obs ctx) (get-field ll-free ctx)))
            (cond [(> ll threshold)
@@ -110,13 +123,11 @@
                   (check-not-structural 'slice nchoices last-trace)
                   current-trace]
                  [else ;; whoops, found hole in slice interval
-                  (if (< value* value)
-                      (loop value* hi)
-                      (loop lo value*))])]
+                  (vprintf "Retry (found dip in slice)")
+                  (retry)])]
           [(cons 'fail fail-reason)
-           (if (< value* value)
-               (loop value* hi)
-               (loop lo value*))])))
+           (vprintf "Retry (found hole in slice)\n")
+           (retry)])))
 
     (define/public (feedback success?) (void))
     ))

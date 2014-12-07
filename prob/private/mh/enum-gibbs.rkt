@@ -29,11 +29,11 @@
 
     ;; run : (-> A) Trace -> TransitionResult
     (define/public (run thunk last-trace)
+      (vprintf "Starting transition (~s)\n" this%)
       (set! run-counter (add1 run-counter))
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (define key-to-change (pick-a-key last-nchoices last-db zone))
-      (when (verbose?)
-        (eprintf "# perturb: changing ~s\n" key-to-change))
+      (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'enumerative-gibbs zone))
       (match (hash-ref last-db key-to-change)
         [(entry zones dist value ll #f)
@@ -51,19 +51,17 @@
                      [ll* (in-value (dist-pdf dist value* #t))]
                      #:when (ll-possible? ll*))
            (cond [(equal? value* value)
-                  (when (verbose?)
-                    (eprintf "# considering ~e (last value)\n" value*))
+                  (vprintf "considering value* = ~e (last value)\n" value*)
                   (cons last-trace (exp (trace-ll last-trace)))]
                  [else
                   (define entry* (make-entry value*))
                   (define delta-db (hash key-to-change entry*))
-                  (when (verbose?)
-                    (eprintf "# considering ~e\n" value*))
+                  (vprintf "considering value* = ~e\n" value*)
                   (define ctx (new db-stochastic-ctx%
                                    (last-db (trace-db last-trace))
                                    (delta-db delta-db)
                                    (record-obs? record-obs?)))
-                  (match (send ctx run thunk)
+                  (match (with-verbose> (send ctx run thunk))
                     [(cons 'okay sample-value)
                      (define current-db (get-field current-db ctx))
                      (define nchoices (get-field nchoices ctx))
@@ -76,11 +74,11 @@
                      (cons current-trace (exp ll))]
                     [(cons 'fail fail-reason)
                      (cons #f 0)])]))))
+      (vprintf "conditional-dist = ~s\n" conditional-dist)
       (define t (dist-sample conditional-dist))
-      (when (verbose?)
-        (eprintf "# chose ~e w/ prob ~s\n"
-                 (entry-value (hash-ref (trace-db t) key-to-change))
-                 (dist-pdf conditional-dist t)))
+      (vprintf "chose ~e w/ prob ~s\n"
+               (entry-value (hash-ref (trace-db t) key-to-change))
+               (dist-pdf conditional-dist t))
       t)
 
     (define/public (feedback success?) (void))

@@ -43,7 +43,7 @@
              (delta-db delta-db)
              (record-obs? record-obs?)))
       ;; Run program
-      (define result (send ctx run thunk))
+      (define result (with-verbose> (send ctx run thunk)))
       (match result
         [(cons 'okay sample-value)
          (define current-db (get-field current-db ctx))
@@ -70,9 +70,8 @@
               [else
                (set! resampled (add1 resampled))
                (propose:resample dist value)]))
-      (when (verbose?)
-        (eprintf "  PROPOSED from ~e to ~e\n" value value*)
-        (eprintf "    R/F = ~s\n" (exp R-F)))
+      (vprintf "PROPOSED from ~e to ~e\n" value value*)
+      (vprintf "  R/F = ~s\n" (exp R-F))
       (define ll* (dist-pdf dist value* #t))
       (unless (ll-possible? ll*)
         (error 'perturb "proposal produced impossible value\n  dist: ~e\n  value: ~e"
@@ -106,8 +105,7 @@
     (define/override (perturb last-trace)
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
       (define key-to-change (pick-a-key last-nchoices last-db zone))
-      (when (verbose?)
-        (eprintf "# perturb: changing ~s\n" key-to-change))
+      (vprintf "key to change = ~s\n" key-to-change)
       (if key-to-change
           (match (hash-ref last-db key-to-change)
             [(entry zones dist value ll #f)
@@ -165,8 +163,6 @@
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (when (verbose?)
-        (eprintf "# perturb: changing all sites\n"))
       (define-values (delta-db R-F)
         (for/fold ([delta-db '#hash()] [R-F 0])
             ([(key e) (in-hash last-db)]

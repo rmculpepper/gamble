@@ -37,13 +37,12 @@
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
 ;; Note: pred and project must be pure; applied outside of prompt
 (define (enumerate* thunk limit normalize?)
+  (vprintf "Enumerating\n")
   (define tree (reify-tree thunk))
   (define-values (table prob-unexplored prob-accepted)
     (explore tree limit))
-  (when (verbose?)
-    (eprintf "enumerate: unexplored rate: ~s\n" prob-unexplored)
-    (eprintf "enumerate: accept rate: ~s\n"
-             (/ prob-accepted (- 1 prob-unexplored))))
+  (vprintf "unexplored rate = ~s\n" prob-unexplored)
+  (vprintf "accept rate = ~s\n" (/ prob-accepted (- 1 prob-unexplored)))
   (when (zero? (hash-count table))
     (error 'enumerate "condition accepted no paths"))
   (when (and normalize? (zero? prob-accepted))
@@ -83,8 +82,7 @@
              ;; (eprintf "- add B=~s\n" b)
              (values table prob-unexplored prob-accepted))]
           [else
-           (when #t ;; (verbose?)
-             (eprintf "WARNING: bad prob ~s for ~s\n" p a))
+           (vprintf "WARNING: bad prob ~s for ~s\n" p a)
            (values table prob-unexplored prob-accepted)]))
 
   ;; traverse-tree : (EnumTree A) Prob ...
@@ -105,8 +103,7 @@
               (cond [(positive? p*)
                      (values (heap-insert h (cons p* lt)) table prob-unexplored prob-accepted)]
                     [else
-                     (when (verbose?)
-                       (eprintf "enumerate: probability of a path may have underflowed\n"))
+                     (vprintf "WARNING: probability of a path may have underflowed\n")
                      (values h table prob-unexplored prob-accepted)]))]))]
       [(weight dist val k)
        (when (and limit (not (or (finite-dist? dist) (integer-dist? dist))))
@@ -122,8 +119,7 @@
     (cond [(and limit (< prob-unexplored (* limit prob-accepted)))
            ;; Done!
            (when (positive? (heap-count h))
-             (when (verbose?)
-               (eprintf "stopping with ~s unexplored path(s)\n" (heap-count h))))
+             (vprintf "stopping with ~s unexplored path(s)\n" (heap-count h)))
            (done h table prob-unexplored prob-accepted)]
           [(zero? (heap-count h))
            ;; explored all paths
@@ -131,7 +127,6 @@
           [else
            (let* ([sub (heap-find-min/max h)]
                   [h (heap-delete-min/max h)])
-             ;; (eprintf "- picked ~s\n" sub)
              (let-values ([(h table prob-unexplored prob-accepted)
                            (traverse-tree ((cdr sub)) (car sub)
                                           h table prob-unexplored prob-accepted)])
