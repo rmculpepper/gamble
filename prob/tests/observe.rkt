@@ -4,6 +4,7 @@
 
 #lang prob
 (require racket/class
+         (rename-in racket/match [match-define defmatch])
          rackunit)
 
 ;; This module tests the observe form.
@@ -26,9 +27,17 @@
    (observe (S) 9)
    R))
 
-(let-values ([(mean variance) (sampler->mean+variance s 1000)])
+(define (sampler->mean s n)
+  (define-values (sum weight)
+    (for/fold ([sum 0.0] [weight 0.0])
+              ([i (in-range n)])
+      (defmatch (cons v w) (send s sample/weight))
+      (values (+ sum (* v w)) (+ weight w))))
+  (/ sum weight))
+
+(let ([mean (sampler->mean s 1000)])
   (check-= mean 9.5 CD-EPSILON))
-(let-values ([(mean variance) (sampler->mean+variance s2 1000)])
+(let ([mean (sampler->mean s2 1000)])
   (check-= mean 9.5 CD-EPSILON))
 
 ;; ----
