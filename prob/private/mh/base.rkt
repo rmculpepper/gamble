@@ -88,9 +88,12 @@
   (error who "no random choice available to change~a"
          (if zone (format "\n  zone: ~e" zone) "")))
 
+(define (error-structural who)
+  (error who "illegal for structural choice"))
+
 (define (check-not-structural who nchoices last-trace)
   (unless (= nchoices (trace-nchoices last-trace))
-    ;; FIXME: This check is not sufficient to catch all structural choices:
+    ;; Note: This check is not sufficient to catch all structural choices;
     ;; if one choice is lost and another added, nchoices stays the same.
-    ;; Could fix by also maintaining and checking number of fresh choices.
-    (error who "illegal for structural choice")))
+    ;; See also disallow-fresh? in db-stochastic-ctx%.
+    (error-structural who)))

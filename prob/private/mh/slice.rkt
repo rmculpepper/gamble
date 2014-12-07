@@ -65,7 +65,8 @@
           (new db-stochastic-ctx% 
                (last-db (trace-db last-trace))
                (delta-db delta-db)
-               (record-obs? #f)))
+               (record-obs? #f)
+               (on-fresh-choice (lambda () (error-structural 'slice)))))
         (set! find-slice-counter (add1 find-slice-counter))
         (match (send ctx run thunk)
           [(cons 'okay sample-value)

@@ -60,7 +60,9 @@
                   (define ctx (new db-stochastic-ctx%
                                    (last-db (trace-db last-trace))
                                    (delta-db delta-db)
-                                   (record-obs? record-obs?)))
+                                   (record-obs? record-obs?)
+                                   (on-fresh-choice
+                                    (lambda () (error-structural 'enumerative-gibbs)))))
                   (match (with-verbose> (send ctx run thunk))
                     [(cons 'okay sample-value)
                      (define current-db (get-field current-db ctx))

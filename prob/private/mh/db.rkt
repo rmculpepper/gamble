@@ -152,6 +152,7 @@
     (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
                 [record-obs? #t]
+                [on-fresh-choice #f] ;; (U #f (-> Any))
                 [escape-prompt (make-continuation-prompt-tag)])
 
     ;; Optimization: if record-obs? is #f, then don't enter observations (pinned entries)
@@ -218,6 +219,7 @@
       (collision-error context))
 
     (define/private (sample/new dist context print?)
+      (when on-fresh-choice (on-fresh-choice))
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
       (when print? (vprintf "NEW ~e: ~s = ~e\n" dist context value))
