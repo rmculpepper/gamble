@@ -71,6 +71,11 @@
 
 (define (one-if x) (if x 1 0))
 
+(define-syntax-rule (tc0 who name body ...)
+  (test-case (format "~a : ~a" who name)
+    (printf "Test: ~a : ~a\n" who name)
+    body ...))
+
 
 ;;;;;;;;;;;;;;; Some test problems.  ;;;;;;;;;;;;;;;;;;;;;
 
@@ -112,13 +117,7 @@
   (map one-if (list dyspnea tuberculosis lung-cancer)))
 
 ;; "Asia" BN--expected results from Netica
-
 (define (run-asia-tests who asia make-sampler)
-
-  (define-syntax-rule (tc0 name body ...)
-    (test-case (format "~a : ~a" who name)
-      (printf "Test: ~a : ~a\n" who name)
-      body ...))
 
   (define-syntax-rule (tc observe-x-ray? observe-smoker? nsamples
                           [name selector expected] ...)
@@ -134,13 +133,13 @@
                                   [observe-smoker?
                                    " given smoker"]
                                   [else ""]))])
-        (tc0 complete-name
+        (tc0 who complete-name
           (define specific-samples (vector-map selector samples))
           (when NOISY? (printf "Marginal probability of ~a.\n" complete-name))
           (compare-results expected specific-samples)))
       ...))
 
-  (tc #f #f 3000
+  (tc #f #f 4000
       ["dyspnea"      first  0.436]
       ["tuberculosis" second 0.0104]
       ["lung cancer"  third  0.055])
@@ -148,33 +147,58 @@
   ;; With an abnormal x-ray
   ;; Lung-cancer posterior here is currently (as of 6/26/14) much too low.
   ;; Webchurch gets it right, so we are not reproducing their algorithm.
-  (tc #t #f 4000
+  (tc #t #f 6000
       ["dyspnea"      first  0.641]
       ["tuberculosis" second 0.0924]
       ["lung cancer"  third  0.489])
 
   ;; With an abnormal x-ray and smoking
-  (tc #t #t 4000
+  (tc #t #t 6000
       ["dyspnea"      first  0.732]
       ["tuberculosis" second 0.0672]
       ["lung cancer"  third  0.646])
   )
 
+(define (run-bb-test who make-sampler)
+  ;; Beta/bernoulli--we know that with prior (beta 1 2) and five "true" observations,
+  ;; the posterior is (beta 6 2), which has mean 6/(6+2) = 0.75, and variance
+  ;; 6*2 / [(6 + 2)^2 * (6 + 2 + 1)] = 12/8*8*9 = 3/2*8*9 = 1/2*8*3 = 1/48.
+  (define beta-the-hard-way
+    (make-sampler
+     (lambda ()
+       (define p (beta 1 2))
+       (define (coin) (flip p))
+       (for ([i 5]) (unless (coin) (fail)))
+       p)))
+
+  (tc0 who "beta-bernoulli"
+    (define pp-draws (gensamples beta-the-hard-way 2000))
+    ;; Draws from beta(6,2) posterior, we hope.
+    (compare-results 0.75 pp-draws) ;; mean
+    ;; (compare-results (/ 1.0 48.0) pp-draws variance))
+    ))
+
+;; ============================================================
+
 (define (run)
+  (define (run-both-tests name asia make-sampler)
+    (run-asia-tests name asia make-sampler)
+    (run-bb-test name make-sampler))
+
   (when #f
   (run-asia-tests "enumeration" asia
                   (lambda (thunk) (define d (enumerate (thunk))) (rejection-sampler (sample d))))
   (run-asia-tests "enumeration, NS" asia*
                   (lambda (thunk) (define d (enumerate (thunk))) (rejection-sampler (sample d))))
-  (run-asia-tests "rejection" asia
-                  (lambda (thunk) (rejection-sampler (thunk))))
-  (run-asia-tests "rejection, NS" asia*
-                  (lambda (thunk) (rejection-sampler (thunk))))
   )
+  (run-both-tests "rejection" asia
+                  (lambda (thunk) (rejection-sampler (thunk))))
+  (run-both-tests "rejection, NS" asia*
+                  (lambda (thunk) (rejection-sampler (thunk))))
 
-  (run-asia-tests "mh single-site" asia
+  (run-both-tests "mh single-site" asia
                   (lambda (thunk) (mh-sampler (thunk))))
-  (run-asia-tests "mh single-site, NS" asia*
+  (run-both-tests "mh single-site, NS" asia*
                   (lambda (thunk) (mh-sampler (thunk))))
 ;;  (run-asia-tests "mh multi-site" asia
 ;;                  (lambda (thunk) (mh-sampler (thunk) #:transition (multi-site))))
@@ -184,7 +208,7 @@
   ;; Only allowed on asia*, no structural choices
   (run-asia-tests "mh enum-gibbs, asia*" asia*
                   (lambda (thunk) (mh-sampler (thunk) #:transition (enumerative-gibbs))))
-  (run-asia-tests "mh slice, asia*" asia*
+  (run-both-tests "mh slice, asia*" asia*
                   (lambda (thunk) (mh-sampler (thunk) #:transition (slice))))
   )
 
