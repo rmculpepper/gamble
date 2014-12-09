@@ -26,8 +26,8 @@
              (define cc (get-observe-context))
              (define value (observe-context-adjust-value cc obs))
              (when (verbose?)
-               (eprintf "** CC = ~e\n" cc)
-               (eprintf "** sample -> condition: ~e @ ~e\n" dist value))
+               (vprintf "OBSERVE w/ context = ~e\n" cc)
+               (vprintf "  sample -> condition: ~e @ ~e\n" dist value))
              (observe-at dist value)
              value))]
         [else (sample* dist)]))
