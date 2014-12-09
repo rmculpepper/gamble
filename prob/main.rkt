@@ -232,7 +232,12 @@
           [hmc
            (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice
-           (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]
+           (->* []
+                [#:method (or/c 'double 'step)
+                 #:w (>/c 0)
+                 #:m exact-positive-integer?
+                 #:zone any/c]
+                mh-transition?)]
           [enumerative-gibbs
            (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
           [mixture

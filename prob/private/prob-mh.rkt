@@ -60,8 +60,8 @@
        [zone zone]
        [record-obs? record-obs?]))
 
-(define (slice #:scale [scale-factor 1] #:zone [zone #f])
-  (new single-site-slice-mh-transition% (scale-factor scale-factor) (zone zone)))
+(define (slice #:method [method 'double] #:w [w 1] #:m [m 1] #:zone [zone #f])
+  (new slice-mh-transition% (method method) (W w) (M m) (zone zone)))
 
 (define (enumerative-gibbs #:zone [zone #f] #:record-obs? [record-obs? #t])
   (new enumerative-gibbs-mh-transition% (zone zone) (record-obs? record-obs?)))
