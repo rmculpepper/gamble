@@ -41,7 +41,7 @@
       (unless key-to-change (error-no-key 'slice zone))
       (match (hash-ref last-db key-to-change)
         [(entry zones dist value ll #f)
-         (unless (slice-dist? dist)
+         (unless (or (real-dist? dist) (integer-dist? dist))
            (error 'slice "distribution does not support slice sampling\n  dist: ~e" dist))
          (perturb/slice key-to-change dist value zones thunk last-trace)]))
 

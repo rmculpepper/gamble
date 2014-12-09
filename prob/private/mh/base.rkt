@@ -80,10 +80,6 @@
 
 (define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
 
-;; used by slice sampler
-(define (real-dist-adjust-value dist value scale-factor)
-  (*slice-adjust dist value scale-factor))
-
 (define (error-no-key who zone)
   (error who "no random choice available to change~a"
          (if zone (format "\n  zone: ~e" zone) "")))

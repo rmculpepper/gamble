@@ -35,9 +35,6 @@
    (define (*drift d value scale-factor)
      #f)])
 
-(define-generics slice-dist
-  (*slice-adjust slice-dist value scale-factor))
-
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))
 (define (dist-cdf d x [log? #f] [1-p? #f])
