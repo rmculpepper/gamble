@@ -18,7 +18,8 @@
     (init-field zone
                 [method 'double] ;; (U 'step 'double 'unimodal)
                 [W 1.0]          ;; slice search width
-                [M +inf.0])      ;; max # of widths to grow slice by
+                [M +inf.0]       ;; max # of widths to grow slice by
+                [small-dist 10])  ;; limit of small-dist optimization, 0 to disable
     (field [run-counter 0]
            [find-slice-counter 0]
            [in-slice-counter 0])
@@ -82,10 +83,14 @@
       (select-value* dist value lo hi eval-trace threshold))
 
     (define/private (find-slice-bounds dist value eval-ll threshold)
-      (case method
-        [(step) (find-slice-bounds/step dist value eval-ll threshold)]
-        [(double) (find-slice-bounds/double dist value eval-ll threshold)]
-        [(unimodal) (find-slice-bounds/unimodal dist value eval-ll threshold)]))
+      (cond [(small-dist? dist)
+             (vprintf "Small integer distribution, using whole support\n")
+             (get-support-bounds dist)]
+            [else
+             (case method
+               [(step) (find-slice-bounds/step dist value eval-ll threshold)]
+               [(double) (find-slice-bounds/double dist value eval-ll threshold)]
+               [(unimodal) (find-slice-bounds/unimodal dist value eval-ll threshold)])]))
 
     ;; Implements the stepping-out method from
     ;; http://people.ee.duke.edu/~lcarin/slice.pdf
@@ -169,7 +174,7 @@
         (define current-trace (with-verbose> (eval-trace value*)))
         (cond [(and current-trace
                     (> (trace-ll current-trace) threshold)
-                    (acceptable? value value* lo0 hi0 eval-trace threshold))
+                    (acceptable? dist value value* lo0 hi0 eval-trace threshold))
                current-trace]
               [else
                (vprintf "Retrying (~a)\n"
@@ -187,10 +192,11 @@
                        (loop value* hi)
                        (loop lo value*)))])))
 
-    (define/private (acceptable? value value* lo hi eval-trace threshold)
-      (case method
-        [(step unimodal) #t]
-        [(double) (acceptable?/double value value* lo hi eval-trace threshold)]))
+    (define/private (acceptable? dist value value* lo hi eval-trace threshold)
+      (or (small-dist? dist)
+          (case method
+            [(step unimodal) #t]
+            [(double) (acceptable?/double value value* lo hi eval-trace threshold)])))
 
     (define/private (acceptable?/double value value* lo hi eval-trace threshold)
       (define (eval-ll x) (trace-ll* (eval-trace x)))
@@ -215,6 +221,11 @@
         [(integer-range min max) (values min max)]
         [(real-range min max) (values min max)]
         [_ (values -inf.0 +inf.0)]))
+
+    (define/private (small-dist? dist)
+      (match (dist-support dist)
+        [(integer-range min max) (< (- max min) small-dist)]
+        [_ #f]))
 
     (define/public (feedback success?) (void))
     ))
