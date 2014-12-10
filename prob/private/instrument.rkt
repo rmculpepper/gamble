@@ -4,8 +4,10 @@
 
 #lang racket/base
 (require (for-syntax racket/base
+                     racket/list
                      racket/syntax
                      syntax/parse
+                     syntax/id-table
                      "instrument-analysis.rkt")
          racket/match
          "context.rkt")
@@ -101,12 +103,28 @@ distinct call-site indexes.
  ;; Need privileged inspector to rewrite expanded code.
  (define stx-insp
    (variable-reference->module-declaration-inspector
-    (#%variable-reference))))
+    (#%variable-reference)))
+
+ ;; instr-fun-table : (free-id-table Id => Id)
+ (define instr-fun-table
+   (make-free-id-table))
+
+ (define (register-instrumented-fun! id id* arity)
+   (free-id-table-set! instr-fun-table id (cons id* arity)))
+
+ (define-syntax-class instr-fun
+   #:attributes (instr arity)
+   (pattern f:id
+            #:do [(define p (free-id-table-ref instr-fun-table #'f #f))]
+            #:when p
+            #:with instr (car p)
+            #:attr arity (cdr p)))
+ )
 
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
-;;    #:cc - maybe tail wrt conditioning context in enclosing lambda
-;;    #:nt - non-tail wrt conditioning context
+;;    #:cc - in observing context wrt enclosing lambda
+;;    #:nt - not in observing context wrt enclosing lambda
 (define-syntax (instrument stx0)
   (syntax-parse stx0
     [(instrument form-to-instrument m)
@@ -123,8 +141,7 @@ distinct call-site indexes.
          ;; Rewrite applications
          [(#%plain-app) stx]
          [(#%plain-app f e ...)
-          #`(instrumenting-app m #,stx)]
-         ;; Just recur through all other forms
+          #`(instrument-app m #,stx)]
          ;; -- module body
          [(#%plain-module-begin form ...)
           #'(#%plain-module-begin (instrument form #:nt) ...)]
@@ -136,38 +153,73 @@ distinct call-site indexes.
          ;; [(#%declare . _) stx]
          ;; -- general top-level form
          [(define-values ids e)
-          #'(define-values ids (instrument e #:nt))]
+          #`(instrument-definition #,stx)]
          [(define-syntaxes . _) stx]
          [(#%require . _) stx]
          ;; -- expr
          [var:id #'var]
          [(#%plain-lambda formals e ... e*)
-          (unless (lam-cond-ctx? stx)
-            (log-instr-info "*** not CC: ~s: ~a"
-                            (get-tag stx) (syntax-summary stx)))
-          (with-syntax ([mode (if (lam-cond-ctx? stx) '#:cc '#:nt)])
-            #'(#%plain-lambda formals (instrument e #:nt) ... (instrument e* mode)))]
+          (cond [(lam-cond-ctx? stx)
+                 #'(#%plain-lambda formals
+                     (call-with-immediate-continuation-mark OBS-mark
+                       (lambda (obs)
+                         (with ([OBS obs] [ADDR (ADDR-mark)])
+                           (instrument e #:nt) ... (instrument e* #:cc)))))]
+                [else
+                 (log-instr-info "NON-CC lambda: ~s: ~a"
+                                 (get-tag stx) (syntax-summary stx))
+                 #'(#%plain-lambda formals
+                     (with ([OBS #f] [ADDR (ADDR-mark)])
+                       (instrument e #:nt) ... (instrument e* #:nt)))])]
          [(case-lambda [formals e ... e*] ...)
-          (unless (lam-cond-ctx? stx)
-            (log-instr-info "*** not CC: ~s: ~a"
-                            (get-tag stx) (syntax-summary stx)))
-          (with-syntax ([mode (if (lam-cond-ctx? stx) '#:cc '#:nt)])
-            #'(case-lambda [formals (instrument e #:nt) ... (instrument e* mode)] ...))]
+          (cond [(lam-cond-ctx? stx)
+                 #'(case-lambda
+                     [formals
+                      (call-with-immediate-continuation-mark OBS-mark
+                        (lambda (obs)
+                          (with ([OBS obs] [ADDR (ADDR-mark)])
+                            (instrument e #:nt) ... (instrument e* #:cc))))]
+                     ...)]
+                [else
+                 (log-instr-info "NON-CC case-lambda: ~s: ~a"
+                                 (get-tag stx) (syntax-summary stx))
+                 #'(case-lambda
+                     [formals
+                      (with ([OBS #f] [ADDR (ADDR-mark)])
+                        (instrument e #:nt) ... (instrument e* #:nt))]
+                     ...)])]
          [(if e1 e2 e3)
-          #'(if (recur-nt e1) (instrument e2 m) (instrument e3 m))]
+          #'(if (recur-nt e1)
+                (instrument e2 m)
+                (instrument e3 m))]
+         [(begin e*)
+          #'(begin (instrument e* m))]
          [(begin e ... e*)
-          #'(begin (recur-nt e) ... (instrument e* m))]
-         [(begin0 e ...)
-          #'(begin0 (recur-nt e) ...)]
+          #'(begin (recur-nt (begin e ...))
+                   (instrument e* m))]
+         [(begin0 e0)
+          #'(begin0 (instrument e0 m))]
+         [(begin0 e0 e ...)
+          #'(begin0 (instrument e0 m)
+              (recur-nt (begin e ...)))]
          [(let-values ([vars rhs] ...) body ... body*)
-          #'(let-values ([vars (recur-nt rhs)] ...)
-              (recur-nt body) ... (instrument body* m))]
+          ;; HACK: okay to turn let-values into intdef (letrec) because
+          ;; already expanded, thus "alpha-renamed", so no risk of capture
+          #'(let ()
+              (instrument (define-values vars rhs) #:nt) ...
+              (#%expression (recur-nt body)) ...
+              (#%expression (instrument body* m)))]
          [(letrec-values ([vars rhs] ...) body ... body*)
-          #'(letrec-values ([vars (recur-nt rhs)] ...)
-              (recur-nt body) ... (instrument body* m))]
+          #'(let ()
+              (instrument (define-values vars rhs) #:nt) ...
+              (#%expression (recur-nt body)) ...
+              (#%expression (instrument body* m)))]
          [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ... body*)
-          #'(letrec-syntaxes+values ([svars srhs] ...) ([vvars (recur-nt vrhs)] ...)
-              (recur-nt body) ... (instrument body* m))]
+          #'(let ()
+              (define-syntaxes svars srhs) ...
+              (instrument (define-values vvars vrhs) #:nt) ...
+              (#%expression (recur-nt body)) ...
+              (#%expression (instrument body* m)))]
          [(set! var e)
           ;; (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
           #'(set! var (recur-nt e))]
@@ -224,95 +276,162 @@ distinct call-site indexes.
 
 ;; ----
 
+(define-syntax (instrument-definition idstx)
+  (syntax-parse idstx
+    #:literals (define-values)
+    [(_ (define-values (var:id) e))
+     (syntax-parse (syntax-disarm #'e stx-insp)
+       #:literals (#%plain-lambda case-lambda)
+       ;; FIXME: handle rest args
+       [(#%plain-lambda (arg ...) body ... body*)
+        (define/with-syntax (var*) (generate-temporaries #'(var)))
+        (define/with-syntax arity (length (syntax->list #'(arg ...))))
+        #'(begin (define-values (var*)
+                   (#%plain-lambda (addr obs arg ...)
+                     (with ([ADDR addr] [OBS obs])
+                       (instrument body #:nt) ...
+                       (instrument body* #:cc))))
+                 (define-values (var)
+                   (#%plain-lambda (arg ...)
+                     (call-with-immediate-continuation-mark OBS-mark
+                       (lambda (obs)
+                         (var* (ADDR-mark) obs arg ...)))))
+                 (begin-for-syntax*
+                  (register-instrumented-fun!
+                   (quote-syntax var)
+                   (quote-syntax var*)
+                   'arity)))]
+       ;; FIXME: handle case-lambda
+       [_
+        #'(define-values (var) (instrument e #:nt))])]
+    [(_ (define-values vars e))
+     #'(define-values vars (instrument e #:nt))]))
+
+(define-syntax (begin-for-syntax* stx)
+  (syntax-case stx ()
+    [(_ expr ...)
+     (case (syntax-local-context)
+       [(module top-level)
+        #'(begin-for-syntax expr ...)]
+       [else
+        #'(define-syntaxes () (begin expr ... (values)))])]))
+
+;; ----
+
 ;; App needs to do 2 transformations
 ;;  - address-tracking (unless "safe" function)
 ;;  - conditioning-tracking (if conditionable AND tail wrt conditioning context)
 ;; Conditionable functions are a subset of safe functions,
 ;; so split that way.
 
-(define-syntax (instrumenting-app iastx)
+(define-syntax (instrument-app iastx)
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
-  (define calls-erp? (app-calls-erp? stx))
-  (when #f
-    (eprintf "~a ~s:~s ~.s\n"
-             (if calls-erp? "yes" "no ")
-             (syntax-line stx)
-             (syntax-column stx)
-             (syntax->datum stx)))
+  (define (log-app-type msg f)
+    (log-instr-info
+     (let* ([origin (syntax-property stx 'origin)]
+            [origin (and (list? origin) (last origin))])
+       (format "~a for ~s~a" msg f (if origin (format " from ~s" origin) "")))))
   (syntax-parse iastx
     #:literals (#%plain-app + cons reverse)
-    ;; Conditionable functions
+
+    ;; Conditionable primitives in conditionable context
+    ;; All non-random first-order, so no need for address tracking.
+
     [(_ #:cc (#%plain-app + e ... eFinal))
-     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
-           (with-continuation-mark obs-mark (+ tmp ...)
-             (#%plain-app + tmp ... (instrument eFinal #:cc)))))]
+     #'(let-values ([(tmp) (+ (wrap-nt (instrument e #:nt)) ...)])
+         (with ([OBS (obs:add-plus tmp OBS)])
+           (#%plain-app + tmp (instrument eFinal #:cc))))]
     [(_ #:cc (#%plain-app cons e1 e2))
-     #'(with-continuation-mark obs-mark 'car
-         (let-values ([(tmp1) (wrap-cc (instrument e1 #:cc))])
-           (with-continuation-mark obs-mark 'cdr
-             (let ([tmp2 (wrap-cc (instrument e2 #:cc))])
-               (#%plain-app cons tmp1 tmp2)))))]
+     #'(#%plain-app cons
+                    (with ([OBS (obs:add-car OBS)]) (instrument e1 #:cc))
+                    (with ([OBS (obs:add-cdr OBS)]) (instrument e2 #:cc)))]
     [(_ #:cc (#%plain-app reverse e))
-     #'(with-continuation-mark obs-mark 'reverse
-         (#%plain-app reverse (wrap-cc (instrument e #:cc))))]
+     #'(#%plain-app reverse
+                    (with ([OBS (obs:add-reverse OBS)]) (instrument e #:cc)))]
 
-    ;; Non-conditionable functions in conditionable contexts
-    ;; Put the function into the CC marks (for debugging).
+    ;; Non-conditionable-primitives in conditionable context
+
+    ;; * non-random first-order non-instrumented
+    ;;   Doesn't need address tracking, doesn't need observation
     [(_ #:cc (#%plain-app f:id e ...))
-     #:when (not calls-erp?)
-     ;; "safe" function: doesn't need address tracking
-     (when (not (eq? (classify-function #'f) 'safe))
-       (log-instr-info "*** no calls-erp: ~a" (syntax-summary #'f)))
+     #:when (eq? (classify-function #'f) 'non-random-first-order)
+     (log-app-type "STATIC app (NRFO)" #'f)
      #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
+    ;; * analysis says doesn't call ERP (superset of prev case)
+    ;;   Doesn't need address tracking, doesn't need observation
     [(_ #:cc (#%plain-app f:id e ...))
+     #:when (not (app-calls-erp? stx))
+     (log-app-type "STATIC app (!APP-CALLS-ERP)" #'f)
+     #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
+    ;; * instrumented function with right arity
+    ;;   Use static protocol
+    [(_ #:cc (#%plain-app f:instr-fun e ...))
+     #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c f (wrap-nt (instrument e #:nt)) ...))]
+       #'(#%plain-app f.instr (cons c ADDR) OBS
+                      (wrap-nt (instrument e #:nt)) ...))]
+    ;; * unknown, function is varref
+    ;;   Use dynamic protocol
+    [(_ #:cc (#%plain-app f:id e ...))
+     (log-app-type "DYNAMIC app" #'f)
+     (with-syntax ([c (lift-call-site stx)]
+                   [(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (with-continuation-mark ADDR-mark (cons c ADDR)
+             (with-continuation-mark OBS-mark OBS
+               (#%plain-app f tmp ...)))))]
+    ;; * unknown, function is expr
+    ;;   Use dynamic protocol
     [(_ #:cc (#%plain-app e ...))
-     (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c (wrap-nt (instrument e #:nt)) ...))]
+     (with-syntax ([c (lift-call-site stx)]
+                   [(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (with-continuation-mark ADDR-mark (cons c ADDR)
+             (with-continuation-mark OBS-mark OBS
+               (#%plain-app tmp ...)))))]
 
-    ;; Non-conditionable contexts
+    ;; Non-conditionable context
+
+    ;; * non-random first-order non-instrumented
+    ;;   Doesn't need address, doesn't need observation
     [(_ #:nt (#%plain-app f:id e ...))
-     #:when (not calls-erp?)
-     ;; "safe" function: doesn't need address tracking
-     (when (not (eq? (classify-function #'f) 'safe))
-       (log-instr-info "*** no calls-erp: ~a" (syntax-summary #'f)))
+     #:when (eq? (classify-function #'f) 'non-random-first-order)
+     (log-app-type "STATIC app (NRFO)" #'f)
      #'(#%plain-app f (instrument e #:nt) ...)]
+    ;; * analysis says doesn't call ERP (superset of prev case)
+    ;;   Doesn't need address tracking, doesn't need observation
     [(_ #:nt (#%plain-app f:id e ...))
+     #:when (eq? (classify-function #'f) 'non-random-first-order)
+     (log-app-type "STATIC app (!APP-CALLS-ERP)" #'f)
+     #'(#%plain-app f (instrument e #:nt) ...)]
+    ;; * instrumented function with right arity
+    ;;   Use static protocol
+    [(_ #:nt (#%plain-app f:instr-fun e ...))
+     #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
      (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c f (instrument e #:nt) ...))]
-    [(_ #:nt (#%plain-app f e ...))
-     (with-syntax ([c (lift-call-site stx)])
-       #'(app/call-site c (instrument f #:nt) (instrument e #:nt) ...))]))
-
-;; wrap-cc : wrapped around CC args to CC function call
-(define-syntax (wrap-cc stx)
-  (syntax-case stx ()
-    [(wrap-cc e)
-     #'(with-continuation-mark obs-mark 'unknown e)]))
+       #'(#%plain-app f.instr (cons c ADDR) OBS (instrument e #:nt) ...))]
+    ;; * unknown, function is varref
+    ;;   Use dynamic protocol
+    [(_ #:nt (#%plain-app f:id e ...))
+     (log-app-type "DYNAMIC app" #'f)
+     (with-syntax ([c (lift-call-site stx)]
+                   [(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (with-continuation-mark ADDR-mark (cons c ADDR)
+             (with-continuation-mark OBS-mark OBS
+               (#%plain-app f tmp ...)))))]
+    ;; * unknown, function is expr
+    ;;   Use dynamic protocol
+    [(_ #:nt (#%plain-app e ...))
+     (with-syntax ([c (lift-call-site stx)]
+                   [(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (with-continuation-mark ADDR-mark (cons c ADDR)
+             (with-continuation-mark OBS-mark OBS
+               (#%plain-app tmp ...)))))]))
 
 ;; wrap-nt : wrapped around NT args to CC function call
 (define-syntax (wrap-nt stx)
   (syntax-case stx ()
     [(wrap-nt e)
-     #'(parameterize ((observing? '#f)) e)]))
-
-;; Application w/ call-site added to context parameter.
-(define-syntax (app/call-site stx)
-  (syntax-parse stx
-    [(app/call-site call-site f:id arg ...)
-     ;; Special case where f is varref: keep f in operator position
-     (with-syntax ([(tmp-arg ...)
-                    (generate-temporaries #'(arg ...))])
-       #`(let-values ([(tmp-arg) arg] ...)
-           (parameterize ((the-context (#%plain-app cons call-site (#%plain-app the-context))))
-             (#%plain-app f tmp-arg ...))))]
-    [(app/call-site call-site f arg ...)
-     (with-syntax ([(tmp-f)
-                    (generate-temporaries #'(f))]
-                   [(tmp-arg ...)
-                    (generate-temporaries #'(arg ...))])
-       #`(let-values ([(tmp-f) f] [(tmp-arg) arg] ...)
-           (parameterize ((the-context (#%plain-app cons call-site (#%plain-app the-context))))
-             (#%plain-app tmp-f tmp-arg ...))))]))
+     #'(with ([OBS #f]) e)]))

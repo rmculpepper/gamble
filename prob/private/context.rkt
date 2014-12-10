@@ -3,30 +3,49 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
+(require (for-syntax racket/base)
+         racket/performance-hint
+         racket/stxparam
+         unstable/markparam)
 (provide (all-defined-out))
 
-;; This module describes (in comments) the approaches used for
-;; address-tracking (a la Bher) and conditioning. It also defines
-;; parameters and functions used to contain that information.
+;; This module defines parameters and functions used for
+;; address-tracking (a la Bher) and conditioning.
 
 ;; See instrument.rkt for the implementation (through rewriting of
 ;; expanded modules) of the approaches described here.
 
 ;; ------------------------------------------------------------
-;; Address-tracking
+;; Static communication
 
-;; the-context : (Parameterof (Listof Nat))
-(define the-context (make-parameter null))
+(define-syntax-parameter ADDR
+  (make-rename-transformer (quote-syntax null)))
+(define-syntax-parameter OBS
+  (lambda (stx) #'#f))
 
-(define (get-context)
-  (the-context))
+(define-syntax (with stx)
+  (syntax-case stx ()
+    [(with ([x e] ...) body ...)
+     (with-syntax ([(v ...) (generate-temporaries #'(x ...))])
+       #'(let-values ([(v) e] ...)
+           (syntax-parameterize ([x (make-rename-transformer (quote-syntax v))] ...)
+             body ...)))]))
+
+
+;; ------------------------------------------------------------
+;; Dynamic communication
+
+(define ADDR-mark (mark-parameter))
+(define OBS-mark 'observation)
+
 
 ;; Delimit call-site tracking.
 ;; Can't test using normal (f arg ...) syntax, because testing call-sites 
 ;; would be part of context! Use (apply/delimit f arg ...) instead.
 (define (apply/delimit f . args)
-  (parameterize ((the-context null))
-    (apply f args)))
+  (with-continuation-mark ADDR-mark #f
+    (with-continuation-mark OBS-mark #f
+      (apply f args))))
 
 
 ;; ------------------------------------------------------------
@@ -37,50 +56,48 @@ Goal: implement (observe CC[(sample d)] v)
              as CC[(observe-at CC^-1[v])]
 
 Conditioning contexts (CC) are defined thus:
-CC ::=                   -- CCFrame rep:
+CC ::=                   -- Observation rep:
        []
-    |  (+ v CC)          -- v
-    |  (- CC)            -- '-
-    |  (cons CC e)       -- 'car
-    |  (cons v CC)       -- 'cdr
-    |  (reverse CC)      -- 'reverse
+    |  (+ v CC)          -- (cons v _)
+    |  (- CC)            -- (cons '- _)
+    |  (cons CC e)       -- (cons 'car _)
+    |  (cons v CC)       -- (cons 'cdr _)
+    |  (reverse CC)      -- (cons 'reverse _)
     |  ... more invertible functions that don't affect density
            (eg, * is bad, I think)
 |#
 
 (struct observation (value))
 
-(define obs-mark 'observe)
-(define obs-prompt (make-continuation-prompt-tag))
-
-(define observing? (make-parameter #f))
+(begin-encourage-inline
+ (define (obs:add-plus v obs) (and obs (cons v obs)))
+ (define (obs:add-car obs) (and obs (cons 'car obs)))
+ (define (obs:add-cdr obs) (and obs (cons 'cdr obs)))
+ (define (obs:add-reverse obs) (and obs (cons 'reverse obs))))
 
 (define (observe* thunk expected)
   (define obs (observation expected))
   (define actual
-    (call-with-continuation-prompt
-     (lambda ()
-       (parameterize ((observing? obs))
-         (with-continuation-mark obs-mark 'unknown (thunk))))
-     obs-prompt))
+    (with-continuation-mark 'observation (list obs)
+      (thunk)))
   ;; Check that result "equals" value.
   ;; FIXME: make equality approximation parameter or optional arg to observe?
   (check-observe-result 'observe expected actual)
   actual)
 
+;; Checks that the result of thunk is consistent with observe context,
+;; if observe context exists.
 (define (check-observe* thunk)
-  (define obs (observing?))
-  (cond [obs
-         (with-continuation-mark obs-mark 'ok
-           (let ()
-             (define cc (get-observe-context))
-             (define actual (thunk))
-             (define expected (observe-context-adjust-value cc obs))
+  (call-with-immediate-continuation-mark OBS-mark
+    (lambda (obs)
+      (cond [obs
+             (define actual (with-continuation-mark OBS-mark obs (thunk)))
+             (define expected (interpret-observe-context obs))
              (check-observe-result 'check-observe expected actual)
-             actual))]
-        [else
-         ;; For consistency: thunk non-tail applied.
-         (values (thunk))]))
+             actual]
+            [else
+             ;; For consistency: thunk non-tail applied.
+             (values (thunk))]))))
 
 (define (check-observe-result who expected0 actual0)
   (define (bad)
@@ -103,20 +120,13 @@ CC ::=                   -- CCFrame rep:
              (bad))]
           [else (unless (equal? actual expected) (bad))])))
 
-(define (get-observe-context)
-  (continuation-mark-set->list
-   (current-continuation-marks obs-prompt)
-   obs-mark
-   obs-prompt))
-
-(define (observe-context-adjust-value ctx obs)
-  (interpret-context ctx (observation-value obs)))
-
-(define (interpret-context ctx val)
-  (foldr interpret-frame val ctx))
+(define (interpret-observe-context ctx)
+  (foldr interpret-frame #f ctx))
 
 (define (interpret-frame frame val)
-  (cond [(real? frame)  ;; (+ frame [])
+  (cond [(observation? frame)
+         (observation-value frame)]
+        [(real? frame)  ;; (+ frame [])
          (- val frame)]
         [(eq? frame 'car) ;; (cons [] e)
          (car val)]

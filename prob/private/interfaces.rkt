@@ -4,7 +4,7 @@
 
 #lang racket/base
 (require racket/class
-         (only-in "context.rkt" obs-mark)
+         (only-in "context.rkt" OBS-mark)
          (only-in "dist.rkt" dist-sample dist-pdf))
 (provide verbose?
          with-verbose>
@@ -112,9 +112,10 @@
     (define/public (mem f)
       (let ([memo-table (make-hash)])
         (define (memoized-function . args)
-          (with-continuation-mark
-              obs-mark 'ok
-            (hash-ref! memo-table args (lambda () (apply f args)))))
+          (call-with-immediate-continuation-mark OBS-mark
+            (lambda (obs)
+              (hash-ref! memo-table args
+                         (lambda () (with-continuation-mark OBS-mark obs (apply f args)))))))
         memoized-function))
 
     (define/public (fail reason)

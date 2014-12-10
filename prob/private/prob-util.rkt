@@ -18,19 +18,16 @@
 (define (sample* dist) (send (current-stochastic-ctx) sample dist))
 
 (define (sample dist)
-  (define obs (observing?))
-  (cond [(observation? obs)
-         (with-continuation-mark
-             obs-mark 'ok ;; overwrite this frame's 'unknown mark
-           (let ()
-             (define cc (get-observe-context))
-             (define value (observe-context-adjust-value cc obs))
+  (call-with-immediate-continuation-mark OBS-mark
+    (lambda (obs)
+      (cond [obs
+             (define value (interpret-observe-context obs))
              (when (verbose?)
-               (vprintf "OBSERVE w/ context = ~e\n" cc)
+               (vprintf "OBSERVE w/ context = ~e\n" obs)
                (vprintf "  sample -> condition: ~e @ ~e\n" dist value))
              (observe-at dist value)
-             value))]
-        [else (sample* dist)]))
+             value]
+            [else (sample* dist)]))))
 
 ;; == Finite distributions ==
 

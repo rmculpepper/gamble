@@ -30,6 +30,11 @@
     [(check-observe e)
      #'(check-observe* (lambda () e))]))
 
+(define-syntax (observe-true stx)
+  (syntax-case stx ()
+    [(observe-true e)
+     #'(unless e (fail 'observation))]))
+
 ;; ----
 
 (begin-for-syntax

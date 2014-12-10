@@ -197,7 +197,7 @@
     ;; if accepted, it typically becomes a new execution's last-db.
 
     (define/public (sample dist)
-      (define context (get-context))
+      (define context (ADDR-mark))
       ;; If choice address (context) is in current-db, likely error unless
       ;; memoized function (FIXME: shouldn't happen w/ real memoization).
       ;; Otherwise, consult delta-db (represents proposed changes), then
@@ -271,7 +271,7 @@
              (sample/new dist context #f)]))
 
     (define/public (observe-at dist val)
-      (define context (get-context))
+      (define context (ADDR-mark))
       (observe-at* dist val context))
 
     (define/private (observe-at* dist val context)
@@ -316,17 +316,18 @@
              context))
 
     (define/public (mem f)
-      (let ([context (get-context)]
+      (let ([context (ADDR-mark)]
             [memo-table (make-hash)])
         (lambda args
-          (with-continuation-mark
-              obs-mark 'ok
-            (hash-ref! memo-table args
-                       (lambda ()
-                         (apply/delimit
-                          (lambda ()
-                            (parameterize ((the-context (list (list 'mem args context))))
-                              (apply f args))))))))))
+          (call-with-immediate-continuation-mark OBS-mark
+            (lambda (obs)
+              (hash-ref! memo-table args
+                         (lambda ()
+                           (apply/delimit
+                            (lambda ()
+                              (with-continuation-mark ADDR-mark (list (list 'mem args context))
+                                (with-continuation-mark OBS-mark obs
+                                  (apply f args))))))))))))
     ))
 
 (define db-stochastic-derivative-ctx%
@@ -348,13 +349,13 @@
     (define/private (record-current-label)
       (define lbl (current-label))
       (when lbl
-        (define context (get-context))
+        (define context (ADDR-mark))
         (hash-set! relevant-labels lbl context)))
 
     (define/private (record-current-derivatives)
       (define label-derivs (current-derivatives))
       (when label-derivs
-        (define context (get-context))
+        (define context (ADDR-mark))
         (define address-derivs
           (vector-map (λ (parameter-derivative)
                         (derivative-label->address parameter-derivative))
