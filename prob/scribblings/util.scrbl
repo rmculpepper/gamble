@@ -75,6 +75,25 @@ two scalar values.
 ]
 }
 
+@defproc[(sampler->mean [sampler weighted-sampler?]
+                        [n exact-positive-integer?]
+                        [f (-> any/c real?) values]
+                        [#:burn burn exact-nonnegative-integer? 0]
+                        [#:thin thin exact-nonnegative-integer? 0])
+         (values real? real?)]{
+
+Like @racket[sample->mean+variance], but returns only the mean. In
+contrast to the other functions in this section,
+@racket[sampler->mean] handles weighted samplers, and the sample
+results can be numbers, lists, vectors, arrays, and matrices. If two
+values have incompatible shapes, the function returns @racket[+nan.0]
+at the incompatible positions.
+
+@examples[#:eval the-eval
+(sampler->mean (rejection-sampler (dirichlet '#(1 1 1))) 10)
+(sampler->mean (rejection-sampler (for/list ([i (+ 2 (discrete-uniform 4))]) 17)) 10)
+]
+}
 
 @; ============================================================
 @section[#:tag "test-util"]{Utilities for Testing and Comparing Distributions}

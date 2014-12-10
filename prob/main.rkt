@@ -145,6 +145,10 @@
           [samples->KS
            (-> vector? dist?
                real?)]
+          [sampler->mean
+           (->* [(or/c weighted-sampler? procedure?) exact-positive-integer?]
+                [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
+                any)]
           [sampler->mean+variance
            (->* [(or/c sampler? procedure?) exact-positive-integer?]
                 [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]

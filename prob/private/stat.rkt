@@ -13,9 +13,9 @@
          sampler->statistics
          samples->statistics
          sampler->mean+variance
-         sampler->mean
          sampler->KS
-         samples->KS)
+         samples->KS
+         sampler->mean)
 
 ;; Reference: "Numerically Stable, Single-Pass, Parallel Statistics
 ;; Algorithms" by Bennett et al.
@@ -82,6 +82,7 @@
   (values (statistics-scalar-mean st)
           (statistics-scalar-variance st)))
 
+#|
 (define (sampler->mean s n [f values]
                        #:burn [burn 0]
                        #:thin [thin 0])
@@ -91,6 +92,7 @@
     (error 'sampler->mean
            "statistics has wrong dimension (non-scalar)\n  statistics: ~e" st))
   (statistics-scalar-mean st))
+|#
 
 (define (wrap-sampler s f burn thin)
   (cond [(sampler? s)
@@ -347,3 +349,62 @@
     (unless (= (vector-length v) dim)
       (error who "vector has wrong number of elements\n  expected: ~e\n  value: ~e"
              dim v))))
+
+;; ============================================================
+
+;; Shape-generic mean
+
+(define (generic+ a b)
+  (cond [(and (number? a) (number? b))
+         (+ a b)]
+        [(and (pair? a) (pair? b))
+         (cons (generic+ (car a) (car b))
+               (generic+ (cdr a) (cdr b)))]
+        [(and (null? a) (null? b))
+         '()]
+        [(and (vector? a) (vector? b)
+              (= (vector-length a) (vector-length b)))
+         (build-vector (vector-length a)
+                       (lambda (i) (generic+ (vector-ref a i) (vector-ref b i))))]
+        [(and (array? a) (array? b)
+              (equal? (array-shape a) (array-shape b)))
+         (array+ a b)]
+        [else +nan.0]))
+
+(define (generic/ a b)
+  (cond [(number? a)
+         (/ a b)]
+        [(pair? a)
+         (cons (generic/ (car a) b) (generic/ (cdr a) b))]
+        [(null? a)
+         '()]
+        [(vector? a)
+         (build-vector (vector-length a) (lambda (i) (generic/ (vector-ref a i) b)))]
+        [(array? a)
+         (array/ a (array b))]
+        [else +nan.0]))
+
+(define (wrap-weighted-sampler s f burn thin)
+  (cond [(sampler? s)
+         (for ([_ (in-range burn)]) (send s sample/weight))
+         (lambda ()
+           (for ([_ (in-range thin)]) (send s sample/weight))
+           (defmatch (cons v w) (send s sample/weight))
+           (cons (f v) w))]
+        [(procedure? s)
+         (for ([_ (in-range burn)]) (s))
+         (lambda ()
+           (for ([_ (in-range thin)]) (s))
+           (cons (f (s)) 1))]))
+
+(define (sampler->mean s n [f values]
+                       #:burn [burn 0]
+                       #:thin [thin 0])
+  (define s* (wrap-weighted-sampler s f burn thin))
+  (defmatch (cons initv initw) (s*))
+  (define-values (sum weight)
+    (for/fold ([sum initv] [weight initw])
+              ([i (in-range (sub1 n))])
+      (defmatch (cons v w) (s*))
+      (values (generic+ sum v) (+ weight w))))
+  (generic/ sum weight))
