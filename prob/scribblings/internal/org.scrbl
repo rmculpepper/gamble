@@ -15,15 +15,19 @@
 
 The @racketmodname[prob] language consists of the following parts:
 @itemlist[
-@item{some probability-related things (eg, distributions)}
+@item{some probability distributions}
 @item{some samplers and solvers for probabilistic models}
 @item{a source instrumenter that implements a variant of the Bher
 addressing (``naming'') scheme for random choices}
 ]
 
-@bold{Probability-related things}
+@bold{Probability distributions}
 
-Distributions.
+@itemlist[
+@item{univariate integer-valued and real-valued}
+@item{Dirichlet}
+@item{multivariate using matrices}
+]
 
 
 @bold{Samplers and solvers}
@@ -36,8 +40,6 @@ The following sampler/solver implementations exist:
 @item{@racket[rejection-sampler%] --- unweighted sampler, uses logic sampling}
 @item{@racket[importance-sampler%] --- weighted sampler}
 @item{enumerate --- exhaustive enumeration using delimited continuations}
-@item{@racket[enum-importance-sampler%] --- weighted sampler using delimited
-continuations}
 @item{@secref["mh-sampler"] --- DB-based MH sampler framework, relies
 on instrumenter; supports programmable and extensible ``transitions''}
 ]

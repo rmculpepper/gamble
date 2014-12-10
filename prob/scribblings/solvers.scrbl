@@ -181,14 +181,6 @@ sampler, an importance sampler can handle observations
 (@racket[observe-at]) on continuous random variables.
 }
 
-@defform[(enum-importance-sampler def/expr ... result-expr maybe-when-clause)
-         #:grammar ([maybe-when-clause (code:line)
-                                       (code:line #:when condition-expr)])]{
-
-Like @racket[importance-sampler], but uses a different algorithm
-internally.
-}
-
 
 @; ------------------------------------------------------------
 @section[#:tag "mh-sampler"]{Metropolis-Hastings Sampler and Transitions}

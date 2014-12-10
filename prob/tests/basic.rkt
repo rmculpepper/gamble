@@ -52,9 +52,6 @@
 (define ((enumerate-compute-dist) proc)
   (enumerate (proc)))
 
-(define ((enum-imp-compute-dist iters) proc)
-  (sampler->discrete-dist (enum-importance-sampler (proc)) iters))
-
 (define ((egibbs-compute-dist iters) proc)
   (sampler->discrete-dist (mh-sampler (proc) #:transition (enumerative-gibbs)) iters))
 
@@ -65,29 +62,5 @@
 (make-basic-tests 'imp-sampl (imp-compute-dist 1000)       0.05)
 (make-basic-tests 'mh        (mh-compute-dist 1000)        0.10)
 (make-basic-tests 'enumerate (enumerate-compute-dist)      1e-6)
-(make-basic-tests 'enum-imp  (enum-imp-compute-dist 1000)  0.05)
 (make-basic-tests 'egibbs    (egibbs-compute-dist 1000)    0.05)
 (make-basic-tests 'slice     (slice-compute-dist 1000)     0.05)
-
-;; ----
-
-#|
-;; Pathological case for lazy-tree-based importance sampler
-;; HANSEI impl has some mitigations, but ultimate problem remains.
-
-(define (bad)
-  (if (flip)
-      (if (flip) 1 (fail))
-      (if (flip)
-          (if (flip) 2 2)
-          (if (flip) (fail) (fail)))))
-
-(enumerate (bad))
-;; => {1 -> 1/2, 2 -> 1/2}
-(sampler->discrete-dist (enum-importance-sampler (bad)))
-;; => {1 -> 0.66, 2 -> 0.33}
-
-Might be able to fix by weighting immediate successes differently
-depending on whether any successes were found along the chosen choice.
-(But does that fix the problem or just push it a little further under the rug?)
-|#

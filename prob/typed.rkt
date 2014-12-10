@@ -89,7 +89,6 @@
            importance-sampler
            mh-sampler
            enumerate
-           enum-importance-sampler
            pdelay
            deflazy
            defmem
@@ -214,7 +213,6 @@
     (-poly (a) (-> (-> a) (-Sampler a)))]
    [enumerate* ;; FIXME
     (-poly (a) (-> (-> a) (Un -False -Real) -Boolean -DistTop))]
-   ;; enum-importance-sampler*
    ;; pdelay
    ;; table
    ;; ppromise?

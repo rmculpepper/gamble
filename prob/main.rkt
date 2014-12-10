@@ -159,7 +159,6 @@
          mh-sampler
          hmc-sampler
          enumerate
-         enum-importance-sampler
          label
          with-zone
          derivative
