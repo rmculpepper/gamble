@@ -7,6 +7,7 @@
          (rename-in racket/match [match-define defmatch])
          "db.rkt"
          "../interfaces.rkt"
+         "../context.rkt"
          "../dist.rkt")
 (provide (all-defined-out))
 
@@ -84,12 +85,13 @@
   (error who "no random choice available to change~a"
          (if zone (format "\n  zone: ~e" zone) "")))
 
-(define (error-structural who)
-  (error who "illegal for structural choice"))
+(define (error-structural who key)
+  (error who "illegal transition for structural choice\n  choice: ~a"
+         (address->string key)))
 
-(define (check-not-structural who nchoices last-trace)
+(define (check-not-structural who key nchoices last-trace)
   (unless (= nchoices (trace-nchoices last-trace))
     ;; Note: This check is not sufficient to catch all structural choices;
     ;; if one choice is lost and another added, nchoices stays the same.
     ;; See also disallow-fresh? in db-stochastic-ctx%.
-    (error-structural who)))
+    (error-structural who key)))

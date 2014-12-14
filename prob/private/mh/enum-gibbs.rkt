@@ -62,7 +62,7 @@
                                    (delta-db delta-db)
                                    (record-obs? record-obs?)
                                    (on-fresh-choice
-                                    (lambda () (error-structural 'enumerative-gibbs)))))
+                                    (lambda () (error-structural 'enumerative-gibbs key-to-change)))))
                   (match (with-verbose> (send ctx run thunk))
                     [(cons 'okay sample-value)
                      (define current-db (get-field current-db ctx))
@@ -72,7 +72,7 @@
                      (define current-trace
                        (trace sample-value current-db nchoices ll-free ll-obs))
                      (define ll (+ ll-free ll-obs))
-                     (check-not-structural 'enumerative-gibbs nchoices last-trace)
+                     (check-not-structural 'enumerative-gibbs key-to-change nchoices last-trace)
                      (cons current-trace (exp ll))]
                     [(cons 'fail fail-reason)
                      (cons #f 0)])]))))

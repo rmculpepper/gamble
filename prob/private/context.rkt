@@ -67,7 +67,7 @@
 (define (info->src mod src line col)
   (let ([mod (if (path? mod) (path->string mod) mod)]
         [src (if (path? src) (path->string src) src)])
-    (format "~a ~a:~a\n"
+    (format "~a ~a:~a"
             (or src (and (not line) (not col) mod) "?")
             (or line "?")
             (or col "?"))))
