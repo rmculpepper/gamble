@@ -5,6 +5,7 @@
 #lang racket/base
 (require (for-syntax racket/base)
          racket/performance-hint
+         racket/match
          racket/stxparam
          unstable/markparam)
 (provide (all-defined-out))
@@ -30,6 +31,61 @@
        #'(let-values ([(v) e] ...)
            (syntax-parameterize ([x (make-rename-transformer (quote-syntax v))] ...)
              body ...)))]))
+
+;; A CallSite is a Nat.
+
+;; The call-site index is determined dynamically, so distinct modules
+;; get distinct call-site indexes.
+
+;; call-site-counter : Nat
+(define call-site-counter 0)
+
+;; call-site-table : hash[nat => sexpr describing source]
+(define call-site-table (make-hash))
+
+;; next-counter : any (List any any any) : -> Nat
+(define (next-counter mod src-info)
+  (set! call-site-counter (add1 call-site-counter))
+  (hash-set! call-site-table call-site-counter (cons mod src-info))
+  call-site-counter)
+
+(define (address->string addr)
+  (cond [(and (pair? addr) (exact-nonnegative-integer? (car addr)))
+         (call-site->string (car addr))]
+        [else "unknown call site"]))
+
+(define (call-site->string n)
+  (cond [(hash-ref call-site-table n #f)
+         => (lambda (info)
+              (match info
+                [(list mod src line col stx fun)
+                 (define src-string (info->src mod src line col))
+                 (if fun
+                     (format "call to ~s at ~a" fun src-string)
+                     (format "call at ~a" src-string))]))]
+        [else
+         "unknown call site"]))
+
+(define (info->src mod src line col)
+  (let ([mod (if (path? mod) (path->string mod) mod)]
+        [src (if (path? src) (path->string src) src)])
+    (format "~a ~a:~a\n"
+            (or src (and (not line) (not col) mod) "?")
+            (or line "?")
+            (or col "?"))))
+
+(define (describe-all-call-sites)
+  (for ([i (in-range 1 (add1 call-site-counter))])
+    (describe-call-site i)))
+
+(define (describe-call-site n)
+  (cond [(hash-ref call-site-table n #f)
+         => (lambda (info)
+              (match info
+                [(list mod src line col stx fun)
+                 (printf "call site ~s: ~a"
+                         n (info->src mod src line col))]))]
+        [else (printf "call site ~s: no info available" n)]))
 
 
 ;; ------------------------------------------------------------

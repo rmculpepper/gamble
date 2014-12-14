@@ -10,6 +10,10 @@
                      syntax/id-table
                      "instrument-analysis.rkt")
          racket/match
+         (only-in racket/contract/private/provide
+                  contract-rename-id-property
+                  provide/contract-info?
+                  provide/contract-info-original-id)
          "context.rkt")
 (provide describe-all-call-sites
          describe-call-site
@@ -22,25 +26,6 @@
   ;; display with: PLTSTDERR="info@instr" racket ....
   (define-logger instr))
 
-#|
-A CallSite is a Nat.
-
-Call-site index determined dynamically, so distinct modules get
-distinct call-site indexes.
-|#
-
-;; call-site-counter : Nat
-(define call-site-counter 0)
-
-;; call-site-table : hash[nat => sexpr describing source]
-(define call-site-table (make-hash))
-
-;; next-counter : any (List any any any) : -> Nat
-(define (next-counter mod src-info)
-  (set! call-site-counter (add1 call-site-counter))
-  (hash-set! call-site-table call-site-counter (cons mod src-info))
-  call-site-counter)
-
 (define-syntax (fresh-call-site stx)
   (syntax-case stx ()
     [(fresh-call-site info)
@@ -52,27 +37,22 @@ distinct call-site indexes.
   (define (lift-call-site stx)
     (with-syntax ([stx-file (syntax-source stx)]
                   [line (syntax-line stx)]
-                  [col (syntax-column stx)])
+                  [col (syntax-column stx)]
+                  [fun (syntax-case stx (#%plain-app)
+                         [(#%plain-app f arg ...) (or (get-original-id #'f) #'f)]
+                         [_ #f])])
       (syntax-local-lift-expression
-       #`(fresh-call-site '(stx-file line col #,stx))))))
+       #`(fresh-call-site '(stx-file line col #,stx f)))))
 
-(define (describe-all-call-sites)
-  (for ([i (in-range 1 (add1 call-site-counter))])
-    (describe-call-site i)))
-
-(define (describe-call-site n)
-  (cond [(hash-ref call-site-table n #f)
-         => (lambda (info)
-              (match info
-                [(list mod src line col stx)
-                 (let ([mod (if (path? mod) (path->string mod) mod)]
-                       [src (if (path? src) (path->string src) src)])
-                   (printf "call site ~s: ~a:~a:~a\n"
-                           n
-                           (or src (and (not line) (not col) mod) "?")
-                           (or line "?")
-                           (or col "?")))]))]
-        [else (printf "call site ~s: no info available" n)]))
+  (define (get-original-id id)
+    (cond [(contract-rename-id-property id)
+           => (lambda (ren-id)
+                (cond [(syntax-local-value ren-id (lambda () #f))
+                       => (lambda (pci)
+                            (and (provide/contract-info? pci)
+                                 (provide/contract-info-original-id pci)))]
+                      [else #f]))]
+          [else #f])))
 
 ;; ----
 
@@ -328,9 +308,8 @@ distinct call-site indexes.
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
   (define (log-app-type msg f)
     (log-instr-info
-     (let* ([origin (syntax-property stx 'origin)]
-            [origin (and (list? origin) (last origin))])
-       (format "~a for ~s~a" msg f (if origin (format " from ~s" origin) "")))))
+     (let ([ctc-f (get-original-id f)])
+       (format "~a for ~s~a" msg (or ctc-f f) (if ctc-f " (contracted)" "")))))
   (syntax-parse iastx
     #:literals (#%plain-app + cons reverse)
 
@@ -401,7 +380,7 @@ distinct call-site indexes.
     ;; * analysis says doesn't call ERP (superset of prev case)
     ;;   Doesn't need address tracking, doesn't need observation
     [(_ #:nt (#%plain-app f:id e ...))
-     #:when (eq? (classify-function #'f) 'non-random-first-order)
+     #:when (not (app-calls-erp? stx))
      (log-app-type "STATIC app (!APP-CALLS-ERP)" #'f)
      #'(#%plain-app f (instrument e #:nt) ...)]
     ;; * instrumented function with right arity

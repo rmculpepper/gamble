@@ -518,7 +518,7 @@
 ;; TODO: static analysis for locally-defined functions
 
 ;; classify-function : id -> (U 'safe 'unsafe 'unknown)
-(define (classify-function f-id [app-stx #f])
+(define (classify-function f-id)
   (if (function-non-random-first-order? f-id)
       'non-random-first-order
       'unsafe))
