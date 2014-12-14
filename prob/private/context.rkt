@@ -60,9 +60,7 @@
               (match info
                 [(list mod src line col stx fun)
                  (define src-string (info->src mod src line col))
-                 (if fun
-                     (format "call to ~s at ~a" fun src-string)
-                     (format "call at ~a" src-string))]))]
+                 (format "call at ~a" src-string)]))]
         [else
          "unknown call site"]))
 

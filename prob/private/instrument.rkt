@@ -10,10 +10,6 @@
                      syntax/id-table
                      "instrument-analysis.rkt")
          racket/match
-         (only-in racket/contract/private/provide
-                  contract-rename-id-property
-                  provide/contract-info?
-                  provide/contract-info-original-id)
          "context.rkt")
 (provide describe-all-call-sites
          describe-call-site
@@ -39,20 +35,10 @@
                   [line (syntax-line stx)]
                   [col (syntax-column stx)]
                   [fun (syntax-case stx (#%plain-app)
-                         [(#%plain-app f arg ...) (or (get-original-id #'f) #'f)]
+                         [(#%plain-app f arg ...) (identifier? #'f) #'f]
                          [_ #f])])
       (syntax-local-lift-expression
-       #`(fresh-call-site '(stx-file line col #,stx f)))))
-
-  (define (get-original-id id)
-    (cond [(contract-rename-id-property id)
-           => (lambda (ren-id)
-                (cond [(syntax-local-value ren-id (lambda () #f))
-                       => (lambda (pci)
-                            (and (provide/contract-info? pci)
-                                 (provide/contract-info-original-id pci)))]
-                      [else #f]))]
-          [else #f])))
+       #`(fresh-call-site '(stx-file line col #,stx f))))))
 
 ;; ----
 
@@ -307,9 +293,7 @@
 (define-syntax (instrument-app iastx)
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
   (define (log-app-type msg f)
-    (log-instr-info
-     (let ([ctc-f (get-original-id f)])
-       (format "~a for ~s~a" msg (or ctc-f f) (if ctc-f " (contracted)" "")))))
+    (log-instr-info (format "~a for ~s" msg f)))
   (syntax-parse iastx
     #:literals (#%plain-app + cons reverse)
 
