@@ -97,7 +97,7 @@
 ;; Can't test using normal (f arg ...) syntax, because testing call-sites 
 ;; would be part of context! Use (apply/delimit f arg ...) instead.
 (define (apply/delimit f . args)
-  (with-continuation-mark ADDR-mark #f
+  (with-continuation-mark ADDR-mark null
     (with-continuation-mark OBS-mark #f
       (apply f args))))
 
