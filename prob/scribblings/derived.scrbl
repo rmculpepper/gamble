@@ -151,13 +151,18 @@ Equivalent to @racket[(= 1 (sample (bernoulli-dist p)))].
 
 @defform[(observe observable-expr value-expr)]{
 
-Like @racket[observe-sample], except that instead of a distribution, the
-observation conditions the result of evaluating
+Like @racket[observe-sample], except that instead of a distribution,
+the observation conditions the result of evaluating
 @racket[observable-expr]. The @racket[observable-expr] must evaluate
 to a call to @racket[sample] (either explicitly or implicitly through
 one of the random procedures below) in an @tech{observable context};
 the call to @racket[sample] is replaced with a call to
 @racket[observe-sample] with a suitably adjusted value.
+
+The @racket[observe] form raises an error if @racket[observable-expr]
+does not contain a call to @racket[sample] in a suitable position and
+if @racket[observable-expr] produces a value not equal to
+@racket[value-expr]. See also @racket[observe/fail].
 
 A @deftech{observable context} (OC) is (currently) defined as
 follows:
@@ -198,6 +203,20 @@ function call also occurs within an observable context. For example:
 Note: because of floating-point imprecision, the result of
 @racket[observable-expr] may not be exactly equal to
 @racket[value-expr].
+}
+
+@defproc*[([(observe/fail [v any/c]) void?]
+           [(observe/fail [v1 any/c] [v2 any/c]) void?])]{
+
+Like @racket[observe], but uses @racket[fail] to reject executions
+incompatible with the observation (as opposed to raising an error, as
+@racket[observe] does).
+
+Equivalent to the following, respectively:
+@racketblock[
+(unless v (fail))
+(unless (equal? v1 v2) (fail))
+]
 }
 
 

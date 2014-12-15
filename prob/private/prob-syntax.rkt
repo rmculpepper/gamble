@@ -30,10 +30,10 @@
     [(check-observe e)
      #'(check-observe* (lambda () e))]))
 
-(define-syntax (observe-true stx)
-  (syntax-case stx ()
-    [(observe-true e)
-     #'(unless e (fail 'observation))]))
+(define observe/fail
+  (case-lambda
+    [(v) (unless v (fail 'observation))]
+    [(v1 v2) (unless (equal? v1 v2) (fail 'observation))]))
 
 ;; ----
 
