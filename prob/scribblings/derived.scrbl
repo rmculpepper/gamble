@@ -212,7 +212,7 @@ Like @racket[observe], but uses @racket[fail] to reject executions
 incompatible with the observation (as opposed to raising an error, as
 @racket[observe] does).
 
-Equivalent to the following, respectively:
+Roughly equivalent to the following, respectively:
 @racketblock[
 (unless v (fail))
 (unless (equal? v1 v2) (fail))

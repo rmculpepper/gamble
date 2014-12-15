@@ -31,6 +31,8 @@
      #'(check-observe* (lambda () e))]))
 
 (define observe/fail
+  ;; FIXME: turn 2nd case into observe with fail instead of error?
+  ;; FIXME: then convert 1st case w/ =, equal?, etc into 2nd case
   (case-lambda
     [(v) (unless v (fail 'observation))]
     [(v1 v2) (unless (equal? v1 v2) (fail 'observation))]))
