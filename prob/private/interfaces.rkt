@@ -87,7 +87,7 @@
 (define stochastic-ctx<%>
   (interface ()
     sample  ;; (Dist A) -> A
-    observe-at ;; (Dist A) A -> Void
+    observe-sample ;; (Dist A) A -> Void
     fail    ;; Any -> (escapes)
     mem     ;; Function -> Function
     ))
@@ -104,7 +104,7 @@
     (define/public (sample dist)
       (dist-sample dist))
 
-    (define/public (observe-at dist val)
+    (define/public (observe-sample dist val)
       ;; No ambient weight to affect; just check likelihood is non-zero.
       (when (zero? (dist-pdf dist val))
         (fail 'observation)))
@@ -181,7 +181,7 @@
 ;;   we should adjust through arithmetic, etc.
 ;;   eg, (observe (+ 5 (normal 0 1)) 6.3)
 ;;       => (observe (normal 0 1) 1.3)
-;;       => (observe-at (normal-dist 0 1) 1.3)
+;;       => (observe-sample (normal-dist 0 1) 1.3)
 ;;
 ;; - (observe X value), where X is a variable (maybe indexed??)
 ;;

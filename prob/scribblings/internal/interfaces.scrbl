@@ -54,21 +54,21 @@ sampler/solver before executing the probabilistic program.
 
 May be stateful. For example, the @racket[db-stochastic-ctx%] class
 records and replays @method[stochastic-ctx<%> sample] choices, adjusts
-trace likelihoods on @method[stochastic-ctx<%> observe-at], etc.
+trace likelihoods on @method[stochastic-ctx<%> observe-sample], etc.
 
 @defmethod[(sample [d dist?]) any/c]{
 
 Samples from @racket[dist]. Implements @racket[sample].
 }
 
-@defmethod[(observe-at [d dist?] [v any/c]) void?]{
+@defmethod[(observe-sample [d dist?] [v any/c]) void?]{
 
 Represents observing the value @racket[v] from the distribution
 @racket[d], whose parameters typically depend on previous random
 choices within the trace. The effect is typically to adjust the
 current trace's likelihood.
 
-Implements @racket[observe-at].
+Implements @racket[observe-sample].
 }
 
 @defmethod[(fail [reason any/c]) none/c]{

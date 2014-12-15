@@ -270,18 +270,18 @@
              (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
              (sample/new dist context #f)]))
 
-    (define/public (observe-at dist val)
+    (define/public (observe-sample dist val)
       (define context (ADDR-mark))
-      (observe-at* dist val context))
+      (observe-sample* dist val context))
 
-    (define/private (observe-at* dist val context)
+    (define/private (observe-sample* dist val context)
       (cond [(hash-ref current-db context #f) ;; COLLISION
              => (lambda (e)
                   (vprintf "OBS COLLISION ~e / ~e: ~s\n" (entry-dist e) dist context)
                   (collision-error context))]
             [(hash-ref delta-db context #f) ;; impossible
              => (lambda (e)
-                  (error 'observe-at "internal error: cannot perturb an observation"))]
+                  (error 'observe-sample "internal error: cannot perturb an observation"))]
             [(and record-obs? (hash-ref last-db context #f)) ;; RESCORE
              => (lambda (e)
                   ;; FIXME: better diagnostic messages. What are the
@@ -341,10 +341,10 @@
       (record-current-derivatives)
       (super sample dist))
 
-    (define/override (observe-at dist val)
+    (define/override (observe-sample dist val)
       (record-current-label)
       (record-current-derivatives)
-      (super observe-at dist val))
+      (super observe-sample dist val))
     
     (define/private (record-current-label)
       (define lbl (current-label))

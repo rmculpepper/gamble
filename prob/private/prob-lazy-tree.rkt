@@ -152,7 +152,7 @@
                    #f))))
        ctag))
 
-    (define/public (observe-at dist val)
+    (define/public (observe-sample dist val)
       (define act (current-activation))
       (define ctag (activation-prompt act))
       (define memo-key (activation-memo-table-key act))

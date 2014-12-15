@@ -21,9 +21,9 @@ This language consists of four primitive stochastic functions:
 @item{@racket[mem] --- apply memoization to a (stochastic) function}
 @item{@racket[fail] --- represents a predicate observation failure;
 abort the current program execution}
-@item{@racket[observe-at] --- represents a point observation; weights
-the current program evaluation by the likelihood of drawing the given
-value from the given distribution}
+@item{@racket[observe-sample] --- represents a point observation;
+weights the current program evaluation by the likelihood of drawing
+the given value from the given distribution}
 ]
 The implementation of these features depends on the sampler/solver
 context in which they are executed. In a @racket[mh-sampler] context,
@@ -81,7 +81,7 @@ least one of them is known to be heads (@racket[#t]):
 ]
 }
 
-@defproc[(observe-at [dist dist?] [value any/c])
+@defproc[(observe-sample [dist dist?] [value any/c])
          void?]{
 
 Represents observing the value of a random variable distributed as

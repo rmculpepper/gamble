@@ -119,7 +119,7 @@ samples from @racket[s], apply @racket[f] to each result.
 (sampler->discrete-dist
   (importance-sampler
     (define R (binomial 20 1/2))
-    (observe-at (normal-dist R 1) 9)
+    (observe-sample (normal-dist R 1) 9)
     R)
   100)
 ]
@@ -149,7 +149,7 @@ The sampler is implemented using rejection sampling---specifically,
 @racket[result-expr] is returned; otherwise, the process is repeated.
 
 The rejection sampler can sample continuous random variables, but it
-cannot perform observations (@racket[observe-at]) on them.
+cannot perform observations (@racket[observe-sample]) on them.
 
 @examples[#:eval the-eval
 (define s-or
@@ -178,7 +178,7 @@ Like @racket[rejection-sampler], but returns a @emph{weighted sampler}
 that uses weights to represent the quality of a particular sample
 given the observations in the program. Thus unlike a rejection
 sampler, an importance sampler can handle observations
-(@racket[observe-at]) on continuous random variables.
+(@racket[observe-sample]) on continuous random variables.
 }
 
 
@@ -348,7 +348,7 @@ tuning may be required to achive good results.
 (define one-dim-loc-hmc
   (hmc-sampler
      (define Hid (label 'Hid (derivative (normal 10 1) #f #f)))
-     (derivative (observe-at (normal-dist Hid 0.5) 9.0)
+     (derivative (observe-sample (normal-dist Hid 0.5) 9.0)
                  [(Hid) (λ (hid) 1)]
                  #f)
      Hid

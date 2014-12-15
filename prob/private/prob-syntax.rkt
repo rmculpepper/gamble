@@ -83,13 +83,13 @@
   (class plain-stochastic-ctx/run%
     (inherit fail)
     (super-new)
-    (define/override (observe-at dist val)
+    (define/override (observe-sample dist val)
       (cond [(or (finite-dist? dist) (integer-dist? dist))
              ;; ie, actually have pmf
              (unless (< (random) (dist-pdf dist val))
                (fail 'observation))]
             [else
-             (error 'observe-at
+             (error 'observe-sample
                     (string-append 
                      "observation on distribution not supported by rejection sampler"
                      "\n  distribution: ~e")
@@ -138,7 +138,7 @@
     (field [weight 1])
     (inherit fail)
     (super-new)
-    (define/override (observe-at dist val)
+    (define/override (observe-sample dist val)
       (define l (dist-pdf dist val))
       (if (positive? l)
           (set! weight (* weight l))

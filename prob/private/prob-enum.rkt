@@ -108,7 +108,7 @@
       [(weight dist val k)
        (when (and limit (not (or (finite-dist? dist) (integer-dist? dist))))
          ;; limit applies to mass; it can't handle densities
-         (error 'enumerate "cannot use both #:limit and observe-at with continuous distribution"))
+         (error 'enumerate "cannot use both #:limit and observe with continuous distribution"))
        (traverse-tree (k) (* prob-of-tree (dist-pdf dist val)) h table prob-unexplored prob-accepted)]
       [(failed reason)
        (let ([prob-unexplored (- prob-unexplored prob-of-tree)])

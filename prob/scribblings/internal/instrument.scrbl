@@ -84,7 +84,7 @@ both definition and use site are instrumented.)
 @section{Observable Contexts Instrumentation}
 
 The goal is to implement @racketblock[(observe CC[(sample d)] v)] as
-@racketblock[CC[(observe-at CC^-1[v])]].
+@racketblock[CC[(observe-sample d CC^-1[v])]].
 
 Conditioning contexts (CC) are defined thus:
 

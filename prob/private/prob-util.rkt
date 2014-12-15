@@ -13,7 +13,7 @@
 ;; mem and sample wrappers
 
 (define (mem f) (send (current-stochastic-ctx) mem f))
-(define (observe-at dist val) (send (current-stochastic-ctx) observe-at dist val))
+(define (observe-sample dist val) (send (current-stochastic-ctx) observe-sample dist val))
 (define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 (define (sample* dist) (send (current-stochastic-ctx) sample dist))
 
@@ -25,7 +25,7 @@
              (when (verbose?)
                (vprintf "OBSERVE w/ context = ~e\n" obs)
                (vprintf "  sample -> condition: ~e @ ~e\n" dist value))
-             (observe-at dist value)
+             (observe-sample dist value)
              value]
             [else (sample* dist)]))))
 
@@ -141,7 +141,7 @@
 ;; factor : Real -> Real
 ;; Weight the current trace by the given log-factor.
 (define (factor ldensity)
-  (observe-at (improper-dist ldensity) 0))
+  (observe-sample (improper-dist ldensity) 0))
 
 ;; ========================================
 

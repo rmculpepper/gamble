@@ -19,7 +19,7 @@
    (define x (normal 0 1))
    (define y (normal x 1))
    (define r2 (+ (* x x) (* y y)))
-   (observe-at (normal-dist r2 OBS-STDDEV) 1)
+   (observe-sample (normal-dist r2 OBS-STDDEV) 1)
    (vector x y #|(sqrt r2)|#)))
 
 (define sh
@@ -30,7 +30,7 @@
                                    #f)))
    (define r2 (+ (* x x) (* y y)))
    (label 'obs
-          (derivative (observe-at (normal-dist r2 OBS-STDDEV) 1)
+          (derivative (observe-sample (normal-dist r2 OBS-STDDEV) 1)
                       [(x y)
                        (lambda (x y) (values (* 2 x) (* 2 y)))]
                       #f))

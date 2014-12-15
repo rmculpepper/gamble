@@ -147,6 +147,62 @@ Equivalent to @racket[(= 1 (sample (bernoulli-dist p)))].
 
 @; ============================================================
 
+@section[#:tag "observe"]{Observations}
+
+@defform[(observe observable-expr value-expr)]{
+
+Like @racket[observe-sample], except that instead of a distribution, the
+observation conditions the result of evaluating
+@racket[observable-expr]. The @racket[observable-expr] must evaluate
+to a call to @racket[sample] (either explicitly or implicitly through
+one of the random procedures below) in an @tech{observable context};
+the call to @racket[sample] is replaced with a call to
+@racket[observe-sample] with a suitably adjusted value.
+
+A @deftech{observable context} (OC) is (currently) defined as
+follows:
+
+@racketgrammar[#:literals (+ cons reverse)
+               OC @#,(racketkeywordfont "[ ]")
+                  (+ expr ... OC)
+                  (cons OC expr)
+		  (cons expr OC)
+		  (reverse OC)]
+
+Support for other invertible built-in functions will be added in the
+future.
+
+Thus, for example, the following are valid:
+@interaction[#:eval the-eval
+(observe (+ 10 (normal 0 1)) 11.5)
+(observe (cons (bernoulli) (normal 0 1))
+	 (cons 0 .2))
+(observe (build-list 3 (lambda (i) (bernoulli)))
+         '(1 1 0))
+]
+but the following are not:
+@interaction[#:eval the-eval
+(observe (+ (normal 0 1) 10) 11.5)
+(observe (vector->list (build-vector 3 (lambda (i) (bernoulli))))
+	 '(1 1 0))
+]
+
+The call to sample can occur in another function, as long as it occurs
+in an observable context with respect to the function's body and the
+function call also occurs within an observable context. For example:
+@interaction[#:eval the-eval
+(define (f x) (+ (* 3 x) 12 (normal 0 1)))
+(observe (f 9) 40)
+]
+
+Note: because of floating-point imprecision, the result of
+@racket[observable-expr] may not be exactly equal to
+@racket[value-expr].
+}
+
+
+@; ============================================================
+
 @section[#:tag "lazy"]{Laziness via Memoization}
 
 @defform[(pdelay body ...+)]{
@@ -247,60 +303,5 @@ lazily populated as entries are requested. This form is equivalent to
 @racket[(mem (lambda (var-id ...) body ...))].
 }
 
-
-@; ============================================================
-
-@section[#:tag "observe"]{Observations}
-
-@defform[(observe observable-expr value-expr)]{
-
-Like @racket[observe-at], except that instead of a distribution, the
-observation conditions the result of evaluating
-@racket[observable-expr]. The @racket[observable-expr] must evaluate
-to a call to @racket[sample] (either explicitly or implicitly through
-one of the random procedures below) in an @tech{observable context};
-the call to @racket[sample] is replaced with a call to
-@racket[observe-at] with a suitably adjusted value.
-
-A @deftech{observable context} (OC) is (currently) defined as
-follows:
-
-@racketgrammar[#:literals (+ cons reverse)
-               OC @#,(racketkeywordfont "[ ]")
-                  (+ expr ... OC)
-                  (cons OC expr)
-		  (cons expr OC)
-		  (reverse OC)]
-
-Support for other invertible built-in functions will be added in the
-future.
-
-Thus, for example, the following are valid:
-@interaction[#:eval the-eval
-(observe (+ 10 (normal 0 1)) 11.5)
-(observe (cons (bernoulli) (normal 0 1))
-	 (cons 0 .2))
-(observe (build-list 3 (lambda (i) (bernoulli)))
-         '(1 1 0))
-]
-but the following are not:
-@interaction[#:eval the-eval
-(observe (+ (normal 0 1) 10) 11.5)
-(observe (vector->list (build-vector 3 (lambda (i) (bernoulli))))
-	 '(1 1 0))
-]
-
-The call to sample can occur in another function, as long as it occurs
-in an observable context with respect to the function's body and the
-function call also occurs within an observable context. For example:
-@interaction[#:eval the-eval
-(define (f x) (+ (* 3 x) 12 (normal 0 1)))
-(observe (f 9) 40)
-]
-
-Note: because of floating-point imprecision, the result of
-@racket[observable-expr] may not be exactly equal to
-@racket[value-expr].
-}
 
 @(close-eval the-eval)

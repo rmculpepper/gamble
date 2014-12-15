@@ -174,7 +174,7 @@ the @racket[mh-sampler]; otherwise, naive memoization will be used
 instead.
 
 Certain kinds of conditions can be enforced directly using
-@racket[observe-at], rather than sampling forward and rejecting if the
+@racket[observe-sample], rather than sampling forward and rejecting if the
 condition is unsatisfied. Indeed, for conditions on continuous random
 variables, direct enforcement is the only feasible option.
 
@@ -182,7 +182,7 @@ variables, direct enforcement is the only feasible option.
 (define (make-s-cd stddev_R)
   (mh-sampler
    (define R (normal 10 stddev_R))
-   (observe-at (normal-dist R 1) 9)
+   (observe-sample (normal-dist R 1) 9)
    R))
 (sampler->mean+variance (make-s-cd 3) 1000)
 (sampler->mean+variance (make-s-cd .5) 1000)

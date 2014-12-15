@@ -41,7 +41,7 @@
 (provide (contract-out
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
-          [observe-at (-> dist? any/c any)]
+          [observe-sample (-> dist? any/c any)]
           [fail (->* [] [any/c] any)]
           ;; ----
           [sampler->discrete-dist

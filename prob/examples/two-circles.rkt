@@ -17,7 +17,7 @@
    (define r2 (+ (* x x) (* y y)))
    (label 'obs
           (with-zone 'Point
-                     (derivative (observe-at (normal-dist (- r2 radiusSq) OBS-STDDEV) 0)
+                     (derivative (observe-sample (normal-dist (- r2 radiusSq) OBS-STDDEV) 0)
                                  [(x y)
                                   (lambda (x y) (values (* 2 x) (* 2 y)))]
                                  #f)))

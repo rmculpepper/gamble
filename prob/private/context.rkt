@@ -107,7 +107,7 @@
 
 #|
 Goal: implement (observe CC[(sample d)] v)
-             as CC[(observe-at CC^-1[v])]
+             as CC[(observe-sample d CC^-1[v])]
 
 Conditioning contexts (CC) are defined thus:
 CC ::=                   -- Observation rep:

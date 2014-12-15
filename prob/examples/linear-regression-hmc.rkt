@@ -28,8 +28,8 @@
      (define (data x y)
        (define Y-x (indexed-label 'Y x))
        (label Y-x
-              (derivative (observe-at (normal-dist (+ (* A x) B)
-                                                   E)
+              (derivative (observe-sample (normal-dist (+ (* A x) B)
+                                                       E)
                                       y)
                           [(A B) (λ (a b) (values x 1))]
                           [(E) (λ (e) 1)]

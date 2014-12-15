@@ -78,7 +78,7 @@
 (define s-obs
   (mh-sampler
    (define R (normal 10 1))
-   (observe-at (normal-dist R 1) 9)
+   (observe-sample (normal-dist R 1) 9)
    R))
 
 (printf "observation affects posterior\n")
