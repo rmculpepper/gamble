@@ -115,8 +115,9 @@
          [(#%provide . _) stx]
          [(begin-for-syntax . _) stx]
          [(module . _) stx]
-         ;; [(module* . _) stx]
-         ;; [(#%declare . _) stx]
+         [(module* . _)
+          (raise-syntax-error #f "submodule not allowed within `#lang prob' module" stx)]
+         [(#%declare . _) stx]
          ;; -- general top-level form
          [(define-values ids e)
           #`(instrument-definition #,stx)]

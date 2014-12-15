@@ -73,8 +73,8 @@
       [(#%provide . _) stx]
       [(begin-for-syntax . _) stx]
       [(module . _) stx]
-      ;; [(module* . _) stx]
-      ;; [(#%declare . _) stx]
+      [(module* . _) stx]
+      [(#%declare . _) stx]
       ;; -- general top-level form
       [(define-values ids e)
        (T (define-values ids (recur e)))]
@@ -182,8 +182,8 @@
     [(#%provide . _) (void)]
     [(begin-for-syntax . _) (void)]
     [(module . _) (void)]
-    ;; [(module* . _) #f]
-    ;; [(#%declare . _) #f]
+    [(module* . _) (void)]
+    [(#%declare . _) (void)]
     ;; -- general top-level form
     [(define-values ids e)
      (bind #'ids #'e)
@@ -269,8 +269,8 @@
       [(#%provide . _) #f]
       [(begin-for-syntax . _) #f]
       [(module . _) #f]
-      ;; [(module* . _) #f]
-      ;; [(#%declare . _) #f]
+      [(module* . _) #f]
+      [(#%declare . _) #f]
       ;; -- general top-level form
       [(define-values ids e)
        (modfix (recur #'e))]
@@ -421,8 +421,8 @@
       [(#%provide . _) (void)]
       [(begin-for-syntax . _) (void)]
       [(module . _) (void)]
-      ;; [(module* . _) #f]
-      ;; [(#%declare . _) #f]
+      [(module* . _) (void)]
+      [(#%declare . _) (void)]
       ;; -- general top-level form
       [(define-values ids e)
        (modfix (recur-nt #'e))]
