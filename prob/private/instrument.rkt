@@ -19,6 +19,7 @@
          describe-call-site
          instrumenting-module-begin
          instrumenting-top-interaction
+         instrument/local-expand
          (for-syntax analyze)
          instrument
          next-counter)
@@ -79,6 +80,30 @@
                          (analyze
                           (local-expand #'form 'top-level null))])
             #'(instrument e-form #:nt))]))]))
+
+(define-syntax (instrument/local-expand stx)
+  (syntax-case stx ()
+    [(instrument/local-expand form)
+     (case (syntax-local-context)
+       [(expression)
+        (with-syntax ([e-form (analyze (local-expand #'form 'expression null))])
+          #'(instrument e-form #:nt))]
+       [else ;; module, top-level
+        (let ([e-form (local-expand #'form 'module #f)])
+          (syntax-parse e-form
+            #:literal-sets (kernel-literals)
+            [(define-values ids rhs)
+             #'(define-values ids (instrument/local-expand rhs))]
+            [(define-syntaxes . _) e-form]
+            [(#%require . _) e-form]
+            [(#%provide . _) e-form]
+            [(#%declare . _) e-form]
+            [(module . _) e-form]
+            [(module* . _) e-form]
+            [(begin form ...)
+             #'(begin (instrument/local-expand form) ...)]
+            [expr
+             #'(#%expression (instrument/local-expand expr))]))])]))
 
 (begin-for-syntax
 

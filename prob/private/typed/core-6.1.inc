@@ -24,7 +24,6 @@
   (syntax-parse stx
     [(mb forms ...)
      (let ([pmb-form (syntax/loc stx (#%plain-module-begin forms ...))])
-       (parameterize ((optimize? #f)) ;; conflicts with instrumentation
        (tc-module/full stx pmb-form
         (λ (new-mod before-code after-code)
           ;; (eprintf "new-mod =\n~s\n\n" (syntax->datum new-mod))
@@ -41,8 +40,6 @@
                                 (do-time "Fixed contract ids"))]
             ;; potentially optimize the code based on the type information
             [(optimized-body ...) (maybe-optimize #'transformed-body)] ;; has own call to do-time
-            ;; analyze for instrumentation
-            [(_pmb analyzed-body ...) (analyze #'(#%plain-module-begin optimized-body ...))]
             ;; add in syntax property on useless expression to draw check-syntax arrows
             [check-syntax-help (syntax-property
                                 (syntax-property
@@ -53,9 +50,9 @@
            ;; use the regular %#module-begin from `racket/base' for top-level printing
            (arm #`(#%module-begin
                    #,before-code
-                   (instrument analyzed-body #:nt) ...
+                   (instrument/local-expand optimized-body) ...
                    #,after-code
-                   check-syntax-help)))))))]))
+                   check-syntax-help))))))]))
 
 (define did-I-suggest-:print-type-already? #f)
 (define :print-type-message " ... [Use (:print-type <expr>) to see more.]")
@@ -74,10 +71,8 @@
      (do-standard-inits)
      (tc-toplevel/full stx #'form
        (λ (body2 type)
-         (parameterize ((optimize? #f))
          (with-syntax*
-          ([(optimized-body . _) (maybe-optimize #`(#,body2))]
-           [analyzed-body (analyze #'optimized-body)])
+          ([(optimized-body . _) (maybe-optimize #`(#,body2))])
           (syntax-parse body2
             [_ (cond [(match type
                         ;; 'no-type means the form is not an expression and
@@ -125,5 +120,5 @@
                         [x (int-err "bad type result: ~a" x)])
                       => (lambda (ty-str)
                            #`(begin (display '#,ty-str)
-                                    #,(arm #'(instrument analyzed-body #:nt))))]
-                     [else (arm #'(instrument analyzed-body #:nt))])])))))]))
+                                    #,(arm #'(instrument/local-expand optimized-body #:nt))))]
+                     [else (arm #'(instrument/local-expand optimized-body #:nt))])]))))]))
