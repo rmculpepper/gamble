@@ -23,7 +23,9 @@
 (define-syntax (observe stx)
   (syntax-case stx ()
     [(observe e v)
-     #'(observe* (lambda () e) v)]))
+     ;; Note: instrumenter uses 'observed-expr property to report error
+     (with-syntax ([thunk (syntax-property #'(lambda () e) 'observe-form stx)])
+       #'(observe* thunk v))]))
 
 (define-syntax (check-observe stx)
   (syntax-case stx ()

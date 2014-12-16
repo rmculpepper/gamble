@@ -11,6 +11,7 @@
                      "analysis/base.rkt"
                      "analysis/known-functions.rkt"
                      "analysis/calls-erp.rkt"
+                     "analysis/obs-exp.rkt"
                      "analysis/cond-ctx.rkt")
          racket/match
          "context.rkt")
@@ -29,6 +30,7 @@
     (analyze-FUN-EXP tagged-stx)
     (analyze-CALLS-ERP tagged-stx)
     (analyze-COND-CTX tagged-stx #f)
+    (analyze-OBS-EXP tagged-stx)
     tagged-stx))
 
 (begin-for-syntax
@@ -304,6 +306,7 @@
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
   (define (log-app-type msg f)
     (log-instr-info (format "~a for ~s" msg f)))
+  (check-app stx)
   (syntax-parse iastx
     #:literals (#%plain-app + cons reverse)
 
@@ -402,6 +405,27 @@
            (with-continuation-mark ADDR-mark (cons c ADDR)
              (with-continuation-mark OBS-mark OBS
                (#%plain-app tmp ...)))))]))
+
+(begin-for-syntax
+  ;; check-app : Syntax -> Void
+  ;; Check constraints on applications; currently, just that observe* is
+  ;; called with observable function (OBS-LAM).
+  (define (check-app stx)
+    (syntax-parse stx
+      #:literals (#%plain-app observe*)
+      [(#%plain-app observe* thunk expected)
+       (unless (OBS-LAM #'thunk)
+         (define observe-form (syntax-property #'thunk 'observe-form))
+         (syntax-case observe-form ()
+           [(_ e v)
+            (raise-syntax-error #f NOT-OBSERVABLE-MESSAGE observe-form #'e)]
+           [_
+            (raise-syntax-error 'observe NOT-OBSERVABLE-MESSAGE stx)]))]
+      [_ (void)]))
+
+  (define NOT-OBSERVABLE-MESSAGE
+    (string-append "expression is not observable"
+                   ";\n it does not sample in an observable context")))
 
 ;; wrap-nt : wrapped around NT args to CC function call
 (define-syntax (wrap-nt stx)
