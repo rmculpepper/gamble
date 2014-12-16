@@ -1,3 +1,6 @@
+;; Adapted from pkgs/typed-racket-lib/typed-racket/core.rkt
+;; Based on 6.1, but seems to be close enough for 6.1.1 too.
+
 (require typed-racket/utils/utils
          (for-syntax racket/base)
          (for-template racket/base)

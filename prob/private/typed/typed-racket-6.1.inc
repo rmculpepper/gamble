@@ -1,3 +1,6 @@
+;; Adapted from pkgs/typed-racket-lib/typed-racket/typed-racket.rkt
+;; Based on 6.1, but seems to be close enough for 6.1.1 too.
+
 (require
  (for-syntax racket/base racket/lazy-require
              typed-racket/standard-inits)
