@@ -8,15 +8,28 @@
                      racket/syntax
                      syntax/parse
                      syntax/id-table
-                     "instrument-analysis.rkt")
+                     "analysis/base.rkt"
+                     "analysis/known-functions.rkt"
+                     "analysis/calls-erp.rkt"
+                     "analysis/cond-ctx.rkt")
          racket/match
          "context.rkt")
 (provide describe-all-call-sites
          describe-call-site
          instrumenting-module-begin
          instrumenting-top-interaction
+         (for-syntax analyze)
          instrument
          next-counter)
+
+(begin-for-syntax
+  ;; analyze : Syntax -> Syntax
+  (define (analyze stx)
+    (define tagged-stx (analyze-TAG stx))
+    (analyze-FUN-EXP tagged-stx)
+    (analyze-CALLS-ERP tagged-stx)
+    (analyze-COND-CTX tagged-stx #f)
+    tagged-stx))
 
 (begin-for-syntax
   ;; display with: PLTSTDERR="info@instr" racket ....
@@ -66,10 +79,6 @@
             #'(instrument e-form #:nt))]))]))
 
 (begin-for-syntax
- ;; Need privileged inspector to rewrite expanded code.
- (define stx-insp
-   (variable-reference->module-declaration-inspector
-    (#%variable-reference)))
 
  ;; instr-fun-table : (free-id-table Id => Id)
  (define instr-fun-table
@@ -134,7 +143,7 @@
                            (instrument e #:nt) ... (instrument e* #:cc)))))]
                 [else
                  (log-instr-info "NON-CC lambda: ~s: ~a"
-                                 (get-tag stx) (syntax-summary stx))
+                                 (TAG stx) (syntax-summary stx))
                  #'(#%plain-lambda formals
                      (with ([OBS #f] [ADDR (ADDR-mark)])
                        (instrument e #:nt) ... (instrument e* #:nt)))])]
@@ -149,7 +158,7 @@
                      ...)]
                 [else
                  (log-instr-info "NON-CC case-lambda: ~s: ~a"
-                                 (get-tag stx) (syntax-summary stx))
+                                 (TAG stx) (syntax-summary stx))
                  #'(case-lambda
                      [formals
                       (with ([OBS #f] [ADDR (ADDR-mark)])
