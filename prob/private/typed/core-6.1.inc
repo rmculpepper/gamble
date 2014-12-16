@@ -13,7 +13,7 @@
          typed-racket/standard-inits
          typed-racket/tc-setup)
 
-(require (for-template "../instrument.rkt"))
+(require (for-template prob/private/instrument))
 
 (provide mb-core ti-core wt-core)
 
@@ -21,7 +21,7 @@
   (syntax-parse stx
     [(mb forms ...)
      (let ([pmb-form (syntax/loc stx (#%plain-module-begin forms ...))])
-       (parameterize ((optimize? #f)) ;; conflicts with instrumentor
+       (parameterize ((optimize? #f)) ;; conflicts with instrumentation
        (tc-module/full stx pmb-form
         (λ (new-mod before-code after-code)
           ;; (eprintf "new-mod =\n~s\n\n" (syntax->datum new-mod))

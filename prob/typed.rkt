@@ -5,51 +5,9 @@
 ;; A language for probabilistic programming
 
 #lang racket/base
-(require (for-syntax racket/base
-                     "private/instrument-analysis.rkt")
-         (rename-in typed/racket/base
-                    [#%module-begin typed-module-begin]
-                    [#%top-interaction typed-top-interaction])
-         "private/instrument.rkt")
-(provide (all-from-out typed/racket/base)
-         (rename-out [typed-instrumenting-module-begin #%module-begin]
-                     [typed-instrumenting-top-interaction #%top-interaction]))
-
-(define-syntax (typed-instrumenting-module-begin stx)
-  (syntax-case stx ()
-    [(ti-module-begin form ...)
-     (with-syntax ([e-module-body
-                    (analyze
-                     (local-expand #'(#%plain-module-begin form ...) 'module-begin null))])
-       (with-syntax ([(pmb instr-form ...)
-                      (local-expand #'(instrument e-module-body #:un) 'module-begin null)])
-         #'(typed-module-begin instr-form ...)))]))
-
-(define-syntax (typed-instrumenting-top-interaction stx)
-  (syntax-case stx ()
-    [(ti-top-interaction . e)
-     (let ([estx (local-expand #'(typed-top-interaction . e) 'top-level #f)])
-       (syntax-case estx (begin)
-         [(begin form ...)
-          #'(begin (instrumenting-top-interaction . form) ...)]
-         [form
-          (with-syntax ([e-form (analyze (local-expand #'form 'top-level null))])
-            #'(instrument e-form #:un))]))]))
-
-;; ============================================================
-
-(module instrumentation-type-env typed-racket/base-env/extra-env-lang
-  (require "private/context.rkt"
-           "private/instrument.rkt"
-           (for-syntax typed-racket/rep/type-rep))
-  (type-environment
-   [the-context (-Param Univ Univ)]
-   [obs-mark (make-Continuation-Mark-Keyof Univ)]
-   [observing? (-Param Univ Univ)]
-   [next-counter (-poly (a b) (-> a b -Integer))]))
-
-(require 'instrumentation-type-env)
-(provide (all-from-out 'instrumentation-type-env))
+(require "private/typed/base.rkt"
+         prob/private/instrument)
+(provide (all-from-out "private/typed/base.rkt"))
 
 ;; ============================================================
 
@@ -80,7 +38,8 @@
   (require "private/interfaces.rkt")
   (require (rename-in "private/prob-util.rkt"
                       [sampler->discrete-dist sampler->discrete-dist*]))
-  (require "private/stat.rkt")
+  (require (rename-in "private/stat.rkt"
+                      [sampler->mean sampler->mean*]))
   (require "private/prob-mh.rkt")
   (require "private/prob-syntax.rkt")
   (require "private/context.rkt")
@@ -101,6 +60,9 @@
   (define (sampler->discrete-dist s n [f values])
     (sampler->discrete-dist* s n f))
 
+  (define (sampler->mean s n [f values])
+    (sampler->mean* s n f))
+
   ;; ------------------------------------------------------------
   ;; Type environment
 
@@ -116,8 +78,8 @@
    [mem (-poly (a b) (-> (-> a b) (-> a b)))]
    ;; FIXME: [sample (-poly (a) (-> (-Dist a) a))]
    [sample (-> -DistTop Univ)]
-   ;; FIXME: [observe-at (-poly (a) (-> (-Dist a) -a -a))]
-   [observe-at (-> -DistTop Univ Univ)]
+   ;; FIXME: [observe-sample (-poly (a) (-> (-Dist a) -a -a))]
+   [observe-sample (-> -DistTop Univ Univ)]
    [fail (-> (Un))]
    [sampler->discrete-dist ;; NOTE: different version; FIXME: optional function like sort :(
     (-poly (a) (-> (-Sampler a) -Integer -DistTop))]
@@ -193,6 +155,8 @@
    [factor (-> -Real -Void)]
 
    ;; ----------------------------------------
+   [sampler->mean
+    (-> (-Sampler Univ) -Integer Univ)]
    [sampler->mean+variance ;; FIXME
     (-> (-Sampler -Real) -Integer (-values (list -Real -Real)))]
    ;; struct statistics
