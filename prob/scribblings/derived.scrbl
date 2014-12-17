@@ -177,7 +177,7 @@ follows:
 Support for other invertible built-in functions will be added in the
 future.
 
-Thus, for example, the following are valid:
+Thus, for example, the following are valid and successful:
 @interaction[#:eval the-eval
 (observe (+ 10 (normal 0 1)) 11.5)
 (observe (cons (bernoulli) (normal 0 1))
@@ -185,11 +185,25 @@ Thus, for example, the following are valid:
 (observe (build-list 3 (lambda (i) (bernoulli)))
          '(1 1 0))
 ]
-but the following are not:
+The following are statically rejected because they can be shown to not
+call a sampling function in an observable context (even though the
+values produced might be the same!):
 @interaction[#:eval the-eval
+(observe 3 3)
 (observe (+ (normal 0 1) 10) 11.5)
-(observe (vector->list (build-vector 3 (lambda (i) (bernoulli))))
-	 '(1 1 0))
+]
+The following raises a dynamic error because the observation fails
+(but it is not statically rejected because of limitations in the
+analysis):
+@interaction[#:eval the-eval
+(observe ((values (lambda _ 1)) 2) 3)
+]
+The following observation fails because the observed value is not in
+the support of the distribution. Unlike the others, however, it would
+not raise an error if it occurred in a sampler, because the
+observation was successfully propagated to a sampling function.
+@interaction[#:eval the-eval
+(observe (uniform 0 1) 2)
 ]
 
 The call to sample can occur in another function, as long as it occurs
