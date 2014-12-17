@@ -1,9 +1,42 @@
 Tentative plans for the near future:
 
-- enumerative gibbs not safe for structural choices
-  - infer/check structural choices
+- dist constructors via alternative parameterizations
+  eg, beta-dist via mean + peakedness (effective sample size?)
 
-- adaptive MH ?
+- add selectors (like proposals), to control picking keys to perturb
+  - Q: single-site selectors different from multi-site selectors, or
+    treat same except checking singleton set at end?
+  - select:round-robin stateful selector can do round-robin (eg proper Gibbs)
+    eg, store last-key, search for least key st. key > last-key
+    Problem: may consistently skip choices? (Maybe not, due to causal ordring??)
+
+- use cache-points, lambda lifting, etc to short-circuit re-evaluation
+  - compiled version of slicing
+  - use eqv?, not equal? to avoid complexity explosion
+  - may want to use hash-consing to recover equal?-level
+  - use laziness-like profiling or feature profiling to achieve optimum balance?
+    (tracing & slicing might work better, though ...)
+  - (cache e) => ((xmem (lambda (fv ...) e)) fv ...)
+    where {fv ...} = free vars of e
+    and (xmem f) returns value of application from last trace
+      if  1: arguments are all same (eqv? ??!!)
+             -- functions will be a big problem :(
+      and 2: no address extending address of xmem call is in delta-db
+
+- use macro-stepper debugging technique to debug re-evaluation
+  - build big-step semantics ...
+  - db isomorphic to big-step derivation
+  - need convenient way to step back through...
+
+- can Neil T's arrow lifting also capture reverse-mode AD?
+
+- update tests, eg add basic motor-sensor tests for all transitions
+
+- implement blocked enumerative Gibbs
+
+- implement multinomial dist
+
+- implement XRPs (??? need predictive priors? posteriors? -- just pdfs, right?)
 
 - unit-like components
   - infer signature macros???
@@ -14,7 +47,6 @@ Tentative plans for the near future:
 
 - multivariate dists
   - need tests
-  - need drift kernels
 
 - MH
   - little lang of transitions
