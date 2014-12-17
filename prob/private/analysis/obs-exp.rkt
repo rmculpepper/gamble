@@ -12,7 +12,7 @@
          OBS-LAM
          analyze-OBS-EXP)
 
-;; OBS-EXP(e) is true if a call to sample may occur in an observable
+;; OBS-EXP(e) is true if a call to sample MAY occur in an observable
 ;; context wrt the evaluation of e.
 
 ;; OBS-LAM((lambda args e)) is true iff OBS-EXP(e) is true.
@@ -32,12 +32,6 @@
 
 ;; OBS-FUN : Syntax -> Boolean
 (define (OBS-FUN f)
-  ;; (eprintf "checking function ~s\n" f)
-  (define result (OBS-FUN* f))
-  ;; (eprintf "result = ~s\n" result)
-  result)
-
-(define (OBS-FUN* f)
   (cond [(lambda-form? f)
          (OBS-LAM f)]
         [(syntax-case f (#%top)
@@ -53,7 +47,8 @@
         [else #t]))
 
 ;; analyze-OBS-EXP : Syntax -> Boolean
-;; Returns whether sample may be called in an observable context wrt e.
+;; Updates OBS-EXP-table with analysis of given term.
+;; Returns whether sample MAY be called in an observable context wrt e.
 (define (analyze-OBS-EXP stx0)
   (define (recur e) (analyze-OBS-EXP e))
   (define (recur* es) (strict-ormap recur (stx->list es)))

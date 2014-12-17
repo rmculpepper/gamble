@@ -46,7 +46,7 @@
   (set! mod-counter (add1 mod-counter)))
 
 (define (hash-set/mod! h k v)
-  (define old-val (hash-ref h k 'none)) ;; FIXME: use gensym?
+  (define old-val (hash-ref h k NONE)) ;; FIXME: use gensym?
   (unless (equal? v old-val)
     (inc-mod-counter!)
     (hash-set! h k v)))
@@ -60,6 +60,8 @@
     (if (= mod-counter old-mod-counter)
         result
         (loop (add1 i)))))
+
+(define NONE (gensym 'none))
 
 ;; ============================================================
 
@@ -76,12 +78,7 @@
              (hash-ref X-table (if (syntax? k) (TAG k) k) default))
            (define (X-set! k0 v)
              (define k (if (syntax? k0) (TAG k0) k0))
-             (define old (hash-ref X-table k NONE))
-             (unless (equal? v old)
-               (inc-mod-counter!)
-               (hash-set! X-table k v)))))]))
-
-(define NONE (gensym 'none))
+             (hash-set/mod! X-table k v))))]))
 
 ;; ============================================================
 
