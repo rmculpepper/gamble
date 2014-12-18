@@ -39,10 +39,11 @@
          csv-data:inexact-real)
 
 ;; A Header is one of
-;; - #f                       -- no header
-;; - #t                       -- discard header
-;; - (Vectorof String/Regexp) -- match expected header
-(define header/c (or/c boolean? (vectorof (or/c string? regexp?))))
+;; - #f                       -- no header; all rows are data
+;; - 'keep                    -- keep first row, but don't apply data filter
+;; - 'drop                    -- drop first row (and don't apply data filter)
+;; - (Vectorof String/Regexp) -- drop first row after matching expected header
+(define header/c (or/c #f 'keep 'drop (vectorof (or/c string? regexp?))))
 
 ;; A Data Filter is one of
 ;; - (String -> Any)             -- apply to each column
@@ -65,22 +66,25 @@
                               #:data data-filter)]
         [else
          (when header
-           (read/check-header 'csv-file->generator in header close?))
+           (read/check-header 'csv-file->generator header in close?))
          (lambda ()
            (or (read-csv-line in data-filter)
                (begin (when close? (close-input-port in)) #f)))]))
 
-(define (read/check-header who in expected close-on-err?)
-  (define header (read-csv-line in))
-  (unless header
+;; read/check-header : .... -> (listof vector)
+;; PRE: header is not #f
+;; Returns list of length 0 or 1, depending on whether header is kept.
+(define (read/check-header who header in close-on-err?)
+  (define row (read-csv-line in))
+  (unless row
     (when close-on-err? (close-input-port in))
     (error who "header missing due to end of file\n  file: ~e" in))
-  (when (vector? expected)
-    (unless (= (vector-length header) (vector-length expected))
+  (when (vector? header)
+    (unless (= (vector-length row) (vector-length header))
       (when close-on-err? (close-input-port in))
       (error who "header has wrong number of columns\n  header: ~e\n  expected: ~e"
-             header expected))
-    (for ([hi (in-vector header)] [expi (in-vector expected)] [i (in-naturals)])
+             row header))
+    (for ([hi (in-vector row)] [expi (in-vector header)] [i (in-naturals)])
       (define (bad)
         (when close-on-err? (close-input-port in))
         (error who
@@ -90,7 +94,11 @@
       (cond [(string? expi)
              (unless (equal? hi expi) (bad))]
             [(regexp? expi)
-             (unless (regexp-match? hi expi) (bad))]))))
+             (unless (regexp-match? hi expi) (bad))])))
+  (cond [(eq? header 'keep)
+         (list row)]
+        [else
+         null]))
 
 ;; read-csv-file : (U InputPort PathString) -> (Listof Vector)
 (define (read-csv-file in
@@ -101,8 +109,8 @@
            (lambda (p) (read-csv-file p #:header header #:data data-filter))
            #:mode 'text)]
         [header
-         (cons (read/check-header 'read-csv-file in header #f)
-               (read-csv-file in #:header #f #:data data-filter))]
+         (append (read/check-header 'read-csv-file header in #f)
+                 (read-csv-file in #:header #f #:data data-filter))]
         [else
          (let loop ([acc null])
            (let ([next (read-csv-line in data-filter)])
@@ -148,7 +156,7 @@
   (define n (string->number s))
   (if (exact-integer? n)
       n
-      (error 'csv-data:strict-integer "not an integer\n  string: ~e" s)))
+      (error 'csv-data:integer "not an integer\n  string: ~e" s)))
 
 (define (csv-data:try-real s)
   (define n (string->number s))
@@ -211,3 +219,54 @@
              #:when (vector? vi))
     (define vici (vector-ref vi ci))
     (if t (min t vici) vici)))
+
+(module+ test
+  (require rackunit)
+
+  (define CSV-WHEADER-1 "a,b,c\n1,2,3\n4,5,6\n")
+  (define CSV-NOHEADER-1 "1,2,3\n4,5,6\n")
+
+  ;; Default filter
+  (test-equal? "no header, default filter"
+               (read-csv-file #:header #f
+                              (open-input-string CSV-WHEADER-1))
+               '(#("a" "b" "c") #(1 2 3) #(4 5 6)))
+  (test-equal? "keep header, default filter"
+               (read-csv-file #:header 'keep
+                              (open-input-string CSV-WHEADER-1))
+               '(#("a" "b" "c") #(1 2 3) #(4 5 6)))
+  (test-equal? "drop header, default filter"
+               (read-csv-file #:header 'drop
+                              (open-input-string CSV-WHEADER-1))
+               '(#(1 2 3) #(4 5 6)))
+  (test-equal? "match header, default filter"
+               (read-csv-file #:header '#("a" "b" "c")
+                              (open-input-string CSV-WHEADER-1))
+               '(#(1 2 3) #(4 5 6)))
+  (test-case "match header no match"
+    (check-exn #rx"header does not match"
+               (lambda () (read-csv-file #:header '#("x" "y" "z")
+                                    (open-input-string CSV-WHEADER-1)))))
+
+  ;; Integer filter
+  (test-case "no header, integer filter (bad)"
+    (check-exn #rx"not an integer"
+               (lambda () (read-csv-file #:header #f
+                                    #:data csv-data:integer
+                                    (open-input-string CSV-WHEADER-1)))))
+  (test-equal? "keep header, integer filter"
+               (read-csv-file #:header 'keep
+                              #:data csv-data:integer
+                              (open-input-string CSV-WHEADER-1))
+               '(#("a" "b" "c") #(1 2 3) #(4 5 6)))
+  (test-equal? "drop header, integer filter"
+               (read-csv-file #:header 'drop
+                              #:data csv-data:integer
+                              (open-input-string CSV-WHEADER-1))
+               '(#(1 2 3) #(4 5 6)))
+  (test-equal? "match header, integer filter"
+               (read-csv-file #:header '#("a" "b" "c")
+                              #:data csv-data:integer
+                              (open-input-string CSV-WHEADER-1))
+               '(#(1 2 3) #(4 5 6)))
+  )
