@@ -34,8 +34,6 @@ Tentative plans for the near future:
 
 - implement blocked enumerative Gibbs
 
-- implement multinomial dist
-
 - implement XRPs (??? need predictive priors? posteriors? -- just pdfs, right?)
 
 - unit-like components

@@ -46,7 +46,7 @@
   #:drift (lambda (value scale-factor) (cons (- 1 value) 0.0)))
 
 (define-fl-dist-type binomial-dist
-  ([n exact-positive-integer?]
+  ([n exact-nonnegative-integer?]
    [p (real-in 0 1)])
   #:nat #:enum (add1 n)
   #:support (integer-range 0 n)
@@ -331,7 +331,17 @@
                                 [else (values best best-w)]))])
             (reverse best)))
 
-;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
+(define-dist-type multinomial-dist
+  ([n exact-nonnegative-integer?]
+   [weights (vectorof (>=/c 0))])
+  #:pdf multinomial-dist
+  #:sample multinomial-sample
+  #:guard (lambda (n weights _name)
+            (values n (validate/normalize-weights 'multinomial-dist weights)))
+  #:drift (lambda (value scale-factor)
+            (multinomial-drift n weights value scale-factor)))
+
+  ;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
 ;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
 (define-dist-type dirichlet-dist
   ([alpha (vectorof (>/c 0))])
@@ -423,6 +433,67 @@
            (loop (add1 i) (- p (vector-ref probs i)))])))
 (define (categorical-sample probs)
   (categorical-inv-cdf probs (random) #f #f))
+
+
+;; ------------------------------------------------------------
+;; Multinomial weighted dist functions
+;; -- Assume weights are nonnegative, normalized.
+
+;; sampling and pdf as repeated binomial
+
+(define (multinomial-pdf n0 probs v log?)
+  (cond [(and (vector? v) (= (vector-length v) (vector-length probs)))
+         (define n (exact->inexact n0))
+         (define ll
+           (for/sum ([vi (in-vector v)]
+                     [prob (in-vector (multinomial->binomial-weights probs))])
+             (m:flbinomial-pdf n prob (exact->inexact vi) #t)))
+         (if log? ll (exp ll))]
+        [else
+         (if log? -inf.0 0.0)]))
+
+(define (multinomial-sample n probs)
+  (define v (make-vector (vector-length probs)))
+  (for ([i (in-range (vector-length probs))]
+        [prob (in-vector (multinomial->binomial-weights probs))])
+    (define k
+      (inexact->exact
+       (flvector-ref (m:flbinomial-sample (exact->inexact n) prob 1) 0)))
+    (vector-set! v i k))
+  v)
+
+;; Do some number of moves based on scale-factor. Symmetric.
+(define (multinomial-drift n _probs old scale-factor)
+  (cond [(or (zero? n) (<= (vector-length old) 1))
+         (cons old 0)]
+        [else
+         (define v (vector-copy old))
+         (define (pick-nonempty-index)
+           (define i (random (vector-length v)))
+           (if (zero? (vector-ref v i))
+               (pick-nonempty-index)
+               i))
+         (define (pick-other-index i)
+           (define j (random (sub1 (vector-length v))))
+           (if (>= j i) (add1 j) j))
+         (for ([_a (in-range (inexact->exact (ceiling (* n scale-factor))))])
+           (define i (pick-nonempty-index))
+           (define j (pick-other-index i))
+           (vector-set! v i (sub1 (vector-ref v i)))
+           (vector-set! v j (add1 (vector-ref v j))))
+         (cons v 0)]))
+
+
+;; Given (vector pi ...) where pi = prob(X = i), produce
+;; (vector qi ...) where qi = prob(X = i | X >= i).
+(define (multinomial->binomial-weights probs)
+  (define v (make-vector (vector-length probs)))
+  (for/fold ([prest 1.0])
+            ([probi (in-vector probs)] [i (in-naturals)])
+    (vector-set! v i (/ probi prest))
+    (* prest (- 1.0 probi)))
+  (vector-set! v (sub1 (vector-length probs)) 1.0)
+  v)
 
 
 ;; ------------------------------------------------------------

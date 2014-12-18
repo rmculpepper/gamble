@@ -355,6 +355,17 @@ The support consists of vectors of the same length as @racket[alpha]
 whose elements are nonnegative reals summing to @racket[1].
 }
 
+@defstruct*[multinomial-dist
+            ([n exact-nonnegative-integer?]
+             [weights (vectorof (>=/c 0))])]{
+
+Represents a @wiki["Multinomial_distribution"]{multinomial
+distribution}. The support consists of vectors of the same length as
+@racket[weights] representing counts of @racket[n] iterated samples
+from the corresponding categorical distribution with @racket[weights]
+for weights.
+}
+
 @defstruct*[permutation-dist
             ([n exact-nonnegative-integer?])]{
 
