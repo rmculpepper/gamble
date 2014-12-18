@@ -10,9 +10,11 @@
          racket/dict
          racket/vector
          racket/list
+         racket/fixnum
          (prefix-in m: math/special-functions)
          "../private/dist.rkt"
          "../private/dist-define.rkt")
+(provide permutation?)
 
 (define-dist-type permutation-dist
   ([n exact-nonnegative-integer?])
@@ -41,13 +43,35 @@
         [else
          (if log? -inf.0 0)]))
 
-;; FIXME: need to check that it's actually an n-permutation
-;; FIXME: maybe want permutation ADT
+(define fxsize (- (system-type 'word) 2))
+
+;; FIXME: maybe want permutation ADT?
 ;; FIXME: alternatively, could have fast-pdf vs slow-pdf functions,
 ;;   where fast-pdf only called on values returned from dist (but maybe different params)
 (define (permutation? perm n)
-  (and (vector? perm)
-       (= (vector-length perm) n)))
+  (cond [(and (vector? perm) (= (vector-length perm) n))
+         (cond [(<= n fxsize)
+                (and (for/fold ([seen 0]) ([e (in-vector perm)])
+                       (and seen
+                            (exact-nonnegative-integer? e)
+                            (<= 0 e (sub1 n))
+                            (not (bitwise-bit-set? seen e))
+                            (bitwise-ior seen (arithmetic-shift 1 e))))
+                     #t)]
+               [else
+                (define seen (make-fxvector (quotient (+ n -1 fxsize) fxsize) 0))
+                (for/and ([e (in-vector perm)])
+                  (and (exact-nonnegative-integer? e)
+                       (<= 0 e (sub1 n))
+                       (let ()
+                         (define i (quotient e fxsize))
+                         (define j (remainder e fxsize))
+                         (and (not (bitwise-bit-set? (fxvector-ref seen i) j))
+                              (void (fxvector-set! seen i
+                                      (bitwise-ior (fxvector-ref seen i)
+                                                   (arithmetic-shift 1 j))))
+                              #t))))])]
+        [else #f]))
 
 (define (permutation-sample n)
   (define perm (build-vector n values))
