@@ -94,17 +94,18 @@
   (class perturb-mh-transition-base%
     (inherit perturb-a-key)
     (inherit-field temperature last-delta-db)
-    (init-field [zone #f])
+    (init-field zone selector)
     (super-new)
 
     (define/override (info i)
       (iprintf i "== Transition (single-site #:zone ~e)\n" zone)
-      (super info i))
+      (super info i)
+      (send selector info i))
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
       (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (define key-to-change (pick-a-key last-nchoices last-db zone))
+      (define key-to-change (send selector select-one last-trace zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (if key-to-change
           (match (hash-ref last-db key-to-change)

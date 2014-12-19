@@ -26,7 +26,9 @@
          proposal?
          proposal:resample
          proposal:drift
-         default-proposal)
+         default-proposal
+         select:one
+         select:round-robin)
 
 (define (mh-transition? x) (is-a? x mh-transition<%>))
 
@@ -46,10 +48,12 @@
 
 (define (single-site [proposal (default-proposal)]
                      #:zone [zone #f]
+                     #:selector [selector (select:one)]
                      #:record-obs? [record-obs? #t])
   (new single-site-mh-transition%
        [proposal (->proposal proposal)]
        [zone zone]
+       [selector selector]
        [record-obs? record-obs?]))
 
 (define (multi-site [proposal (default-proposal)]
@@ -73,6 +77,11 @@
   the-rerun-mh-transition)
 
 (define the-rerun-mh-transition (new rerun-mh-transition%))
+
+(define (select:one)
+  (new select:one-random%))
+(define (select:round-robin)
+  (new select:one-round-robin%))
 
 ;; ============================================================
 

@@ -230,7 +230,9 @@
           [sequence
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
-           (->* [] [proposal/c #:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* []
+                [proposal/c #:zone any/c #:selector any/c #:record-obs? any/c]
+                mh-transition?)]
           [multi-site
            (->* [] [proposal/c #:zone any/c #:record-obs? any/c] mh-transition?)]
           [hmc
@@ -247,7 +249,9 @@
           [mixture
            (->* [(vectorof mh-transition?)] [(vectorof (>=/c 0))] mh-transition?)]
           [rerun
-           (-> mh-transition?)]))
+           (-> mh-transition?)])
+         select:one
+         select:round-robin)
 
 (require "private/serializable-lambda.rkt")
 (provide lambda/s
