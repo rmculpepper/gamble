@@ -1,5 +1,7 @@
 Tentative plans for the near future:
 
+- check: importance sampler uses probs, not log-probs?
+
 - add observe-sample factor arg (and entry rep)
 - add *, etc
 - add ways of declaring new invertible, differentiable, non-random primitives
