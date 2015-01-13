@@ -6,6 +6,7 @@
 (require (for-syntax racket/base
                      syntax/parse)
          racket/contract
+         racket/match
          racket/pretty
          racket/dict
          racket/vector
@@ -28,7 +29,9 @@
           [discrete-dist-values
            (-> discrete-dist? vector?)]
           [discrete-dist-weights
-           (-> discrete-dist? vector?)]))
+           (-> discrete-dist? vector?)]
+          [discrete-dist->inexact
+           (-> discrete-dist? discrete-dist?)]))
 
 ;; ============================================================
 ;; Discrete distribution
@@ -56,6 +59,13 @@
 (define (discrete-dist? x) (*discrete-dist? x))
 (define (discrete-dist-values d) (*discrete-dist-vs d))
 (define (discrete-dist-weights d) (*discrete-dist-ws d))
+
+(define (discrete-dist->inexact d)
+  (match d
+    [(*discrete-dist vs ws wsum)
+     (define ws* (vector-map exact->inexact ws))
+     (define wsum* (for/sum ([w (in-vector ws*)]) w))
+     (*discrete-dist vs ws* wsum*)]))
 
 (define-syntax (discrete-dist stx)
   (define-splicing-syntax-class maybe-normalize

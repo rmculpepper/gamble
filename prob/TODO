@@ -6,7 +6,6 @@ Tentative plans for the near future:
   - is it always a factor?
 
 - add enumerate #:exact? arg, do log-sum-exp tricks ??
-- add discrete-dist->inexact
 
 - dist constructors via alternative parameterizations
   eg, beta-dist via mean + peakedness (effective sample size?)
