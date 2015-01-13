@@ -1,5 +1,13 @@
 Tentative plans for the near future:
 
+- add observe-sample factor arg (and entry rep)
+- add *, etc
+- add ways of declaring new invertible, differentiable, non-random primitives
+  - is it always a factor?
+
+- add enumerate #:exact? arg, do log-sum-exp tricks ??
+- add discrete-dist->inexact
+
 - dist constructors via alternative parameterizations
   eg, beta-dist via mean + peakedness (effective sample size?)
 
