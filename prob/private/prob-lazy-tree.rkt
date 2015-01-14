@@ -204,27 +204,29 @@
 
 ;; ----
 
-;; split->subtrees : split -> (Listof (List Prob (-> (EnumTree A))))
-(define (split->subtrees s)
+;; split->subtrees : split Boolean -> (Listof (List Prob (-> (EnumTree A))))
+(define (split->subtrees s logspace?)
   (defmatch (split _label dist k start) s)
   (define enum (dist-enum dist))
+  (define result
   (cond [(eq? enum #f)
-         (error 'enum-ERP "cannot enumerate distribution\n  distribution: ~e" dist)]
+         (error 'enumerate "cannot enumerate distribution\n  distribution: ~e" dist)]
         [(eq? enum 'lazy)
-         (split->subtrees*/lazy dist k (or start 0))]
+         (split->subtrees*/lazy dist k (or start 0) logspace?)]
         [(integer? enum)
          (for/list ([i (in-range enum)])
-           (cons (dist-pdf dist i) (lambda () (k i))))]
+           (cons (dist-pdf dist i logspace?) (lambda () (k i))))]
         [(vector? enum)
          (for/list ([v (in-vector enum)])
-           (cons (dist-pdf dist v) (lambda () (k v))))]
-        [else (error 'enum-ERP "internal error: bad enum value: ~e" enum)]))
+           (cons (dist-pdf dist v logspace?) (lambda () (k v))))]
+        [else (error 'enumerate "internal error: bad enum value: ~e" enum)]))
+  result)
 
 ;; split->subtrees*/lazy : Dist (-> Value (EnumTree A))
 ;;                      -> (Listof (Cons Prob (-> (EnumTree A))))
-(define (split->subtrees*/lazy dist k start)
+(define (split->subtrees*/lazy dist k start logspace?)
   (define-values (vals probs tail-prob next)
-    (lazy-dist->vals+probs dist start))
+    (lazy-dist->vals+probs dist start logspace?))
   (cons (cons tail-prob (lambda () (split dist k next)))
         (for/list ([val (in-list vals)]
                    [prob (in-list probs)])
@@ -232,13 +234,14 @@
 
 (define TAKE 10)
 
-;; lazy-dist->vals+probs : Dist Nat -> (values (Listof A) (Listof Prob) Prob Nat)
-(define (lazy-dist->vals+probs dist start)
-  (define scale (- 1 (dist-cdf dist (sub1 start))))
+;; lazy-dist->vals+probs : Dist Nat Boolean -> (values (Listof A) (Listof Prob) Prob Nat)
+(define (lazy-dist->vals+probs dist start logspace?)
+  (define the-scale (dist-cdf dist (sub1 start) logspace? #t))
+  (define (scale a) (if logspace? (- a the-scale) (/ a the-scale)))
   (define-values (vals probs)
     (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
-      (values i (/ (dist-pdf dist i) scale))))
+      (values i (scale (dist-pdf dist i logspace?)))))
   (values vals
           probs
-          (/ (- 1 (dist-cdf dist (+ start TAKE -1))) scale)
+          (scale (dist-cdf dist (+ start TAKE -1) logspace? #t))
           (+ start TAKE)))

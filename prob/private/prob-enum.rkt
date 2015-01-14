@@ -35,111 +35,180 @@
 ;; ============================================================
 
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
-;; Note: pred and project must be pure; applied outside of prompt
-(define (enumerate* thunk limit normalize?)
+(define (enumerate* thunk limit normalize? exact?)
   (vprintf "Enumerating\n")
   (define tree (reify-tree thunk))
-  (define-values (table prob-unexplored prob-accepted)
-    (explore tree limit))
-  (vprintf "unexplored rate = ~s\n" prob-unexplored)
-  (vprintf "accept rate = ~s\n" (/ prob-accepted (- 1 prob-unexplored)))
+  (define-values (table prob-explored prob-accepted)
+    (explore tree limit (not exact?)))
+  (vprintf "explored rate = ~s\n" prob-explored)
+  (vprintf "accept rate = ~s\n" (/ prob-accepted prob-explored))
   (when (zero? (hash-count table))
     (error 'enumerate "condition accepted no paths"))
   (when (and normalize? (zero? prob-accepted))
     (error 'enumerate "probability of accepted paths underflowed to 0"))
-  (tabulate table prob-accepted #:normalize? normalize?))
+  (tabulate table prob-accepted (not exact?) #:normalize? normalize?))
 
-(define (tabulate table prob-accepted #:normalize? [normalize? #t])
+(define (tabulate table prob-accepted logspace? #:normalize? [normalize? #t])
+  (define (p->real p)
+    (if normalize?
+        (if logspace?
+            (exp (- p prob-accepted))
+            (/ p prob-accepted))
+        (if logspace?
+            (exp p)
+            p)))
+  (define prob-accepted* (if logspace? (exp prob-accepted) prob-accepted))
   (define entries
     (for/list ([(val prob) (in-hash table)])
-      (cons val (if normalize? (/ prob prob-accepted) prob))))
+      (cons val (p->real prob))))
   (make-discrete-dist entries #:normalize? normalize?))
 
 ;; ----------------------------------------
+
+;; https://hips.seas.harvard.edu/blog/2013/01/09/computing-log-sum-exp/
+(provide logspace+
+         logspace-)
+
+;; logspace+ : Real Real -> Real
+;; Given (log A) and (log B), return (log (+ A B)).
+(define logspace+*
+  (case-lambda
+    [() -inf.0]
+    [(a) a]
+    [(a b)
+     (define m (max a b))
+     (if (= m -inf.0)
+         -inf.0
+         (+ m (log (+ (exp (- a m)) (exp (- b m))))))]
+    [as
+     (define m (apply max as))
+     (if (= m -inf.0)
+         -inf.0
+         (+ m (log (for/sum ([a (in-list as)]) (exp (- a m))))))]))
+
+(define (logspace+ a b)
+  (define r (logspace+* a b))
+  (when (eqv? r +nan.0)
+    (error 'logspace+ "~s + ~s => ~s" a b r))
+  r)
+
+(define (logspace-* a b)
+  (define m (max a b))
+  (+ m (log (- (exp (- a m)) (exp (- b m))))))
+
+(define (logspace- a b)
+  (define r (logspace-* a b))
+  (when (eqv? r +nan.0)
+    (error 'logspace- "~s - ~s => ~s" a b r))
+  r)
 
 ;; explore : (EnumTree A) ...
 ;;        -> hash[A => Prob] Prob Prob
 ;; Limit means: explore until potential accepted dist is < limit unaccounted for,
 ;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
-(define (explore tree limit)
-  (define prob-unexplored 1) ;; prob of all unexplored paths
-  (define prob-accepted 0) ;; prob of all accepted paths
-  (define table (hash)) ;; hash[A => Prob], probs are not normalized
+(define (explore tree limit logspace?)
+  ;; The representation of probabilities in this code is determined by
+  ;; the logspace? argument.  If logspace? is true, then values
+  ;; represent log of prob; if false, values represent prob directly.
+  (define (->p a) ;; inexact to avoid error on exact 0
+    (when (negative? a) (error '->p "negative: ~e" a))
+    (if logspace? (log (exact->inexact a)) a))
+  (define (p->real a)
+    (if logspace? (exp a) a))
+  (define (p+ a b)
+    (if logspace? (logspace+ a b) (+ a b)))
+  (define (p* a b)
+    (if logspace? (+ a b) (* a b)))
+  (define pzero (->p 0))
 
-  ;; h: heap[(cons Prob (-> (EnumTree A)))]
   (define (entry->=? x y)
     (>= (car x) (car y)))
-  (define h (heap entry->=?)) ;; "min-heap", but want max prob, so >=
 
-  ;; add : A Prob table prob-unexplored prob-accepted
-  ;;    -> (values table prob-unexplored prob-accepted)
-  (define (add a p table prob-unexplored prob-accepted)
+  ;; prob-explored -- prob of all explored paths
+  ;; prob-accepted -- prob of all accepted paths
+  ;; table         -- hash[A => Prob], probs are not normalized
+  ;; h             -- heap[(cons Prob (-> (EnumTree A)))]
+
+  ;; add : A Prob table prob-explored prob-accepted
+  ;;    -> (values table prob-explored prob-accepted)
+  (define (add a p table prob-explored prob-accepted)
     ;; (eprintf "- consider add A=~s\n" a)
-    (cond [(positive? p)
-           (let* ([prob-unexplored (- prob-unexplored p)]
-                  [prob-accepted (+ p prob-accepted)]
-                  [table (hash-set table a (+ p (hash-ref table a 0)))])
+    (cond [(> p pzero) ;; ie, possible
+           (let* ([prob-explored (p+ prob-explored p)]
+                  [prob-accepted (p+ p prob-accepted)]
+                  [table (hash-set table a (p+ p (hash-ref table a pzero)))])
              ;; (eprintf "- add B=~s\n" b)
-             (values table prob-unexplored prob-accepted))]
+             (values table prob-explored prob-accepted))]
           [else
-           (vprintf "WARNING: bad prob ~s for ~s\n" p a)
-           (values table prob-unexplored prob-accepted)]))
+           (vprintf "WARNING: bad prob ~s for ~s\n" (p->real p) a)
+           (values table prob-explored prob-accepted)]))
 
   ;; traverse-tree : (EnumTree A) Prob ...
-  ;;              -> (values h table prob-unexplored prob-accepted)
-  (define (traverse-tree et prob-of-tree h table prob-unexplored prob-accepted)
+  ;;              -> (values h table prob-explored prob-accepted)
+  (define (traverse-tree et prob-of-tree h table prob-explored prob-accepted)
     (match et
       [(only a)
-       (let-values ([(table prob-unexplored prob-accepted)
-                     (add a prob-of-tree table prob-unexplored prob-accepted)])
-         (values h table prob-unexplored prob-accepted))]
+       (let-values ([(table prob-explored prob-accepted)
+                     (add a prob-of-tree table prob-explored prob-accepted)])
+         (values h table prob-explored prob-accepted))]
       [(? split? et)
-       (define subs (split->subtrees et))
-       (for/fold ([h h] [table table] [prob-unexplored prob-unexplored] [prob-accepted prob-accepted])
+       (define subs (split->subtrees et logspace?))
+       (for/fold ([h h] [table table] [prob-explored prob-explored] [prob-accepted prob-accepted])
            ([sub (in-list subs)])
          (match sub
            [(cons p lt)
-            (let ([p* (* prob-of-tree p)])
-              (cond [(positive? p*)
-                     (values (heap-insert h (cons p* lt)) table prob-unexplored prob-accepted)]
+            (let ([p* (p* prob-of-tree p)])
+              (cond [(> p* pzero) ;; ie, possible
+                     (values (heap-insert h (cons p* lt)) table prob-explored prob-accepted)]
                     [else
-                     (vprintf "WARNING: probability of a path may have underflowed\n")
-                     (values h table prob-unexplored prob-accepted)]))]))]
+                     (vprintf "WARNING: probability of a path may have underflowed: ~s\n" p*)
+                     (values h table prob-explored prob-accepted)]))]))]
       [(weight dist val k)
        (when (and limit (not (or (finite-dist? dist) (integer-dist? dist))))
          ;; limit applies to mass; it can't handle densities
          (error 'enumerate "cannot use both #:limit and observe with continuous distribution"))
-       (traverse-tree (k) (* prob-of-tree (dist-pdf dist val)) h table prob-unexplored prob-accepted)]
+       (traverse-tree (k)
+                      (p* prob-of-tree (dist-pdf dist val logspace?))
+                      h table prob-explored prob-accepted)]
       [(failed reason)
-       (let ([prob-unexplored (- prob-unexplored prob-of-tree)])
-         (values h table prob-unexplored prob-accepted))]))
+       (let ([prob-explored (p+ prob-explored prob-of-tree)])
+         (values h table prob-explored prob-accepted))]))
 
   ;; heap-loop : ... -> ...
-  (define (heap-loop h table prob-unexplored prob-accepted)
-    (cond [(and limit (< prob-unexplored (* limit prob-accepted)))
+  (define (heap-loop h table prob-explored prob-accepted)
+    (cond [;;     unexplored < limit * accepted
+           ;; ie, (1 - explored) < limit * accepted
+           ;; ie, 1 < limit * accepted + explored
+           ;; ie, limit * accepted + explored > 1
+           (and limit (> (p+ prob-explored (p* (->p limit) prob-accepted)) (->p 1)))
            ;; Done!
            (when (positive? (heap-count h))
              (vprintf "stopping with ~s unexplored path(s)\n" (heap-count h)))
-           (done h table prob-unexplored prob-accepted)]
+           (done h table prob-explored prob-accepted)]
           [(zero? (heap-count h))
            ;; explored all paths
-           (done h table prob-unexplored prob-accepted)]
+           (done h table prob-explored prob-accepted)]
           [else
            (let* ([sub (heap-find-min/max h)]
                   [h (heap-delete-min/max h)])
-             (let-values ([(h table prob-unexplored prob-accepted)
+             (let-values ([(h table prob-explored prob-accepted)
                            (traverse-tree ((cdr sub)) (car sub)
-                                          h table prob-unexplored prob-accepted)])
-               (heap-loop h table prob-unexplored prob-accepted)))]))
+                                          h table prob-explored prob-accepted)])
+               (heap-loop h table prob-explored prob-accepted)))]))
 
-  (define (done h table prob-unexplored prob-accepted)
-    (values table prob-unexplored prob-accepted))
+  (define (done h table prob-explored prob-accepted)
+    (values table (p->real prob-explored) (p->real prob-accepted)))
 
-  ;; FIXME: prob-unexplored can drop below zero because of floating-point
-  ;; inaccuracy. Any remedy?
-  (let-values ([(h table prob-unexplored prob-accepted)
-                (traverse-tree tree 1 h table prob-unexplored prob-accepted)])
-    (heap-loop h table prob-unexplored prob-accepted)))
+  (let ()
+    (define prob-explored pzero)
+    (define prob-accepted pzero)
+    (define table (hash))
+    (define h (heap entry->=?)) ;; "min-heap", but want max prob, so >=
+    ;; FIXME: prob-explored can rise above 1 because of floating-point
+    ;; inaccuracy. (Maybe?) Any remedy?
+    (let-values ([(h table prob-explored prob-accepted)
+                  (traverse-tree tree (->p 1) h table prob-explored prob-accepted)])
+      (heap-loop h table prob-explored prob-accepted))))
 
 ;; ============================================================
 
@@ -182,7 +251,7 @@
                 (define forced-subs (list (cons 1 (k (dist-sample dist)))))
                 (get-samples/paths forced-subs prob)]
                [else
-                (define forced-subs (force-subtrees (split->subtrees tree)))
+                (define forced-subs (force-subtrees (split->subtrees tree #f)))
                 (get-samples/paths forced-subs prob)])]
         [(weight dist val k)
          (get-samples/paths (list (cons (dist-pdf dist val) (k))) prob)]
