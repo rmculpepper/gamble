@@ -109,13 +109,15 @@
         (values vs ws)))
   (define vs* (vector->immutable-vector vs1))
   (define-values (ws* wsum*)
-    (if normalize?
-        (let ([wsum (vector-sum ws1)])
+    (let ([wsum (vector-sum ws1)])
+      (unless (and (rational? wsum) (positive? wsum)) ;; rational = finite real
+        (error 'discrete-dist "improper weights\n  weights: ~e" ws))
+      (if normalize?
           (values (vector->immutable-vector
                    (vector-map (lambda (w) (/ w wsum)) ws1))
-                  1))
-        (values (vector->immutable-vector ws1)
-                (vector-sum ws1))))
+                  1)
+          (values (vector->immutable-vector ws1)
+                  wsum))))
   (*discrete-dist vs* ws* wsum*))
 
 (define (normalize-discrete-dist d)
