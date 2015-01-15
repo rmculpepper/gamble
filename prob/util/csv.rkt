@@ -52,7 +52,7 @@
 ;; - numeric
 ;; - double-precision (convert other strings to NaN)
 ;; - numeric or leave as string
-(define data-filter/c (or/c procedure? (vectorof procedure?)))
+(define data-filter/c (or/c #f procedure? (vectorof procedure?)))
 
 ;; csv-file->generator : (U InputPort PathString) -> (-> (U Vector #f))
 (define (csv-file->generator in
