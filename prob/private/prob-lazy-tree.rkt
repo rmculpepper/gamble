@@ -106,7 +106,7 @@
 (struct only (answer))
 (struct split (label dist k start))
 (struct failed (reason))
-(struct weight (dist val k))
+(struct weight (dist val scale k))
 
 ;; ----------------------------------------
 
@@ -152,7 +152,7 @@
                    #f))))
        ctag))
 
-    (define/public (observe-sample dist val)
+    (define/public (observe-sample dist val scale)
       (define act (current-activation))
       (define ctag (activation-prompt act))
       (define memo-key (activation-memo-table-key act))
@@ -163,7 +163,7 @@
          (abort-current-continuation
           ctag
           (lambda ()
-            (weight dist val
+            (weight dist val scale
                     (lambda ()
                       (call-with-enum-context act memo-table
                         (lambda () (k val))))))))

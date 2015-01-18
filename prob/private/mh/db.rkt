@@ -15,10 +15,11 @@
 
 ;; A DB is (Hashof Address Entry)
 
-;; An Entry is (entry (listof Zone) Dist Any Real Boolean)
-;; where the value is appropriate for the ERP denoted by the dist,
-;; and pinned? indicates whether the value originated from a special condition
-;; (and thus cannot be perturbed).
+;; An Entry is (entry (listof Zone) Dist Any Real Real/#f)
+;; where the value is appropriate for the ERP denoted by the dist, and
+;; pinned? indicates whether the value originated from a special
+;; condition (and thus cannot be perturbed)---in which case, the scale
+;; is stored in the pinned? field.
 (struct entry (zones dist value ll pinned?) #:prefab)
 
 ;; entry-value-map : (Any -> Any) Entry Boolean -> Entry
@@ -28,9 +29,10 @@
   (entry zones
          dist
          new-value
-         (if update-ll (dist-pdf dist new-value #t) ll)
+         (if update-ll
+             (+ (dist-pdf dist new-value #t) (or pinned? 0))
+             ll)
          pinned?))
-
 
 ;; entry-in-zone? : Entry ZonePattern -> Boolean
 (define (entry-in-zone? e zp)
@@ -270,11 +272,11 @@
              (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
              (sample/new dist context #f)]))
 
-    (define/public (observe-sample dist val)
+    (define/public (observe-sample dist val scale)
       (define context (ADDR-mark))
-      (observe-sample* dist val context))
+      (observe-sample* dist val (log scale) context))
 
-    (define/private (observe-sample* dist val context)
+    (define/private (observe-sample* dist val lscale context)
       (cond [(hash-ref current-db context #f) ;; COLLISION
              => (lambda (e)
                   (vprintf "OBS COLLISION ~e / ~e: ~s\n" (entry-dist e) dist context)
@@ -287,18 +289,18 @@
                   ;; FIXME: better diagnostic messages. What are the
                   ;; relevant cases? Do we care if an obs value changed?
                   (vprintf "OBS UPDATE ....\n")
-                  (define ll (dist-pdf dist val #t))
+                  (define ll (+ lscale (dist-pdf dist val #t)))
                   (cond [(ll-possible? ll)
-                         (db-add! context (entry (current-zones) dist val ll #t))
+                         (db-add! context (entry (current-zones) dist val ll lscale))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
                          (void)]
                         [else (fail 'observation)]))]
             [else
              (vprintf "OBS~a ~e: ~s = ~e\n" (if record-obs? "" " NEW") dist context val)
-             (define ll (dist-pdf dist val #t))
+             (define ll (+ lscale (dist-pdf dist val #t)))
              (cond [(ll-possible? ll)
                     (cond [record-obs?
-                           (db-add! context (entry (current-zones) dist val ll #t))]
+                           (db-add! context (entry (current-zones) dist val ll lscale))]
                           [else
                            (set! ll-obs (+ ll-obs ll))])]
                    [else (fail 'observation)])]))
@@ -341,10 +343,10 @@
       (record-current-derivatives)
       (super sample dist))
 
-    (define/override (observe-sample dist val)
+    (define/override (observe-sample dist val scale)
       (record-current-label)
       (record-current-derivatives)
-      (super observe-sample dist val))
+      (super observe-sample dist val scale))
     
     (define/private (record-current-label)
       (define lbl (current-label))

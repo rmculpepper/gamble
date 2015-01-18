@@ -163,12 +163,12 @@
                     [else
                      (vprintf "WARNING: probability of a path may have underflowed: ~s\n" p*)
                      (values h table prob-explored prob-accepted)]))]))]
-      [(weight dist val k)
+      [(weight dist val scale k)
        (when (and limit (not (or (finite-dist? dist) (integer-dist? dist))))
          ;; limit applies to mass; it can't handle densities
          (error 'enumerate "cannot use both #:limit and observe with continuous distribution"))
        (traverse-tree (k)
-                      (p* prob-of-tree (dist-pdf dist val logspace?))
+                      (p* prob-of-tree (p* (->p scale) (dist-pdf dist val logspace?)))
                       h table prob-explored prob-accepted)]
       [(failed reason)
        (let ([prob-explored (p+ prob-explored prob-of-tree)])
@@ -253,8 +253,8 @@
                [else
                 (define forced-subs (force-subtrees (split->subtrees tree #f)))
                 (get-samples/paths forced-subs prob)])]
-        [(weight dist val k)
-         (get-samples/paths (list (cons (dist-pdf dist val) (k))) prob)]
+        [(weight dist val scale k)
+         (get-samples/paths (list (cons (* scale (dist-pdf dist val)) (k))) prob)]
         [(failed _)
          null]))
 

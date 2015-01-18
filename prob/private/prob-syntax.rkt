@@ -87,7 +87,7 @@
   (class plain-stochastic-ctx/run%
     (inherit fail)
     (super-new)
-    (define/override (observe-sample dist val)
+    (define/override (observe-sample dist val scale)
       (cond [(or (finite-dist? dist) (integer-dist? dist))
              ;; ie, actually have pmf
              (unless (< (random) (dist-pdf dist val))
@@ -142,10 +142,10 @@
     (field [weight 1])
     (inherit fail)
     (super-new)
-    (define/override (observe-sample dist val)
+    (define/override (observe-sample dist val scale)
       (define l (dist-pdf dist val))
       (if (positive? l)
-          (set! weight (* weight l))
+          (set! weight (* weight l scale))
           (fail 'observation)))
     ))
 

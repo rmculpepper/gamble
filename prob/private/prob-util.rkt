@@ -13,7 +13,8 @@
 ;; mem and sample wrappers
 
 (define (mem f) (send (current-stochastic-ctx) mem f))
-(define (observe-sample dist val) (send (current-stochastic-ctx) observe-sample dist val))
+(define (observe-sample dist val [scale 1])
+  (send (current-stochastic-ctx) observe-sample dist val scale))
 (define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 (define (sample* dist) (send (current-stochastic-ctx) sample dist))
 
@@ -25,7 +26,7 @@
              (when (verbose?)
                (vprintf "OBSERVE w/ context = ~e\n" obs)
                (vprintf "  sample -> condition: ~e @ ~e\n" dist value))
-             (observe-sample dist value)
+             (observe-sample dist value 1)
              value]
             [else (sample* dist)]))))
 
