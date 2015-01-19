@@ -371,21 +371,21 @@
          (array+ a b)]
         [else +nan.0]))
 
-(define (generic/ a b)
+(define (generic* a b)
   (cond [(number? a)
-         (/ a b)]
+         (* a b)]
         [(pair? a)
-         (cons (generic/ (car a) b) (generic/ (cdr a) b))]
+         (cons (generic* (car a) b) (generic* (cdr a) b))]
         [(null? a)
          '()]
         [(vector? a)
-         (build-vector (vector-length a) (lambda (i) (generic/ (vector-ref a i) b)))]
+         (build-vector (vector-length a) (lambda (i) (generic* (vector-ref a i) b)))]
         [(array? a)
-         (array/ a (array b))]
+         (array* a (array b))]
         [else +nan.0]))
 
 (define (wrap-weighted-sampler s f burn thin)
-  (cond [(sampler? s)
+  (cond [(weighted-sampler? s)
          (for ([_ (in-range burn)]) (send s sample/weight))
          (lambda ()
            (for ([_ (in-range thin)]) (send s sample/weight))
@@ -406,5 +406,5 @@
     (for/fold ([sum initv] [weight initw])
               ([i (in-range (sub1 n))])
       (defmatch (cons v w) (s*))
-      (values (generic+ sum v) (+ weight w))))
-  (generic/ sum weight))
+      (values (generic+ sum (generic* v w)) (+ weight w))))
+  (generic* sum (/ weight)))
