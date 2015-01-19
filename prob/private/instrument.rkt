@@ -327,21 +327,21 @@
   (define observation-propagators (make-free-id-table))
 
   ;; An ObservationPropagator
-  ;; - (list '#:final-arg Identifier Identifier)
-  ;; - (list '#:all-args (listof Identifier))
+  ;; - (list '#:final-arg Identifier Identifier Identifier)
+  ;; - (list '#:all-args Identifier (listof Identifier))
 
-  (define (register-final-arg-observation-propagator! id inverter scaler)
-    (free-id-table-set! observation-propagators id (list '#:final-arg inverter scaler)))
+  (define (register-final-arg-propagator! id pred inverter scaler)
+    (free-id-table-set! observation-propagators id (list '#:final-arg pred inverter scaler)))
 
   (define-syntax-class final-arg-prop-fun
-    #:attributes (inverter scaler)
+    #:attributes (pred inverter scaler)
     (pattern f:id
-             #:with (#:final-arg inverter scaler)
+             #:with (#:final-arg pred inverter scaler)
                     (free-id-table-ref observation-propagators #'f #f)))
   (define-syntax-class all-args-prop-fun
-    #:attributes ([inverter 1])
+    #:attributes (pred [inverter 1])
     (pattern f:id
-             #:with (#:all-args (inverter ...))
+             #:with (#:all-args pred (inverter ...))
                     (free-id-table-ref observation-propagators #'f #f)))
 
   ;; non-random-first-order-funs : free-id-table[ #t ]
@@ -379,25 +379,31 @@
      (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
        #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
            (#%plain-app op tmp ...
-                        (with ([OBS
-                                (if OBS
-                                    (let* ([x (op.inverter (observation-value OBS) tmp ...)]
-                                           [scale (op.scaler x tmp ...)])
-                                      (observation x (* (observation-scale OBS) scale)))
-                                    #f)])
-                              (instrument eFinal #:cc)))))]
+             (with ([OBS
+                     (if OBS
+                         (let ([obs-v (observation-value OBS)])
+                           (if (op.pred obs-v tmp ...)
+                               (let* ([x (op.inverter obs-v tmp ...)]
+                                      [scale (op.scaler x tmp ...)])
+                                 (observation x (* (observation-scale OBS) scale)))
+                               (error 'observe "bad type: ~e" obs-v)))
+                         #f)])
+                   (instrument eFinal #:cc)))))]
     [(_ #:cc (#%plain-app op:all-args-prop-fun e ...))
      (log-app-type "OBS PROP app (all args)" #'op)
      #'(#%plain-app op
-                    (with ([OBS
-                            (if OBS
-                                (let ([x (op.inverter (observation-value OBS))])
-                                  (observation x (observation-scale OBS)))
-                                #f)])
-                          (instrument e #:cc))
-                    ...)]
+         (with ([OBS
+                 (if OBS
+                     (let ([obs-v (observation-value OBS)])
+                       (if (op.pred obs-v) ;; FIXME: redundant for 2nd arg on
+                           (let ([x (op.inverter (observation-value OBS))])
+                             (observation x (observation-scale OBS)))
+                           (error 'observe "bad type: ~e" obs-v)))
+                     #f)])
+               (instrument e #:cc))
+         ...)]
     [(_ #:cc (#%plain-app (~literal list) e ...))
-     (log-app-type "OBS PROP app (list desugar)" #'list)
+     (log-app-type "OBS PROP app (desugar list)" #'list)
      (with-syntax ([unfolded-expr
                     (let loop ([es (syntax->list #'(e ...))])
                       (cond [(pair? es)
@@ -526,20 +532,22 @@
   (syntax-parse stx
     [(declare-observation-propagator
       (op:ID arg:ID ... (~literal _))
-      inverter:expr scaler:expr)
+      ok?:expr inverter:expr scaler:expr)
      #'(begin
+         (define (pred y arg ...) (ok? y))
          (define (invert y arg ...) (inverter y))
          (define (scale x arg ...) (scaler x))
          (begin-for-syntax
-           (register-final-arg-observation-propagator! #'op #'invert #'scale)))]
+           (register-final-arg-propagator! #'op #'pred #'invert #'scale)))]
     [(declare-observation-propagator
       (op:ID arg:ID ... rest-arg:ID (~literal ...) (~literal _))
-      inverter:expr scaler:expr)
+      ok?:expr inverter:expr scaler:expr)
      #'(begin
+         (define-syntax-rule (pred y arg ... rest-arg (... ...)) (ok? y))
          (define-syntax-rule (invert y arg ... rest-arg (... ...)) (inverter y))
          (define-syntax-rule (scale x arg ... rest-arg (... ...)) (scaler x))
          (begin-for-syntax
-           (register-final-arg-observation-propagator! #'op #'invert #'scale)))]))
+           (register-final-arg-propagator! #'op #'pred #'invert #'scale)))]))
 
 #|
 observe y(σ) = v
@@ -569,7 +577,10 @@ eg, if f(x) = exp(x)
 ;; FIXME: return log(1/scale) instead?
 ;; Exact arithmetic mostly good for discrete cases, so doesn't matter ???
 
+;; FIXME: real? vs number? (ie, complex?) --- scale requires real ???
+
 (declare-observation-propagator (+ a ... _)
+  real?
   (lambda (y) (- y a ...))
   (lambda (x) 1))
 
@@ -580,22 +591,26 @@ eg, if f(x) = exp(x)
 ;;   then x = (- y) = (- a ... y)
 ;; So can handle both cases with same pattern!
 (declare-observation-propagator (- a ... _)
+  real?
   (lambda (y) (- a ... y))
   (lambda (x) 1))
 
 (declare-observation-propagator (* a ... _)
+  real?
   (lambda (y) (/ y a ...))
   (lambda (x) (/ (* a ...))))
 
 (declare-observation-propagator (exp _)
+  real?
   (lambda (y) (log y))
   (lambda (x) (/ (exp x)))) ;; FIXME: pass y = (exp x) too?
 
 (declare-observation-propagator (log _)
+  real?
   (lambda (y) (exp y))
   (lambda (x) x))
 ;; dx/dy = (dy/dx)^-1 = (1/x)^-1 = x
 
 (begin-for-syntax
   (free-id-table-set! observation-propagators #'cons
-                      (list '#:all-args (list #'car #'cdr))))
+                      (list '#:all-args #'pair? (list #'car #'cdr))))
