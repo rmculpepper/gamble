@@ -11,6 +11,7 @@
          racket/dict
          racket/vector
          "../private/dist.rkt"
+         "../private/interfaces.rkt"
          "../private/dist-define.rkt"
          "../private/dist-impl.rkt"
          "../private/sort.rkt")
@@ -186,8 +187,6 @@
 
 
 ;; ============================================================
-
-;; ------------------------------------------------------------
 ;; Discrete dist support functions
 ;; -- Weights are not normalized
 
@@ -207,3 +206,32 @@
            (vector-ref vs i)]
           [else
            (loop (add1 i) (- p (vector-ref ws i)))])))
+
+
+;; ============================================================
+;; Convenience functions
+
+;; discrete : Nat -> Nat
+(define (discrete dict)
+  (sample (make-discrete-dist dict)))
+
+;; discrete* : (Listof/Vectorof A) (Listof/Vectorof Prob) -> A
+(define (discrete* vals0 [weights0 #f])
+  (let ([vals (if (list? vals0) (list->vector vals0) vals0)])
+    (cond [(eq? weights0 #f)
+           (sample (make-discrete-dist* vals))]
+          [else
+           (let ([weights (if (list? weights0) (list->vector weights0) weights0)])
+             (unless (= (vector-length vals) (vector-length weights))
+               (error 'discrete*
+                      "values and weights have unequal lengths\n  values: ~e\n  weights: ~e"
+                      vals0 weights0))
+             (sample (make-discrete-dist* vals weights)))])))
+
+(provide (contract-out
+          [discrete
+           (-> dict? any)]
+          [discrete*
+           (->* [(or/c list? vector?)]
+                [(or/c (listof (>=/c 0)) (vectorof (>=/c 0)))]
+                any)]))

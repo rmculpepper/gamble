@@ -4,9 +4,13 @@
 
 #lang racket/base
 (require racket/class
-         (only-in "context.rkt" OBS-mark)
-         (only-in "dist.rkt" dist-sample dist-pdf))
-(provide verbose?
+         "context.rkt"
+         (only-in "dist.rkt" dist-sample dist-pdf dist-has-mass?))
+(provide sample
+         mem
+         observe-sample
+         fail
+         verbose?
          with-verbose>
          vprintf
          iprintf
@@ -143,6 +147,32 @@
 
 (define current-stochastic-ctx
   (make-parameter (new plain-stochastic-ctx%)))
+
+;; ============================================================
+;; Primitive operations
+
+(define (mem f) (send (current-stochastic-ctx) mem f))
+(define (observe-sample dist val [scale 1])
+  ;; scale only applies to continuous dists; discard here if dist has mass function
+  ;; impl methods trust scale arg to be appropriate
+  (send (current-stochastic-ctx) observe-sample dist val
+        (if (dist-has-mass? dist) 1 scale)))
+(define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
+(define (sample* dist) (send (current-stochastic-ctx) sample dist))
+
+(define (sample dist)
+  (call-with-immediate-continuation-mark OBS-mark
+    (lambda (obs)
+      (cond [obs
+             (define value (observation-value obs))
+             (define scale (observation-scale obs))
+             (when (verbose?)
+               (vprintf "OBSERVE w/ context = ~e\n" obs)
+               (vprintf "  sample -> condition: ~e @ ~e w/ scale = ~s\n" dist value
+                        (if (dist-has-mass? dist) 1 scale)))
+             (observe-sample dist value scale)
+             value]
+            [else (sample* dist)]))))
 
 ;; ============================================================
 ;; Zones

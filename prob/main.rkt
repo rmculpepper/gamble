@@ -35,15 +35,15 @@
 (require "private/interfaces.rkt")
 (provide verbose?
          weighted-sampler?
-         sampler?)
-
-(require "private/prob-util.rkt")
-(provide (contract-out
+         sampler?
+         (contract-out
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
           [observe-sample (-> dist? any/c any)]
-          [fail (->* [] [any/c] any)]
-          ;; ----
+          [fail (->* [] [any/c] any)]))
+
+(require "private/prob-util.rkt")
+(provide (contract-out
           [sampler->discrete-dist
            (->* [weighted-sampler? exact-nonnegative-integer?]
                 [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
@@ -71,60 +71,7 @@
            (->* [vector? vector?] 
                 [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
                 vector?)])
-         probability?
-         ;; The following stochastic procedures have codomain contract of any
-         ;; so that their internal call to sample is in tail position (no
-         ;; result check frame). (Except for flip, FIXME.)
-         (contract-out
-          [flip
-           (->* [] [probability?] any)]
-          [bernoulli
-           (->* [] [probability?] any)]
-          [categorical
-           (-> (vectorof (>=/c 0)) 
-               any)]
-          [discrete
-           (-> dict? any)]
-          [discrete*
-           (->* [(or/c list? vector?)]
-                [(or/c (listof (>=/c 0)) (vectorof (>=/c 0)))]
-                any)]
-          [discrete-uniform
-           (-> exact-positive-integer? any)]
-          [geometric
-           (->* [] [probability?] any)]
-          [poisson
-           (-> (>/c 0) any)]
-          [binomial
-           (-> exact-nonnegative-integer? probability? any)]
-          [beta
-           (-> (>/c 0) (>/c 0) any)]
-          [cauchy
-           (->* [] [real? (>/c 0)] any)]
-          [exponential
-           (->* [] [(>/c 0)] any)]
-          [gamma
-           (->* [] [(>/c 0) (>/c 0)] any)]
-          [inverse-gamma
-           (->* [] [(>/c 0) (>/c 0)] any)]
-          [logistic
-           (->* [] [real? (>/c 0)] any)]
-          [normal
-           (->* [] [real? (>/c 0)] any)]
-          [pareto
-           (-> (>/c 0) (>/c 0) any)]
-          [uniform
-           (->* [] [real? real?] any)]
-          [dirichlet
-           (-> (vectorof (>/c 0)) any)]
-          [multi-normal
-           (-> col-matrix? square-matrix? any)]
-          [wishart
-           (-> real? square-matrix? any)]
-          [inverse-wishart
-           (-> real? square-matrix? any)]
-          [factor
-           (-> real? any)]))
+         probability?)
 
 (require "private/stat.rkt")
 (provide (contract-out

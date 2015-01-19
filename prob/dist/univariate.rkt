@@ -19,6 +19,7 @@
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "../private/dist.rkt"
+         "../private/interfaces.rkt"
          "../private/dist-define.rkt"
          "../private/dist-impl.rkt")
 (provide #| implicit in define-dist-type |#)
@@ -29,7 +30,7 @@
 
 (define (digamma x) (m:psi0 x))
 
-;; ----
+;; ============================================================
 
 (define-dist-type bernoulli-dist
   ([p (real-in 0 1)])
@@ -570,3 +571,141 @@
   (if log? ldensity (exp ldensity)))
 (define (improper-sample ldensity)
   (error 'improper-dist:sample "not implemented"))
+
+;; ============================================================
+;; Convenience functions
+
+;; == Finite distributions ==
+
+;; flip : Prob -> (U #t #f)
+(define (flip [prob 1/2])
+  (positive? (sample (bernoulli-dist prob))))
+
+;; bernoulli : Prob -> (U 1 0)
+(define (bernoulli [prob 1/2])
+  (sample (bernoulli-dist prob)))
+
+;; categorical : (Vectorof Prob) -> Nat
+(define (categorical weights)
+  (sample (categorical-dist weights)))
+
+;; discrete-uniform : Nat -> Nat
+(define (discrete-uniform n)
+  (sample (categorical-dist (make-vector n (/ n)))))
+
+;; == Countable distributions ==
+
+;; binomial : Nat Prob -> Integer
+(define (binomial n p)
+  (sample (binomial-dist n p)))
+
+;; geometric : Prob -> Integer
+(define (geometric [p 1/2])
+  (sample (geometric-dist p)))
+
+;; poisson : Real -> Integer
+(define (poisson mean)
+  (sample (poisson-dist mean)))
+
+;; == Continuous distributions ==
+
+;; beta : PositiveReal PositiveReal -> Real in [0,1]
+(define (beta a b)
+  (sample (beta-dist a b)))
+
+(define (cauchy [mode 0] [scale 1])
+  (sample (cauchy-dist mode scale)))
+
+;; exponential : PositiveReal -> PositiveReal
+;; NOTE: mean aka scale = 1/rate
+(define (exponential [mean 1])
+  (sample (exponential-dist mean)))
+
+;; gamma : PositiveReal PositiveReal -> Real
+;; NOTE: scale = 1/rate
+(define (gamma [shape 1] [scale 1])
+  (sample (gamma-dist shape scale)))
+
+(define (inverse-gamma [shape 1] [scale 1])
+  (sample (inverse-gamma-dist shape scale)))
+
+;; logistic : Real Real -> Real
+(define (logistic [mean 0] [scale 1])
+  (sample (logistic-dist mean scale)))
+
+;; normal : Real PositiveReal -> Real
+;; NOTE: stddev = (sqrt variance)
+(define (normal [mean 0] [stddev 1])
+  (sample (normal-dist mean stddev)))
+
+;; pareto : Real Real -> Real
+(define (pareto shape scale)
+  (sample (pareto-dist shape scale)))
+
+;; uniform : Real Real -> Real
+(define uniform
+  (case-lambda
+    [() (uniform 0 1)]
+    [(max) (uniform 0 max)]
+    [(min max)
+     (sample (uniform-dist min max))]))
+
+;; == Dirichlet ==
+
+(define (dirichlet alpha)
+  (sample (dirichlet-dist alpha)))
+
+;; == Improper ==
+
+;; factor : Real -> Real
+;; Weight the current trace by the given log-factor.
+(define (factor ldensity)
+  (observe-sample (improper-dist ldensity) 0))
+
+;; == Exports ==
+
+(define (probability? x)
+  (and (real? x) (<= 0 x 1)))
+
+;; The following stochastic procedures have codomain contract of any
+;; so that their internal call to sample is in tail position (no
+;; result check frame). (Except for flip, FIXME.)
+;; Also true for similar functions in multivariate.rkt.
+(provide (contract-out
+          [flip
+           (->* [] [probability?] any)]
+          [bernoulli
+           (->* [] [probability?] any)]
+          [categorical
+           (-> (vectorof (>=/c 0)) 
+               any)]
+          [discrete-uniform
+           (-> exact-positive-integer? any)]
+          [geometric
+           (->* [] [probability?] any)]
+          [poisson
+           (-> (>/c 0) any)]
+          [binomial
+           (-> exact-nonnegative-integer? probability? any)]
+          [beta
+           (-> (>/c 0) (>/c 0) any)]
+          [cauchy
+           (->* [] [real? (>/c 0)] any)]
+          [exponential
+           (->* [] [(>/c 0)] any)]
+          [gamma
+           (->* [] [(>/c 0) (>/c 0)] any)]
+          [inverse-gamma
+           (->* [] [(>/c 0) (>/c 0)] any)]
+          [logistic
+           (->* [] [real? (>/c 0)] any)]
+          [normal
+           (->* [] [real? (>/c 0)] any)]
+          [pareto
+           (-> (>/c 0) (>/c 0) any)]
+          [uniform
+           (->* [] [real? real?] any)]
+          [dirichlet
+           (-> (vectorof (>/c 0)) any)]
+          [factor
+           (-> real? any)]))

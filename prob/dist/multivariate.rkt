@@ -11,6 +11,7 @@
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "../private/dist.rkt"
+         "../private/interfaces.rkt"
          "../private/dist-define.rkt"
          "../private/dist-impl.rkt"
          "../matrix.rkt")
@@ -192,3 +193,22 @@
 
 (define (inverse-wishart-sample n Vinv)
   (matrix-inverse (wishart-sample n (memo-matrix-inverse Vinv))))
+
+
+;; ============================================================
+;; Convenience functions
+
+(define (multi-normal mean cov)
+  (sample (multi-normal-dist mean cov)))
+(define (wishart n V)
+  (sample (wishart-dist n V)))
+(define (inverse-wishart n V)
+  (sample (inverse-wishart n V)))
+
+(provide (contract-out
+          [multi-normal
+           (-> col-matrix? square-matrix? any)]
+          [wishart
+           (-> real? square-matrix? any)]
+          [inverse-wishart
+           (-> real? square-matrix? any)]))
