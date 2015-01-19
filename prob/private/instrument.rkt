@@ -534,9 +534,9 @@
       (op:ID arg:ID ... (~literal _))
       ok?:expr inverter:expr scaler:expr)
      #'(begin
-         (define (pred y arg ...) (ok? y))
-         (define (invert y arg ...) (inverter y))
-         (define (scale x arg ...) (scaler x))
+         (define-syntax-rule (pred y arg ...) (ok? y))
+         (define-syntax-rule (invert y arg ...) (inverter y))
+         (define-syntax-rule (scale x arg ...) (scaler x))
          (begin-for-syntax
            (register-final-arg-propagator! #'op #'pred #'invert #'scale)))]
     [(declare-observation-propagator
