@@ -5,7 +5,8 @@
 #lang prob
 (require racket/class
          (rename-in racket/match [match-define defmatch])
-         rackunit)
+         rackunit
+         prob/private/context)
 
 ;; This module tests the observe form.
 

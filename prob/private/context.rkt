@@ -112,27 +112,16 @@ Goal: implement (observe CC[(sample d)] v)
 Conditioning contexts (CC) are defined thus:
 CC ::=                   -- Observation rep:
        []
-    |  (+ v CC)          -- (cons v _)
-    |  (- CC)            -- (cons '- _)
-    |  (cons CC e)       -- (cons 'car _)
-    |  (cons v CC)       -- (cons 'cdr _)
-    |  (reverse CC)      -- (cons 'reverse _)
-    |  ... more invertible functions that don't affect density
-           (eg, * is bad, I think)
+    |  (op v ... CC)
+       where op is defined as condition-propagating
 |#
 
-(struct observation (value))
-
-(begin-encourage-inline
- (define (obs:add-plus v obs) (and obs (cons v obs)))
- (define (obs:add-car obs) (and obs (cons 'car obs)))
- (define (obs:add-cdr obs) (and obs (cons 'cdr obs)))
- (define (obs:add-reverse obs) (and obs (cons 'reverse obs))))
+(struct observation (value scale))
 
 (define (observe* thunk expected)
-  (define obs (observation expected))
+  (define obs (observation expected 1))
   (define actual
-    (with-continuation-mark 'observation (list obs)
+    (with-continuation-mark 'observation obs
       (thunk)))
   ;; Check that result "equals" value.
   ;; FIXME: make equality approximation parameter or optional arg to observe?
@@ -146,7 +135,7 @@ CC ::=                   -- Observation rep:
     (lambda (obs)
       (cond [obs
              (define actual (with-continuation-mark OBS-mark obs (thunk)))
-             (define expected (interpret-observe-context obs))
+             (define expected (observation-value obs))
              (check-observe-result 'check-observe expected actual)
              actual]
             [else
@@ -174,26 +163,12 @@ CC ::=                   -- Observation rep:
              (bad))]
           [else (unless (equal? actual expected) (bad))])))
 
-(define (interpret-observe-context ctx)
-  (foldr interpret-frame #f ctx))
-
-(define (interpret-frame frame val)
-  (cond [(observation? frame)
-         (observation-value frame)]
-        [(real? frame)  ;; (+ frame [])
-         (- val frame)]
-        [(eq? frame 'car) ;; (cons [] e)
-         (car val)]
-        [(eq? frame 'cdr) ;; (cons v [])
-         (cdr val)]
-        [(eq? frame 'reverse) ;; (reverse [])
-         (reverse val)]
-        [(eq? frame 'ok)
-         val]
-        [(eq? frame 'unknown)
-         (error 'observe "expression is not conditionable;\n ~a"
-                "`sample' context contains unknown unconditionable frame")]
-        [else
-         (error 'observe "expression is not conditionable;\n ~a\n  bad frame: ~e"
-                "`sample' context contains unconditionable frame"
-                frame)]))
+#|
+[(eq? frame 'unknown)
+ (error 'observe "expression is not conditionable;\n ~a"
+        "`sample' context contains unknown unconditionable frame")]
+[else
+ (error 'observe "expression is not conditionable;\n ~a\n  bad frame: ~e"
+        "`sample' context contains unconditionable frame"
+        frame)]))
+|#

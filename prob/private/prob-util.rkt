@@ -22,11 +22,12 @@
   (call-with-immediate-continuation-mark OBS-mark
     (lambda (obs)
       (cond [obs
-             (define value (interpret-observe-context obs))
+             (define value (observation-value obs))
+             (define scale (observation-scale obs))
              (when (verbose?)
                (vprintf "OBSERVE w/ context = ~e\n" obs)
-               (vprintf "  sample -> condition: ~e @ ~e\n" dist value))
-             (observe-sample dist value 1)
+               (vprintf "  sample -> condition: ~e @ ~e w/ scale = ~s\n" dist value scale))
+             (observe-sample dist value scale)
              value]
             [else (sample* dist)]))))
 

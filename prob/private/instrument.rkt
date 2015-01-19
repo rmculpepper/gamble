@@ -319,7 +319,43 @@
        [else
         #'(define-syntaxes () (begin expr ... (values)))])]))
 
-;; ----
+;; ------------------------------------------------------------
+
+(begin-for-syntax
+
+  ;; id-table[ (Listof ObservationPropagator) ]
+  (define observation-propagators (make-free-id-table))
+
+  ;; An ObservationPropagator
+  ;; - (list '#:final-arg Identifier Identifier)
+  ;; - (list '#:all-args (listof Identifier))
+
+  (define (register-final-arg-observation-propagator! id inverter scaler)
+    (free-id-table-set! observation-propagators id (list '#:final-arg inverter scaler)))
+
+  (define-syntax-class final-arg-prop-fun
+    #:attributes (inverter scaler)
+    (pattern f:id
+             #:with (#:final-arg inverter scaler)
+                    (free-id-table-ref observation-propagators #'f #f)))
+  (define-syntax-class all-args-prop-fun
+    #:attributes ([inverter 1])
+    (pattern f:id
+             #:with (#:all-args (inverter ...))
+                    (free-id-table-ref observation-propagators #'f #f)))
+
+  ;; non-random-first-order-funs : free-id-table[ #t ]
+  (define non-random-first-order-funs (make-free-id-table))
+
+  (define (register-non-random-first-order-fun! id)
+    (free-id-table-set! non-random-first-order-funs id #t))
+
+  (define-syntax-class nrfo-fun
+    (pattern f:id
+             #:when (or (eq? (classify-function #'f) 'non-random-first-order)
+                        (free-id-table-ref non-random-first-order-funs #'f #f))))
+
+  )
 
 ;; App needs to do 2 transformations
 ;;  - address-tracking (unless "safe" function)
@@ -333,29 +369,48 @@
     (log-instr-info (format "~a for ~s" msg f)))
   (check-app stx)
   (syntax-parse iastx
-    #:literals (#%plain-app + cons reverse)
+    #:literals (#%plain-app)
 
     ;; Conditionable primitives in conditionable context
     ;; All non-random first-order, so no need for address tracking.
 
-    [(_ #:cc (#%plain-app + e ... eFinal))
-     #'(let-values ([(tmp) (+ (wrap-nt (instrument e #:nt)) ...)])
-         (with ([OBS (obs:add-plus tmp OBS)])
-           (#%plain-app + tmp (instrument eFinal #:cc))))]
-    [(_ #:cc (#%plain-app cons e1 e2))
-     #'(#%plain-app cons
-                    (with ([OBS (obs:add-car OBS)]) (instrument e1 #:cc))
-                    (with ([OBS (obs:add-cdr OBS)]) (instrument e2 #:cc)))]
-    [(_ #:cc (#%plain-app reverse e))
-     #'(#%plain-app reverse
-                    (with ([OBS (obs:add-reverse OBS)]) (instrument e #:cc)))]
+    [(_ #:cc (#%plain-app op:final-arg-prop-fun e ... eFinal))
+     (log-app-type "OBS PROP app (final arg)" #'op)
+     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (#%plain-app op tmp ...
+                        (with ([OBS
+                                (if OBS
+                                    (let* ([x (op.inverter (observation-value OBS) tmp ...)]
+                                           [scale (op.scaler x tmp ...)])
+                                      (observation x (* (observation-scale OBS) scale)))
+                                    #f)])
+                              (instrument eFinal #:cc)))))]
+    [(_ #:cc (#%plain-app op:all-args-prop-fun e ...))
+     (log-app-type "OBS PROP app (all args)" #'op)
+     #'(#%plain-app op
+                    (with ([OBS
+                            (if OBS
+                                (let ([x (op.inverter (observation-value OBS))])
+                                  (observation x (observation-scale OBS)))
+                                #f)])
+                          (instrument e #:cc))
+                    ...)]
+    [(_ #:cc (#%plain-app (~literal list) e ...))
+     (log-app-type "OBS PROP app (list desugar)" #'list)
+     (with-syntax ([unfolded-expr
+                    (let loop ([es (syntax->list #'(e ...))])
+                      (cond [(pair? es)
+                             #`(#%plain-app cons #,(car es) #,(loop (cdr es)))]
+                            [else
+                             #'(quote ())]))])
+       #'(instrument unfolded-expr #:cc))]
 
     ;; Non-conditionable-primitives in conditionable context
 
     ;; * non-random first-order non-instrumented
     ;;   Doesn't need address tracking, doesn't need observation
-    [(_ #:cc (#%plain-app f:id e ...))
-     #:when (eq? (classify-function #'f) 'non-random-first-order)
+    [(_ #:cc (#%plain-app f:nrfo-fun e ...))
      (log-app-type "STATIC app (NRFO)" #'f)
      #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
     ;; * analysis says doesn't call ERP (superset of prev case)
@@ -395,8 +450,7 @@
 
     ;; * non-random first-order non-instrumented
     ;;   Doesn't need address, doesn't need observation
-    [(_ #:nt (#%plain-app f:id e ...))
-     #:when (eq? (classify-function #'f) 'non-random-first-order)
+    [(_ #:nt (#%plain-app f:nrfo-fun e ...))
      (log-app-type "STATIC app (NRFO)" #'f)
      #'(#%plain-app f (instrument e #:nt) ...)]
     ;; * analysis says doesn't call ERP (superset of prev case)
@@ -457,3 +511,54 @@
   (syntax-case stx ()
     [(wrap-nt e)
      #'(with ([OBS #f]) e)]))
+
+;; ------------------------------------------------------------
+
+(define-syntax (declare-non-random-first-order stx)
+  (syntax-parse stx
+    [(declare-non-random-first-order f:id ...)
+     #'(begin-for-syntax
+         (register-non-random-first-order #'f) ...)]))
+
+(define-syntax (declare-observation-propagator stx)
+  (define-syntax-class ID
+    (pattern (~and _:id (~not (~literal ...)) (~not (~literal _)))))
+  (syntax-parse stx
+    [(declare-observation-propagator
+      (op:ID arg:ID ... (~literal _))
+      inverter:expr scaler:expr)
+     #'(begin
+         (define (invert y arg ...) (inverter y))
+         (define (scale x arg ...) (scaler x))
+         (begin-for-syntax
+           (register-final-arg-observation-propagator! #'op #'invert #'scale)))]
+    [(declare-observation-propagator
+      (op:ID arg:ID ... rest-arg:ID (~literal ...) (~literal _))
+      inverter:expr scaler:expr)
+     #'(begin
+         (define-syntax-rule (invert y arg ... rest-arg (... ...)) (inverter y))
+         (define-syntax-rule (scale x arg ... rest-arg (... ...)) (scaler x))
+         (begin-for-syntax
+           (register-final-arg-observation-propagator! #'op #'invert #'scale)))]))
+
+(declare-observation-propagator (+ a ... _)
+  (lambda (y) (- y a ...))
+  (lambda (x) 1))
+
+;; Suppose (a ...) = (a0 ai ...)
+;;   then y = (- a0 ai ... x)
+;;   so   x = (- a0 ai ... y) = (- a ... y)
+;; Suppose (a ...) = ()
+;;   then x = (- y) = (- a ... y)
+;; So can handle both cases with same pattern!
+(declare-observation-propagator (- a ... _)
+  (lambda (y) (- a ... y))
+  (lambda (x) 1))
+
+(declare-observation-propagator (* a ... _)
+  (lambda (y) (/ y a ...))
+  (lambda (x) (/ (* a ...))))
+
+(begin-for-syntax
+  (free-id-table-set! observation-propagators #'cons
+                      (list '#:all-args (list #'car #'cdr))))
