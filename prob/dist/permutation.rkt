@@ -20,6 +20,7 @@
   ([n exact-nonnegative-integer?])
   #:pdf permutation-pdf
   #:sample permutation-sample
+  #:has-mass
   #:drift (lambda (value scale-factor)
             (cond [(<= n 1)
                    value]

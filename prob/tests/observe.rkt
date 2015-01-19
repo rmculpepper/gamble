@@ -28,18 +28,37 @@
    (observe (S) 9)
    R))
 
-(define (sampler->mean s n)
-  (define-values (sum weight)
-    (for/fold ([sum 0.0] [weight 0.0])
-              ([i (in-range n)])
-      (defmatch (cons v w) (send s sample/weight))
-      (values (+ sum (* v w)) (+ weight w))))
-  (/ sum weight))
-
 (let ([mean (sampler->mean s 1000)])
   (check-= mean 9.5 CD-EPSILON))
 (let ([mean (sampler->mean s2 1000)])
   (check-= mean 9.5 CD-EPSILON))
+
+;; ----
+
+;; observation scaling
+
+(let ()
+  ;; Continuous observation; must scale
+  (define EPSILON 0.1)
+  (define s
+    (importance-sampler
+     (define a (flip))
+     (define (b) (if a (uniform -2 2) (* 2 (uniform -1 1))))
+     (observe (b) 0)
+     a))
+  (define m (sampler->mean s 1000))
+  (check-= (sampler->mean s 1000 (indicator/value #t)) 0.5 EPSILON))
+
+(let ()
+  ;; Discrete observation; must not scale
+  (define EPSILON 0.1)
+  (define s
+    (importance-sampler
+     (define a (flip))
+     (define (b) (if a (bernoulli) (* 2 (bernoulli))))
+     (observe (b) 0)
+     a))
+  (check-= (sampler->mean s 1000 (indicator/value #t)) 0.5 EPSILON))
 
 ;; ----
 

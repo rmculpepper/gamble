@@ -30,6 +30,7 @@
     (pattern
      (~or (~optional (~seq #:support support:expr))
           (~optional (~seq #:enum enum:expr))
+          (~optional (~seq (~and #:has-mass has-mass-kw)))
           (~optional (~seq #:mean mean:expr))
           (~optional (~seq #:median median:expr))
           (~optional (~seq #:modes modes:expr))
@@ -74,6 +75,9 @@
                    (define (*type d) 'name-dist)
                    (define (*params d) (vector (get-param d) ...))
                    (?? (define (*enum d) (let ([p.param (get-param d)] ...) o.enum)))
+                   ;; Note: override *has-mass? only if #:has-mass given; otherwise,
+                   ;; use default, which relies on *enum method.
+                   (?? (define (*has-mass? d) (and 'o.has-mass-kw #t)))
                    (?? (define (*support d) (let ([p.param (get-param d)] ...) o.support)))
                    (?? (define (*mean d) (let ([p.param (get-param d)] ...) o.mean)))
                    (?? (define (*median d) (let ([p.param (get-param d)] ...) o.median)))

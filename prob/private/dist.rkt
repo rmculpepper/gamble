@@ -12,6 +12,7 @@
   (*inv-cdf dist x log? 1-p?)
   (*sample dist)
   (*type dist)
+  (*has-mass? dist)
   (*params dist)
   (*enum dist)
   (*support dist)
@@ -24,6 +25,7 @@
   (*drift dist value scale-factor)
   #:fallbacks
   [(define (*enum d) #f)
+   (define (*has-mass? d) (and (dist-enum d) #t))
    (define (*support d) #f)
    (define (*mean d) #f)
    (define (*median d) #f)
@@ -45,6 +47,8 @@
   (*sample d))
 (define (dist-enum d)
   (*enum d))
+(define (dist-has-mass? d)
+  (*has-mass? d))
 (define (dist-drift d v scale-factor)
   (*drift d v scale-factor))
 

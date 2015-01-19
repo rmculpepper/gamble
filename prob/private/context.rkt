@@ -116,7 +116,7 @@ CC ::=                   -- Observation rep:
        where op is defined as condition-propagating
 |#
 
-(struct observation (value scale))
+(struct observation (value scale) #:transparent)
 
 (define (observe* thunk expected)
   (define obs (observation expected 1))

@@ -336,6 +336,7 @@
    [weights (vectorof (>=/c 0))])
   #:pdf multinomial-dist
   #:sample multinomial-sample
+  #:has-mass
   #:guard (lambda (n weights _name)
             (values n (validate/normalize-weights 'multinomial-dist weights)))
   #:drift (lambda (value scale-factor)

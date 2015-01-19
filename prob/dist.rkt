@@ -26,6 +26,8 @@
            (-> dist? any)]
           [dist-enum
            (-> dist? any)]
+          [dist-has-mass?
+           (-> dist? any)]
           [dist-drift
            (-> dist? any/c (>/c 0) any)]
           [dist-support

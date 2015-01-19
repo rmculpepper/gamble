@@ -49,6 +49,7 @@
   #:pdf discrete-pdf
   #:sample discrete-sample
   #:enum vs
+  #:has-mass
   #:support 'finite
   #:no-provide
   #:extra
