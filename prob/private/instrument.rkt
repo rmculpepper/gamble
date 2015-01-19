@@ -541,6 +541,34 @@
          (begin-for-syntax
            (register-final-arg-observation-propagator! #'op #'invert #'scale)))]))
 
+#|
+observe y(σ) = v
+ where y(σ) = f(x(σ))
+ want to weight by
+     dσ/dy                      -- note inverse!
+   = (dy/dσ)^-1
+   = [ df/dx * dx/dσ ]^-1
+   = (df/dx)^-1 * dσ/dx
+   = (df/dx)^-1 * p_x(x)
+     where x = f^-1(v)
+
+eg, if f(x) = 2x
+  then weight by 1/2
+
+eg, if f(x) = x^3
+  then weight by [ 3x^2 ]^-1
+  --- except x^n does not have unique inverse
+
+eg, if f(x) = exp(x)
+  then weight by [ exp(x) ]^-1
+|#
+
+;; FIXME: add predicate; if y fails predicate, then fail
+;; eg, for arithmetic, should be real?, for matrix* should be matrix (of right shape?)
+
+;; FIXME: return log(1/scale) instead?
+;; Exact arithmetic mostly good for discrete cases, so doesn't matter ???
+
 (declare-observation-propagator (+ a ... _)
   (lambda (y) (- y a ...))
   (lambda (x) 1))
@@ -558,6 +586,15 @@
 (declare-observation-propagator (* a ... _)
   (lambda (y) (/ y a ...))
   (lambda (x) (/ (* a ...))))
+
+(declare-observation-propagator (exp _)
+  (lambda (y) (log y))
+  (lambda (x) (/ (exp x)))) ;; FIXME: pass y = (exp x) too?
+
+(declare-observation-propagator (log _)
+  (lambda (y) (exp y))
+  (lambda (x) x))
+;; dx/dy = (dy/dx)^-1 = (1/x)^-1 = x
 
 (begin-for-syntax
   (free-id-table-set! observation-propagators #'cons
