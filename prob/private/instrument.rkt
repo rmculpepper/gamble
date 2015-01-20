@@ -14,6 +14,7 @@
                      "analysis/obs-exp.rkt"
                      "analysis/cond-ctx.rkt")
          racket/match
+         "interfaces.rkt"
          "context.rkt")
 (provide describe-all-call-sites
          describe-call-site
@@ -386,7 +387,7 @@
                                (let* ([x (op.inverter obs-v tmp ...)]
                                       [scale (op.scaler x tmp ...)])
                                  (observation x (* (observation-scale OBS) scale)))
-                               (error 'observe "bad type: ~e" obs-v)))
+                               (fail 'observe-failed-invert)))
                          #f)])
                    (instrument eFinal #:cc)))))]
     [(_ #:cc (#%plain-app op:all-args-prop-fun e ...))
@@ -398,7 +399,7 @@
                        (if (op.pred obs-v) ;; FIXME: redundant for 2nd arg on
                            (let ([x (op.inverter (observation-value OBS))])
                              (observation x (observation-scale OBS)))
-                           (error 'observe "bad type: ~e" obs-v)))
+                           (fail 'observe-failed-invert)))
                      #f)])
                (instrument e #:cc))
          ...)]

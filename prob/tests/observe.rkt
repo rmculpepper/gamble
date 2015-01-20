@@ -62,6 +62,20 @@
 
 ;; ----
 
+;; observation inversion type error -> fail, not error
+
+(let ()
+  (define s
+    (mh-sampler
+     (define a (flip))
+     (define (b) (if a (bernoulli) (discrete* '(a b))))
+     (observe (b) 0)
+     a))
+  (check-equal? (sampler->discrete-dist s 1000)
+                (discrete-dist [#t 1.0])))
+
+;; ----
+
 ;; conditioning on lists
 
 (define s-list
