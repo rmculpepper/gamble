@@ -393,8 +393,8 @@
 
 (define (bernoulli-pdf prob v log?)
   (define p
-    (cond [(= v 0) (- 1 prob)]
-          [(= v 1) prob]
+    (cond [(eqv? v 0) (- 1 prob)]
+          [(eqv? v 1) prob]
           [else 0]))
   (convert-p p log? #f))
 (define (bernoulli-cdf prob v log? 1-p?)
@@ -416,11 +416,11 @@
 ;; -- Assume weights are nonnegative, normalized.
 
 (define (categorical-pdf probs k log?)
-  (unless (< k (vector-length probs))
-    (error 'categorical-dist:pdf "index out of bounds\n  index: ~e\n  bounds: [0,~s]"
-           k (sub1 (vector-length probs))))
-  (define l (vector-ref probs k))
-  (if log? (log l) l))
+  (cond [(not (< k (vector-length probs)))
+         (impossible log? 'categorical "index out of bounds")]
+        [else
+         (define l (vector-ref probs k))
+         (if log? (log l) l)]))
 (define (categorical-cdf probs k log? 1-p?)
   (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
   (convert-p p log? 1-p?))
@@ -452,7 +452,7 @@
              (m:flbinomial-pdf n prob (exact->inexact vi) #t)))
          (if log? ll (exp ll))]
         [else
-         (if log? -inf.0 0.0)]))
+         (impossible log? 'multinomial "not a vector of correct size")]))
 
 (define (multinomial-sample n probs)
   (define v (make-vector (vector-length probs)))
@@ -548,10 +548,15 @@
      (m:log-gamma (for/sum ([ai (in-vector alpha)]) ai))))
 
 (define (dirichlet-pdf alpha x log?)
-  (define lp
-    (- (for/sum ([xi (in-vector x)] [ai (in-vector alpha)]) (* (sub1 ai) (log xi)))
-       (log-multinomial-beta alpha)))
-  (if log? lp (exp lp)))
+  (cond [(not (vector? x))
+         (impossible log? 'dirichlet "not a vector")]
+        [(not (= (vector-length x) (vector-length alpha)))
+         (impossible log? 'dirichlet "vector has wrong length")]
+        [else
+         (define lp
+           (- (for/sum ([xi (in-vector x)] [ai (in-vector alpha)]) (* (sub1 ai) (log xi)))
+              (log-multinomial-beta alpha)))
+         (if log? lp (exp lp))]))
 (define (dirichlet-sample alpha)
   ;; TODO: batch gamma sampling when all alphas same?
   (define n (vector-length alpha))

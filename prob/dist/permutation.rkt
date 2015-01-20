@@ -13,6 +13,7 @@
          racket/fixnum
          (prefix-in m: math/special-functions)
          "../private/dist.rkt"
+         "../private/dist-impl.rkt"
          "../private/dist-define.rkt")
 (provide permutation?)
 
@@ -42,7 +43,7 @@
                log-p
                (exp log-p)))]
         [else
-         (if log? -inf.0 0)]))
+         (impossible log? 'permutation "not a permutation")]))
 
 (define fxsize (- (system-type 'word) 2))
 

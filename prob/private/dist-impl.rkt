@@ -120,3 +120,8 @@
 (define (logspace-sum xs)
   (let ([M (apply max xs)])
     (+ M (log (for/sum ([x (in-list xs)]) (exp (- x M)))))))
+
+;; use in pdf functions instead of raising type (or other) error
+(define (impossible log? who reason)
+  ;; FIXME: may be useful to log occurrences of these
+  (if log? -inf.0 0))

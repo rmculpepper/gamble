@@ -76,22 +76,20 @@
 
 (define (multi-normal-pdf mean cov x log?)
   (define k (matrix-num-rows mean))
-  (unless (col-matrix? x)
-    (error 'multi-normal-dist:pdf
-           "expected column matrix\n  given: ~e" x))
-  (unless (= (matrix-num-rows x) k)
-    (error 'multi-normal-dist:pdf
-           "column matrix has wrong number of rows\n  expected: ~e\n  given: ~e"
-           k x))
-  (define lp
-    (+ (* -0.5 k (log (* 2 pi)))
-       (* -0.5 (log (matrix-determinant cov)))
-       (* -0.5 (matrix11->value
-                (let ([x-mean (matrix- x mean)])
-                  (matrix* (matrix-transpose x-mean)
-                           (memo-matrix-inverse cov)
-                           x-mean))))))
-  (if log? lp (exp lp)))
+  (cond [(not (col-matrix? x))
+         (impossible log? 'multi-normal "not column matrix")]
+        [(not (= (matrix-num-rows x) k))
+         (impossible log? 'multi-normal "wrong number of rows")]
+        [else
+         (define lp
+           (+ (* -0.5 k (log (* 2 pi)))
+              (* -0.5 (log (matrix-determinant cov)))
+              (* -0.5 (matrix11->value
+                       (let ([x-mean (matrix- x mean)])
+                         (matrix* (matrix-transpose x-mean)
+                                  (memo-matrix-inverse cov)
+                                  x-mean))))))
+         (if log? lp (exp lp))]))
 
 (define (multi-normal-sample mean cov)
   (multi-normal-drift mean cov 1.0))
@@ -117,13 +115,18 @@
 
 (define (wishart-pdf n V X log?)
   (define p (square-matrix-size V))
-  (define lp
-    (+ (* 1/2 (- n p 1) (log (memo-matrix-determinant X)))
-       (* -1/2 (matrix-trace (matrix* (memo-matrix-inverse V) X)))
-       (* -1/2 n p (log 2))
-       (* 1/2 n (log (memo-matrix-determinant V)))
-       (log-multigamma p (/ n 2))))
-  (if log? lp (exp lp)))
+  (cond [(not (and (square-matrix? X) (matrix-symmetric? X)))
+         (impossible log? 'wishart "not symmetric matrix")]
+        [(not (= (matrix-num-rows X) p))
+         (impossible log? 'wishart "wrong size")]
+        [else
+         (define lp
+           (+ (* 1/2 (- n p 1) (log (memo-matrix-determinant X)))
+              (* -1/2 (matrix-trace (matrix* (memo-matrix-inverse V) X)))
+              (* -1/2 n p (log 2))
+              (* 1/2 n (log (memo-matrix-determinant V)))
+              (log-multigamma p (/ n 2))))
+         (if log? lp (exp lp))]))
 
 (define (wishart-sample/naive n V)
   (define p (square-matrix-size V))

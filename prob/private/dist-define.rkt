@@ -10,7 +10,8 @@
                      racket/syntax)
          racket/contract
          racket/flonum
-         "dist.rkt")
+         "dist.rkt"
+         "dist-impl.rkt")
 (provide define-dist-type
          define-fl-dist-type)
 
@@ -136,7 +137,10 @@
        (quasitemplate
         (begin
           (define (pdf p.param ... x log?)
-            (fl-pdf p.param ... (convert-in x) log?))
+            (cond [(not (real? x))
+                   (impossible log 'name-dist "not a real number")]
+                  [else
+                   (fl-pdf p.param ... (convert-in x) log?)]))
           (define (cdf p.param ... x log? 1-p?)
             (fl-cdf p.param ... (convert-in x) log? 1-p?))
           (define (inv-cdf p.param ... x log? 1-p?)
