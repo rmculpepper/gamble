@@ -13,7 +13,7 @@
          (prefix-in t: math/array)
          (prefix-in t: math/matrix)
          (prefix-in t: "private/matrix-util.rkt")
-         (only-in "private/instrument.rkt" declare-observation-propagator)
+         "private/instrument-data.rkt"
          "private/matrix-base.rkt"
          "private/matrix-syntax.rkt")
 (provide (all-from-out "private/matrix-base.rkt")
@@ -494,9 +494,7 @@
 (declare-observation-propagator (matrix* a _)
   (lambda (y) (and (square-matrix? a) (matrix? y)
               (= (matrix-num-rows a) (matrix-num-rows y))))
-  (lambda (y)
-    (eprintf "solving, a = ~s, y = ~s\n" a y)
-    (matrix-solve a y))
+  (lambda (y) (matrix-solve a y))
   (lambda (x) (/ (abs (matrix-determinant a)))))
 
 ;; TODO:
