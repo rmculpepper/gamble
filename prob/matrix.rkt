@@ -13,6 +13,7 @@
          (prefix-in t: math/array)
          (prefix-in t: math/matrix)
          (prefix-in t: "private/matrix-util.rkt")
+         (only-in "private/instrument.rkt" declare-observation-propagator)
          "private/matrix-base.rkt"
          "private/matrix-syntax.rkt")
 (provide (all-from-out "private/matrix-base.rkt")
@@ -477,3 +478,26 @@
 (Wrap make-mutable-matrix : Index Index Real -> MutMatrix)
 (Wrap array-sqrt/nan : Array -> Array)
 (Wrap array-sqrt/err : Array -> Array)
+
+;; ============================================================
+
+;; Note: implicit broadcast means inverse is not unique, really.
+(declare-observation-propagator (array+ a ... _)
+  array?
+  (lambda (y) (array- y a ...))
+  (lambda (x) 1))
+
+;; array* not supported --- cannot scale
+;; FIXME: well... why not? Just need to figure out how to distribute scale
+;; when splitting later on.
+
+(declare-observation-propagator (matrix* a _)
+  (lambda (y) (and (square-matrix? a) (matrix? y)
+              (= (matrix-num-rows a) (matrix-num-rows y))))
+  (lambda (y)
+    (eprintf "solving, a = ~s, y = ~s\n" a y)
+    (matrix-solve a y))
+  (lambda (x) (/ (abs (matrix-determinant a)))))
+
+;; TODO:
+;; - matrix->vector, etc

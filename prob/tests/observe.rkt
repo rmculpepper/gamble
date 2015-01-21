@@ -62,6 +62,18 @@
 
 ;; ----
 
+;; Works through contracts (matrix)
+(let ()
+  (define s
+    (mh-sampler
+     (define a (multi-normal (->col-matrix '(0 0)) (identity-matrix 2)))
+     (define (b) (matrix* (matrix [[2 1][1 2]]) (multi-normal a (identity-matrix 2))))
+     (observe (b) (matrix [[2.3][1.7]]))
+     a))
+  (void (sampler->mean s 1000)))
+
+;; ----
+
 ;; observation inversion type error -> fail, not error
 
 (let ()

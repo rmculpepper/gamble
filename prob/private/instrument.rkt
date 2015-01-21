@@ -14,6 +14,10 @@
                      "analysis/obs-exp.rkt"
                      "analysis/cond-ctx.rkt")
          racket/match
+         (only-in racket/contract/private/provide
+                  contract-rename-id-property
+                  provide/contract-info?
+                  provide/contract-info-original-id)
          "interfaces.rkt"
          "context.rkt")
 (provide describe-all-call-sites
@@ -23,7 +27,8 @@
          instrument/local-expand
          (for-syntax analyze)
          instrument
-         next-counter)
+         next-counter
+         declare-observation-propagator)
 
 (begin-for-syntax
   ;; analyze : Syntax -> Syntax
@@ -356,6 +361,37 @@
              #:when (or (eq? (classify-function #'f) 'non-random-first-order)
                         (free-id-table-ref non-random-first-order-funs #'f #f))))
 
+  ;; Suppose contracted function f st (f e ...) => (f* blah e ...)
+  ;; then the f* identifier has a property contract-rename-id-property
+  ;; containing f-ren, where (syntax-local-value f-ren) is a
+  ;; provide/contract-info structure.
+
+  (define-syntax-class contracted-export-id
+    #:attributes (original-id)
+    (pattern (~var x (static provide/contract-info? 'contracted-function))
+             #:with original-id (provide/contract-info-original-id (attribute x.value))))
+
+  (define-syntax-class contract-indirection-id
+    (pattern x:id
+             #:with c:contracted-export-id (contract-rename-id-property #'x)
+             #:with original-id #'c.original-id))
+
+  (define-syntax-class contracted-final-arg-prop-fun
+    #:attributes (pred inverter scaler)
+    (pattern c:contract-indirection-id
+             #:when (not (regexp-match? #rx"^lifted\\." (symbol->string (syntax-e #'c))))
+             #:with :final-arg-prop-fun #'c.original-id))
+
+  ;; The other contract expansion form:
+  ;; Suppose contracted function f st (f e ...) => (lifted.f e ...)
+  ;; then the lifted.f identifier has a property contract-rename-id-property
+  ;; containing f-ren, ....
+
+  (define-syntax-class lifted-contracted-final-arg-prop-fun
+    #:attributes (pred inverter scaler)
+    (pattern c:contract-indirection-id
+             #:when (regexp-match? #rx"^lifted\\." (symbol->string (syntax-e #'c)))
+             #:with :final-arg-prop-fun #'c.original-id))
   )
 
 ;; App needs to do 2 transformations
@@ -390,6 +426,48 @@
                                (fail 'observe-failed-invert)))
                          #f)])
                    (instrument eFinal #:cc)))))]
+
+    ;; contracted
+    [(_ #:cc (#%plain-app op:contracted-final-arg-prop-fun ctc-info e ... eFinal))
+     (log-app-type "OBS PROP app (contracted, final arg)" #'op)
+     (eprintf "stx = ~s\n" (syntax->datum stx))
+     (eprintf "  ctc-info = ~s\n" (syntax->datum #'ctc-info))
+     (for ([e (syntax->list #'(e ...))]) (eprintf "  e = ~s\n" (syntax->datum e)))
+     (eprintf "  eFinal = ~s\n" (syntax->datum #'eFinal))
+     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (#%plain-app op ctc-info tmp ...
+             (with ([OBS
+                     (if OBS
+                         (let ([obs-v (observation-value OBS)])
+                           (if (op.pred obs-v tmp ...)
+                               (let* ([x (op.inverter obs-v tmp ...)]
+                                      [scale (op.scaler x tmp ...)])
+                                 (observation x (* (observation-scale OBS) scale)))
+                               (fail 'observe-failed-invert)))
+                         #f)])
+                   (instrument eFinal #:cc)))))]
+
+    ;; lifted contracted (w/o ctc-info arg)
+    [(_ #:cc (#%plain-app op:lifted-contracted-final-arg-prop-fun e ... eFinal))
+     (log-app-type "OBS PROP app (lifted contracted, final arg)" #'op)
+     (eprintf "stx = ~s\n" (syntax->datum stx))
+     (for ([e (syntax->list #'(e ...))]) (eprintf "  e = ~s\n" (syntax->datum e)))
+     (eprintf "  eFinal = ~s\n" (syntax->datum #'eFinal))
+     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+           (#%plain-app op tmp ...
+             (with ([OBS
+                     (if OBS
+                         (let ([obs-v (observation-value OBS)])
+                           (if (op.pred obs-v tmp ...)
+                               (let* ([x (op.inverter obs-v tmp ...)]
+                                      [scale (op.scaler x tmp ...)])
+                                 (observation x (* (observation-scale OBS) scale)))
+                               (fail 'observe-failed-invert)))
+                         #f)])
+                   (instrument eFinal #:cc)))))]
+
     [(_ #:cc (#%plain-app op:all-args-prop-fun e ...))
      (log-app-type "OBS PROP app (all args)" #'op)
      #'(#%plain-app op
@@ -599,7 +677,7 @@ eg, if f(x) = exp(x)
 (declare-observation-propagator (* a ... _)
   real?
   (lambda (y) (/ y a ...))
-  (lambda (x) (/ (* a ...))))
+  (lambda (x) (abs (/ (* a ...)))))
 
 (declare-observation-propagator (exp _)
   real?
@@ -609,7 +687,7 @@ eg, if f(x) = exp(x)
 (declare-observation-propagator (log _)
   real?
   (lambda (y) (exp y))
-  (lambda (x) x))
+  (lambda (x) (abs x)))
 ;; dx/dy = (dy/dx)^-1 = (1/x)^-1 = x
 
 (begin-for-syntax
