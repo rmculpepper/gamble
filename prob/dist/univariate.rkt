@@ -20,6 +20,7 @@
          (prefix-in m: math/special-functions)
          "../private/dist.rkt"
          "../private/interfaces.rkt"
+         "../private/instrument.rkt"
          "../private/dist-define.rkt"
          "../private/dist-impl.rkt")
 (provide #| implicit in define-dist-type |#)
@@ -582,9 +583,14 @@
 
 ;; == Finite distributions ==
 
-;; flip : Prob -> (U #t #f)
-(define (flip [prob 1/2])
-  (positive? (sample (bernoulli-dist prob))))
+(begin-instrumented
+ ;; flip : Prob -> (U #t #f)
+ (define (flip [prob 1/2])
+   (01->boolean (sample (bernoulli-dist prob)))))
+
+(define (01->boolean n) (positive? n)) ;; Not exported, no need for error checking.
+(declare-observation-propagator (01->boolean _)
+  boolean? (lambda (y) (if y 1 0)) (lambda (x) 1))
 
 ;; bernoulli : Prob -> (U 1 0)
 (define (bernoulli [prob 1/2])

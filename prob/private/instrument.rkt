@@ -25,6 +25,7 @@
          describe-call-site
          instrumenting-module-begin
          instrumenting-top-interaction
+         begin-instrumented
          instrument/local-expand
          (for-syntax analyze)
          instrument
@@ -87,6 +88,11 @@
                          (analyze
                           (local-expand #'form 'top-level null))])
             #'(instrument e-form #:nt))]))]))
+
+(define-syntax (begin-instrumented stx)
+  (syntax-case stx ()
+    [(begin-instrumented form ...)
+     #'(instrument/local-expand (begin form ...))]))
 
 (define-syntax (instrument/local-expand stx)
   (syntax-case stx ()
