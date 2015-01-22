@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # This script is used to build the docs hosted at
-#   http://rmculpepper.github.io/prob/prob/
+#   http://rmculpepper.github.io/gamble/
 
-# Users of prob do not need to run this script. The prob documentation
-# is automatically built and installed when the prob package is
+# Users of gamble do not need to run this script. The gamble documentation
+# is automatically built and installed when the gamble package is
 # installed. To rebuild the documentation (eg after updating the
-# code), run "raco setup prob".
+# code), run "raco setup gamble".
 
 raco scribble --htmls \
   --dest doc-build \
   --redirect-main http://docs.racket-lang.org \
   +m \
-  prob/scribblings/prob.scrbl
+  gamble/scribblings/gamble.scrbl

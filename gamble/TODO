@@ -1,0 +1,118 @@
+Tentative plans for the near future:
+
+- types
+
+- check: importance sampler uses probs, not log-probs?
+
+- dist constructors via alternative parameterizations
+  eg, beta-dist via mean + peakedness (effective sample size?)
+
+- add selectors (like proposals), to control picking keys to perturb
+  - Q: single-site selectors different from multi-site selectors, or
+    treat same except checking singleton set at end?
+  - select:round-robin stateful selector can do round-robin (eg proper Gibbs)
+    eg, store last-key, search for least key st. key > last-key
+    Problem: may consistently skip choices? (Maybe not, due to causal ordring??)
+
+- use cache-points, lambda lifting, etc to short-circuit re-evaluation
+  - compiled version of slicing
+  - use eqv?, not equal? to avoid complexity explosion
+  - may want to use hash-consing to recover equal?-level
+  - use laziness-like profiling or feature profiling to achieve optimum balance?
+    (tracing & slicing might work better, though ...)
+  - (cache e) => ((xmem (lambda (fv ...) e)) fv ...)
+    where {fv ...} = free vars of e
+    and (xmem f) returns value of application from last trace
+      if  1: arguments are all same (eqv? ??!!)
+             -- functions will be a big problem :(
+      and 2: no address extending address of xmem call is in delta-db
+
+- use macro-stepper debugging technique to debug re-evaluation
+  - build big-step semantics ...
+  - db isomorphic to big-step derivation
+  - need convenient way to step back through...
+
+- can Neil T's arrow lifting also capture reverse-mode AD?
+
+- update tests, eg add basic motor-sensor tests for all transitions
+
+- implement blocked enumerative Gibbs
+
+- implement XRPs (??? need predictive priors? posteriors? -- just pdfs, right?)
+
+- unit-like components
+  - infer signature macros???
+
+- example of zones
+
+- catch up on docs, tests
+
+- multivariate dists
+  - need tests
+
+- MH
+  - little lang of transitions
+  - parallel chains?
+  - simulated annealing
+
+- custom proposals that use info from trace (via labels??)
+
+- sort out labels vs zones (more changes to entry, db-ctx)
+  - I think labels should be unique, maybe replace addresses 
+    when available. Zones nest, like Venture's "scope-include".
+  - attach special conditions and derivatives to labels
+
+- evidence softening
+
+Longer term:
+
+- metrics:
+  - total variation
+    - continuous against samples
+    - discrete
+  - Hamming distance
+  - Expected squared difference
+
+- decision theory functions:
+  - EVI
+
+- specialized algorithms for HMM
+  - for long sequences, SMC
+  - for MAP sequence, Viterbi
+  - for smoothing, forward and backward
+
+- avoid running entire program to recompute trace
+  (cf Venture scaffolds ??, Church tracing and slicing ??)
+  - note, in some contexts don't even need to update final value!
+    - eg internal HMC leapfrog steps
+    - eg slice sampling slice-bounds-finding
+
+- specialize possible operations on gamble models (?):
+  - sample
+  - expectation
+  - MAP, general argmax probability
+    - argmax over {all latent vars} vs {subset of latent vars}
+    - gradient-descent methods
+  - (marginal) probability
+    - at point (density estimation?)
+    - of predicate/event
+    - special cases of expectations
+
+- modules/models
+  - represent with semi-AST to capture known structure
+    - hybrid interpretation/compilation
+    - maybe run-time codegen to specialize execution
+    - analytic methods (collapsing, conjugacy, etc)
+  - probably want to avoid separate-compilation-induced problems 
+    as much as possible
+
+- testing and diagnostics
+
+----
+
+use entropy (or entropy rate) as diagnostic
+  - indicates "goodness"/"peakedness" of posterior
+  - how to estimate in general?
+
+detect special classes of models to apply specialized techniques
+  - examples?
