@@ -114,6 +114,19 @@ Produces a sample distributed according to @racket[d]. This is an
          ...]
 }
 
+@defproc[(in-dist [d finite-dist?]) sequence?]{
+
+Returns a @tech[#:doc '(lib
+"scribblings/reference/reference.scrbl")]{sequence} where each element
+consists of two values: a value from the support of the distribution
+and its probability mass.
+
+@examples[#:eval the-eval
+(for ([(v p) (in-dist (bernoulli-dist 1/3))])
+  (printf "Result ~s has probability ~s.\n" v p))
+]
+}
+
 @deftogether[[
 @defproc[(dist-mean [d dist?])
          (or/c any/c +nan.0 #f)]
@@ -499,6 +512,76 @@ normalized, the function may return @racket[d].
 ]]{
 
 Returns the values and weights of @racket[d], respectively.
+}
+
+
+@section[#:tag "dist-monad"]{Finite Distributions as a Monad}
+
+@defproc[(dist-unit [v any/c]) finite-dist?]{
+
+Returns a distribution with all probability mass concentrated on
+@racket[v].
+}
+
+@defproc[(dist-bind [d finite-dist?]
+                    [f (-> any/c finite-dist?)])
+         finite-dist?]{
+
+Given a distribution @racket[d] for random variable @italic{A} and a
+probability kernel @racket[f] for @italic{B given A}, forms the joint
+probability for @italic{(A,B)}, then marginalizes out @italic{A},
+returning the marginal distribution for @italic{B}.
+
+@examples[#:eval the-eval
+(define (ground-wet raining)
+  (case raining
+    [(0) (bernoulli-dist 9/10)]
+    [(1) (bernoulli-dist 2/10)]))
+(define raining-dist (bernoulli-dist 2/10))
+(code:comment "marginal probability of Ground Wet")
+(dist-bind raining-dist ground-wet)
+]
+}
+
+@defproc[(dist-bindx [d finite-dist?]
+                     [f (-> any/c finite-dist?)])
+         finite-dist?]{
+
+Like @racket[dist-bind], but omits the marginalization step, returning
+the joint distribution.
+
+Equivalent to @racket[(dist-bind d (λ (v1) (dist-fmap (f v1) (λ (v2) (list v1 v2)))))].
+
+@examples[#:eval the-eval
+(code:comment "joint distribution of (Raining, Ground Wet)")
+(dist-bindx raining-dist ground-wet)
+]
+}
+
+@defproc[(dist-fmap [d finite-dist?]
+                    [f (-> any/c any/c)])
+         finite-dist?]{
+
+Equivalent to @racket[(dist-bind d (compose dist-unit f))].
+}
+
+@defproc[(dist-filter [d finite-dist?]
+                      [pred (-> any/c boolean?)]
+                      [empty any/c (lambda () (error ....))])
+         finite-dist?]{
+
+Returns a distribution like @racket[d] but whose support is narrowed
+to values accepted by the predicate @racket[pred].
+
+If @racket[pred] does not accept any values in the support of
+@racket[d], @racket[empty] is called, if it is a procedure, or
+returned otherwise.
+
+@examples[#:eval the-eval
+(dist-filter (binomial-dist 10 1/2) even?)
+(dist-filter (binomial-dist 10 1/2) negative?)
+(dist-filter (binomial-dist 10 1/2) negative? #f)
+]
 }
 
 
