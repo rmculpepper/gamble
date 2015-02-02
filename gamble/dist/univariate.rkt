@@ -50,8 +50,8 @@
 (define-fl-dist-type binomial-dist
   ([n exact-nonnegative-integer?]
    [p (real-in 0 1)])
-  #:nat #:enum (add1 n)
-  #:support (integer-range 0 n)
+  #:nat #:enum (add1 (inexact->exact n))
+  #:support (integer-range 0 (inexact->exact n))
   #:mean (* n p)
   #:modes (filter-modes (lambda (x) (m:flbinomial-pdf n p x #f))
                         (let ([m (inexact->exact (floor (* (+ n 1) p)))])

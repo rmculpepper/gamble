@@ -82,8 +82,8 @@
   (define support (and (dist? d) (dist-support d)))
   (or (eq? support 'finite)
       (and (integer-range? support)
-           (exact-integer? (integer-range-min support))
-           (exact-integer? (integer-range-max support)))))
+           (> (integer-range-min support) -inf.0)
+           (< (integer-range-max support) +inf.0))))
 
 ;; dist-<statistic> : Dist -> Real | #f | NaN
 ;; #f means unknown; NaN means known to be undefined
