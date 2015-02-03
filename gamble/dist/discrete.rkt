@@ -292,7 +292,8 @@
   [dist-fmap (-> finite-dist? (-> any/c any/c) any)]
   [dist-bind (-> finite-dist? (-> any/c finite-dist?) any)]
   [dist-bindx (-> finite-dist? (-> any/c finite-dist?) any)]
-  [dist-filter (->* [finite-dist? (-> any/c boolean?)] [any/c] any)]))
+  [dist-filter (->* [finite-dist? (-> any/c boolean?)] [any/c] any)]
+  [dist-join (-> finite-dist? finite-dist?)]))
 
 (define (dist-unit v)
   (discrete-dist [v 1]))
@@ -329,3 +330,11 @@
                 d pred)]
         [(procedure? empty) (empty)]
         [else empty]))
+
+(define (dist-join d)
+  (for ([(v w) (in-dist d)])
+    (unless (finite-dist? v)
+      (error 'dist-join
+             "expected finite distribution over finite distributions\n  given: ~e"
+             d)))
+  (dist-bind d values))
