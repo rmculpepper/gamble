@@ -5,10 +5,20 @@
 #lang scribble/manual
 @(require scribble/manual
           scribble/basic
+          (only-in scribble/core
+                   make-style)
+          (only-in scribble/latex-properties
+                   make-tex-addition)
           (for-label racket/contract
                      gamble))
 
-@title{Gamble: Probabilistic Programming}
+@(define gamble-style
+   (make-style "gamble-manual"
+               (list
+                'toc
+                (make-tex-addition #"\\DeclareUnicodeCharacter{2202}{$\\partial$}"))))
+
+@title[#:style gamble-style]{Gamble: Probabilistic Programming}
 @author[@author+email["Ryan Culpepper" "ryanc@racket-lang.org"]]
 
 @defmodulelang[gamble]
