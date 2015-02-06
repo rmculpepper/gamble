@@ -18,6 +18,7 @@
 (provide discrete-dist
          discrete-dist?
          in-dist
+         (rename-out [discrete-measure* discrete-measure])
          (contract-out
           [make-discrete-dist
            (->* [dict?] [#:normalize? any/c] discrete-dist?)]
@@ -57,7 +58,12 @@
   #:extra
   [#:property prop:custom-write
    (lambda (obj port mode)
-     (print-discrete-dist (*discrete-dist-vs obj) (*discrete-dist-ws obj) port mode))])
+     (print-discrete-dist (if (= (*discrete-dist-wsum obj) 1)
+                              'discrete-dist
+                              'discrete-measure)
+                          (*discrete-dist-vs obj)
+                          (*discrete-dist-ws obj)
+                          port mode))])
 
 (define (discrete-dist? x) (*discrete-dist? x))
 (define (discrete-dist-values d) (*discrete-dist-vs d))
@@ -67,8 +73,18 @@
   (match d
     [(*discrete-dist vs ws wsum)
      (define ws* (vector-map exact->inexact ws))
-     (define wsum* (for/sum ([w (in-vector ws*)]) w))
-     (*discrete-dist vs ws* wsum*)]))
+     (make-discrete-dist* vs ws* #:normalize? #f)]))
+
+(define-syntax (discrete-measure* stx)
+  (define-syntax-class vwpair
+    #:description "pair of value and weight expressions"
+    (pattern [value:expr weight]
+             #:declare weight (expr/c #'(>=/c 0))))
+  (syntax-parse stx
+    [(discrete-measure p:vwpair ...)
+     #'(make-discrete-dist* #:normalize? #f
+                            #:sort? #t
+                            (vector p.value ...) (vector p.weight ...))]))
 
 (define-syntax (discrete-dist stx)
   (define-splicing-syntax-class maybe-normalize
@@ -129,7 +145,7 @@
       d
       (make-discrete-dist* (*discrete-dist-vs d) (*discrete-dist-ws d) #:normalize? #t)))
 
-(define (print-discrete-dist vs ws port mode)
+(define (print-discrete-dist name vs ws port mode)
   (define (recur x p)
     (case mode
       ((#t) (write x p))
@@ -139,8 +155,8 @@
   ;; Only two cases: 0 vs everything else
   (define (print-prefix p)
     (case mode
-      [(0) (write-string "(discrete-dist" p)]
-      [else (write-string "#<discrete-dist:" p)]))
+      [(0) (fprintf p "(~a" name)]
+      [else (fprintf p "#<~a:" name)]))
   (define (print-suffix p)
     (case mode
       [(0) (write-string ")" p)]
