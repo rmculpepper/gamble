@@ -41,7 +41,7 @@
 ;; Categorical dist has support 1..N; discrete has arbitrary values as support.
 ;; Prints nicely (sort), but non-standard constructor, can't use as match pattern.
 
-;; Not automatically normalized.
+;; Not necessarily normalized.
 ;; Uses equal? to distinguish elements of support.
 
 (define-dist-type *discrete-dist
@@ -113,8 +113,9 @@
   (define vs* (vector->immutable-vector vs1))
   (define-values (ws* wsum*)
     (let ([wsum (vector-sum ws1)])
-      (unless (and (rational? wsum) (positive? wsum)) ;; rational = finite real
-        (error 'discrete-dist "improper weights\n  weights: ~e" ws))
+      (when normalize?
+        (unless (and (rational? wsum) (positive? wsum)) ;; rational = finite real
+          (error 'discrete-dist "improper weights\n  weights: ~e" ws)))
       (if normalize?
           (values (vector->immutable-vector
                    (vector-map (lambda (w) (/ w wsum)) ws1))
@@ -301,19 +302,22 @@
 (define (dist-fmap d f)
   (make-discrete-dist
    (for/list ([(v w) (in-dist d)])
-     (cons (f v) w))))
+     (cons (f v) w))
+   #:normalize? #f))
 
 (define (dist-bind d f)
   (make-discrete-dist
    (for*/list ([(v w) (in-dist d)]
                [(v* w*) (in-dist (f v))])
-     (cons v* (* w w*)))))
+     (cons v* (* w w*)))
+   #:normalize? #f))
 
 (define (dist-bindx d f)
   (make-discrete-dist
    (for*/list ([(v w) (in-dist d)]
                [(v* w*) (in-dist (f v))])
-     (cons (list v v*) (* w w*)))))
+     (cons (list v v*) (* w w*)))
+   #:normalize? #f))
 
 (define NONE (gensym))
 
@@ -323,7 +327,7 @@
                 #:when (pred v))
       (cons v w)))
   (cond [(pair? filtered)
-         (make-discrete-dist filtered)]
+         (make-discrete-dist filtered #:normalize? #f)]
         [(eq? empty NONE)
          (error 'dist-filter
                 "predicate accepted no values in dist\n  dist: ~e\n  predicate: ~e"
