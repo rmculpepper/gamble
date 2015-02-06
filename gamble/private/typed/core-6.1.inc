@@ -120,5 +120,5 @@
                         [x (int-err "bad type result: ~a" x)])
                       => (lambda (ty-str)
                            #`(begin (display '#,ty-str)
-                                    #,(arm #'(instrument/local-expand optimized-body #:nt))))]
-                     [else (arm #'(instrument/local-expand optimized-body #:nt))])]))))]))
+                                    #,(arm #'(instrument/local-expand optimized-body))))]
+                     [else (arm #'(instrument/local-expand optimized-body))])]))))]))
