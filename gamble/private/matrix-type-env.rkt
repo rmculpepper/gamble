@@ -12,8 +12,16 @@
          (for-syntax (only-in typed-racket/rep/type-rep make-Name)))
 
 (begin-for-syntax
-  (define -serialize-info (make-Name #'serialize-info null #f #f))
-  (define -deserialize-info (make-Name #'deserialize-info null #f #f)))
+  (define -serialize-info
+    (cond [(member (version) '("6.1" "6.1.1"))
+           (make-Name #'serialize-info null #f #f)]
+          [else
+           (make-Name #'serialize-info null #f)]))
+  (define -deserialize-info
+    (cond [(member (version) '("6.1" "6.1.1"))
+           (make-Name #'deserialize-info null #f #f)]
+          [else
+           (make-Name #'deserialize-info null #f)])))
 
 (define (make-deserialize-info* make)
   (make-deserialize-info

@@ -1,8 +1,6 @@
 ;; UNTESTED
 ;; Copied from pkgs/typed-racket-lib/typed-racket/typed-racket.rkt
 
-#lang racket/base
-
 (require
  (for-syntax racket/base racket/lazy-require
              typed-racket/standard-inits)

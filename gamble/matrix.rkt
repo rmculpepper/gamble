@@ -119,7 +119,10 @@
         [else
          (ImmArray a)])
   |#
-  (let ([b a])
+  ;; Workaround:
+  (: identity : (t:Array Real) -> (t:Array Real))
+  (define (identity x) x)
+  (let ([b (identity a)])
     (cond [(t:settable-array? b)
            (ImmArray (t:array-map (inst values Real) a))]
           [else (ImmArray a)])))

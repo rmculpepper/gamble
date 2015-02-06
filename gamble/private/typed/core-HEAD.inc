@@ -1,9 +1,7 @@
 ;; UNTESTED
 ;; Copied from pkgs/typed-racket-lib/typed-racket/core.rkt
 
-#lang racket/base
-
-(require (rename-in typed-racket/utils/utils)
+(require typed-racket/utils/utils
          (for-syntax racket/base)
          (for-template racket/base)
          (private with-types type-contract)
@@ -27,18 +25,18 @@
      (let ([pmb-form (syntax/loc stx (#%plain-module-begin forms ...))])
        (tc-module/full stx pmb-form
         (λ (new-mod before-code pre-after-code)
-          (eprintf "new-mod = ~s\n\n" new-mod)
-          (eprintf "before-code = ~s\n\n" before-code)
-          (eprintf "pre-after-code = ~s\n\n" pre-after-code)
+          ;; (eprintf "new-mod = ~s\n\n" new-mod)
+          ;; (eprintf "before-code = ~s\n\n" before-code)
+          ;; (eprintf "pre-after-code = ~s\n\n" pre-after-code)
           (with-syntax*
            (;; pmb = #%plain-module-begin
             [(pmb . body2) new-mod]
             ;; perform the provide transformation from [Culpepper 07]
-            [transformed-body (begin0 (remove-provides #'body2) (do-time "Removed provides"))]
+            [transformed-body (begin0 (remove-provides #'body2)
+                                (do-time "Removed provides"))]
             ;; add the real definitions of contracts on requires
-            [transformed-body
-             (begin0 (change-contract-fixups (syntax->list #'transformed-body))
-                     (do-time "Fixed contract ids"))]
+            [transformed-body (begin0 (change-contract-fixups (syntax->list #'transformed-body))
+                                (do-time "Fixed contract ids"))]
             ;; add the real definitions of contracts on the after-code
             [(after-code ...) (change-provide-fixups (flatten-all-begins pre-after-code))]
             ;; potentially optimize the code based on the type information
@@ -55,7 +53,10 @@
                    #,(if (unbox include-extra-requires?)
                          extra-requires
                          #'(begin))
-                   #,before-code optimized-body ... after-code ... check-syntax-help))))))]))
+                   #,before-code
+                   (instrument/local-expand optimized-body) ...
+                   after-code ...
+                   check-syntax-help))))))]))
 
 (define did-I-suggest-:print-type-already? #f)
 (define :print-type-message " ... [Use (:print-type <expr>) to see more.]")
@@ -134,4 +135,4 @@
                          #,(arm #'(begin transformed-body ...))
                          (begin0 #,(arm #'transformed-last)
                            (display '#,ty-str))))
-              (arm #'(begin transformed-body ...))))))]))
+              (arm #'(begin (instrument/local-expand transformed-body) ...))))))]))
