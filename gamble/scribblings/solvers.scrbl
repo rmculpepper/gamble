@@ -411,6 +411,21 @@ The initial value is @racket[proposal:drift].
 }
 
 @; ----------------------------------------
+@subsection[#:tag "mh-zones"]{Zones: Identifying Random Choices}
+
+Random choices made during the execution of a model can be grouped
+into @deftech{zones} using the @racket[with-zone] form. Specialized
+transitions can then be assigned to choices based on their membership
+in zones.
+
+@defform[(with-zone zone-expr body ...+)]{
+
+Associate each random choice in the dynamic extent of the evaluation
+of the @racket[body] forms with the zone produced by
+@racket[zone-expr]. Any value except @racket[#f] can identity a zone.
+}
+
+@; ----------------------------------------
 @subsection[#:tag "hmc-utils"]{Specifying Derivatives for HMC}
 
 The @racket[hmc] transition requires that all the distributions in the
