@@ -28,6 +28,11 @@ Represents a weighted sampler.
 
 Produce a weighted sample @racket[(cons _value _weight)].
 }
+
+@defmethod[(info) void?]{
+
+Print diagnostic information about the sampler to standard output.
+}
 }
 
 @definterface[sampler<%> (weighted-sampler<%>)]{

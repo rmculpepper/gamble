@@ -6,6 +6,9 @@
 @(require scribble/manual
           scribble/basic
           (for-label racket/contract
+                     racket/class
+                     (only-in gamble/private/interfaces sampler<%>)
+                     (only-in gamble/private/prob-mh mh-sampler%)
                      gamble))
 
 @title[#:tag "mh-sampler"]{Metropolis-Hastings Implementation}
@@ -16,6 +19,44 @@ Contains the implementation of the Metropolis-Hastings framework,
 realized by @racket[mh-sampler]. The MH sampler can use several
 different kinds of transitions, and it relies on the call-site
 instrumentation done by the instrumenter (@secref["instrument"]).
+
+@defclass[mh-sampler% object% (sampler<%>)]{
+
+Objects of this class are produced by the @racket[mh-sampler] form.
+
+@defmethod[(MAP-estimate [iterations exact-positive-integer?])
+           any/c]{
+
+Run @racket[iterations] samples, and return the sample value
+corresponding to the state with the maximum observed posterior
+probability: @italic{p(state|obs) ∝ p(state)p(obs|state)}.
+
+Note: this is @emph{not} the same as the MAP of the distribution of
+samples! Rather, it can be seen as some deterministic function of the
+MAP of the internal state space.
+}
+
+@defmethod[(MLE-estimate [iterations exact-positive-integer?])
+           any/c]{
+
+Like @method[mh-sampler% MAP-estimate], but returns the sample value
+corresponding to the maximum likelihood state instead: @italic{p(obs|x)}.
+}
+
+@defmethod[(reinitialize [transition mh-transition? (rerun)]
+                         [attempts (or/c exact-nonnegative-integer? +inf.0) +inf.0])
+           boolean?]{
+
+Starts from the last accepted state and attempts to reach any valid
+state via @racket[transition]. Returns @racket[#t] if a valid state is
+reached within @racket[attempts] tries, or @racket[#f] otherwise.
+
+The @method[mh-sampler% reinitialize] method is useful when external
+effects may invalidate a previously valid state, such as the addition
+of new observations into an observation database.
+}
+}
+
 
 @section{Database}
 

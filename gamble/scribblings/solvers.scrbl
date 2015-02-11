@@ -375,6 +375,14 @@ Returns a transition that randomly selects a transition from
 @racket[txs], weighted by @racket[weights], on each step.
 }
 
+@defproc[(rerun)
+         mh-transition?]{
+
+Returns a transition that just reruns the program with the same state
+as the previous execution.
+}
+
+
 @; ----------------------------------------
 @subsection[#:tag "mh-proposals"]{Metropolis-Hastings Proposals}
 

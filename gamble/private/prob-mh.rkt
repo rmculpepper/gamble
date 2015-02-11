@@ -13,6 +13,7 @@
          "mh/enum-gibbs.rkt"
          "mh/hmc.rkt")
 (provide mh-sampler*
+         mh-sampler%
          mh-transition?
          cycle
          sequence
