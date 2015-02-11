@@ -324,8 +324,9 @@ choice at random rather than perturbing all choices round-robin.
               [#:zone zone-pattern any/c #f])
          mh-transition?]{
 
-A transition that picks a new state via Hamiltonian mechanics using
-the negative log-likelihood of a state as its potential energy.
+A transition that picks a new state via HMC: Hybrid (or Hamiltonian)
+Monte Carlo. HMC is based on Hamiltonian mechanics using the negative
+log-likelihood of a state as its potential energy.
 
 This transition is @bold{experimental} and comes with a number of
 restrictions:
