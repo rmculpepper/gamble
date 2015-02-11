@@ -112,7 +112,7 @@ Generates @racket[n] weighted samples from the @tech{weighted sampler}
          discrete-dist?]{
 
 Returns the empirical distribution obtained by generating @racket[n]
-samples from @racket[s], apply @racket[f] to each result.
+samples from @racket[sampler], apply @racket[f] to each result.
 
 @examples[#:eval the-eval
 (sampler->discrete-dist (rejection-sampler (flip 1/2)) 100)
