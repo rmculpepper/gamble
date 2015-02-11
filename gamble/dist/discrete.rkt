@@ -141,9 +141,12 @@
   (*discrete-dist vs* ws* wsum*))
 
 (define (normalize-discrete-dist d)
-  (if (= (*discrete-dist-wsum d) 1)
-      d
-      (make-discrete-dist* (*discrete-dist-vs d) (*discrete-dist-ws d) #:normalize? #t)))
+  (cond [(= (*discrete-dist-wsum d) 1)
+         d]
+        [(zero? (*discrete-dist-wsum d))
+         (error 'normalize-discrete-dist "cannot normalize empty measure")]
+        [else
+         (make-discrete-dist* (*discrete-dist-vs d) (*discrete-dist-ws d) #:normalize? #t)]))
 
 (define (print-discrete-dist name vs ws port mode)
   (define (recur x p)
@@ -205,35 +208,47 @@
          (print/one-line port)])
   (void))
 
-(define-sequence-syntax in-dist
-  (lambda () #'in-dist*)
-  (lambda (stx)
+(begin-for-syntax
+  (define (in-measure-transformer stx normalize?)
     (syntax-case stx ()
-      [[(v w) (in-dist d-expr)]
+      [[(v w) (in-X d-expr)]
        (let ()
          (unless (identifier? #'v)
-           (raise-syntax-error #'in-dist "expected identifier" stx #'v))
+           (raise-syntax-error #'in-X "expected identifier" stx #'v))
          (unless (identifier? #'w)
-           (raise-syntax-error #'in-dist "expected identifier" stx #'w))
-         #'[(v w)
-            (:do-in
-             ([(vs ws len) (in-dist:extract 'in-dist d-expr)])
-             (void)
-             ([i 0])
-             (< i len)
-             ([(v) (vector-ref vs i)] [(w) (vector-ref ws i)])
-             #t
-             #t
-             ((add1 i)))])]
+           (raise-syntax-error #'in-X "expected identifier" stx #'w))
+         (with-syntax ([normalize? normalize?])
+           #'[(v w)
+              (:do-in
+               ([(vs ws len) (in-dist:extract 'in-X d-expr normalize?)])
+               (void)
+               ([i 0])
+               (< i len)
+               ([(v) (vector-ref vs i)] [(w) (vector-ref ws i)])
+               #t
+               #t
+               ((add1 i)))]))]
       [_ #f])))
 
+(define-sequence-syntax in-dist
+  (lambda () #'in-dist*)
+  (lambda (stx) (in-measure-transformer stx #t)))
+
 (define (in-dist* d)
-  (define-values (vs ws len) (in-dist:extract 'in-dist d))
+  (define-values (vs ws len) (in-dist:extract 'in-dist d #t))
   (in-parallel vs ws))
 
-(define (in-dist:extract who d)
+(define-sequence-syntax in-measure
+  (lambda () #'in-measure*)
+  (lambda (stx) (in-measure-transformer stx #t)))
+
+(define (in-measure* d)
+  (define-values (vs ws len) (in-dist:extract 'in-measure d #f))
+  (in-parallel vs ws))
+
+(define (in-dist:extract who d normalize?)
   (cond [(discrete-dist? d)
-         (let* ([d (normalize-discrete-dist d)]
+         (let* ([d (if normalize? (normalize-discrete-dist d) d)]
                 [vs (discrete-dist-values d)]
                 [ws (discrete-dist-weights d)])
            (values vs ws (vector-length vs)))]
@@ -248,7 +263,7 @@
                 (define ws (vector-map (lambda (v) (dist-pdf d v)) enum))
                 (values enum ws len)]
                [else
-                (error 'in-dist "internal error: non-enumerable finite dist\n  dist: ~e" d)])]
+                (error who "internal error: non-enumerable finite dist\n  dist: ~e" d)])]
         [else (raise-argument-error who "finite-dist?" d)]))
 
 ;; ============================================================
@@ -309,7 +324,7 @@
   [dist-fmap (-> finite-dist? (-> any/c any/c) any)]
   [dist-bind (-> finite-dist? (-> any/c finite-dist?) any)]
   [dist-bindx (-> finite-dist? (-> any/c finite-dist?) any)]
-  [dist-filter (->* [finite-dist? (-> any/c boolean?)] [any/c] any)]
+  [dist-filter (-> finite-dist? (-> any/c boolean?) any)]
   [dist-join (-> finite-dist? finite-dist?)]))
 
 (define (dist-unit v)
@@ -317,42 +332,33 @@
 
 (define (dist-fmap d f)
   (make-discrete-dist
-   (for/list ([(v w) (in-dist d)])
+   (for/list ([(v w) (in-measure d)])
      (cons (f v) w))
    #:normalize? #f))
 
 (define (dist-bind d f)
   (make-discrete-dist
-   (for*/list ([(v w) (in-dist d)]
-               [(v* w*) (in-dist (f v))])
+   (for*/list ([(v w) (in-measure d)]
+               [(v* w*) (in-measure (f v))])
      (cons v* (* w w*)))
    #:normalize? #f))
 
 (define (dist-bindx d f)
   (make-discrete-dist
-   (for*/list ([(v w) (in-dist d)]
-               [(v* w*) (in-dist (f v))])
+   (for*/list ([(v w) (in-measure d)]
+               [(v* w*) (in-measure (f v))])
      (cons (list v v*) (* w w*)))
    #:normalize? #f))
 
-(define NONE (gensym))
-
-(define (dist-filter d pred [empty NONE])
-  (define filtered
-    (for*/list ([(v w) (in-dist d)]
-                #:when (pred v))
-      (cons v w)))
-  (cond [(pair? filtered)
-         (make-discrete-dist filtered #:normalize? #f)]
-        [(eq? empty NONE)
-         (error 'dist-filter
-                "predicate accepted no values in dist\n  dist: ~e\n  predicate: ~e"
-                d pred)]
-        [(procedure? empty) (empty)]
-        [else empty]))
+(define (dist-filter d pred)
+  (make-discrete-dist
+   (for*/list ([(v w) (in-measure d)]
+               #:when (pred v))
+     (cons v w))
+   #:normalize? #f))
 
 (define (dist-join d)
-  (for ([(v w) (in-dist d)])
+  (for ([(v w) (in-measure d)])
     (unless (finite-dist? v)
       (error 'dist-join
              "expected finite distribution over finite distributions\n  given: ~e"

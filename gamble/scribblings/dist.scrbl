@@ -119,12 +119,18 @@ Produces a sample distributed according to @racket[d]. This is an
 Returns a @tech[#:doc '(lib
 "scribblings/reference/reference.scrbl")]{sequence} where each element
 consists of two values: a value from the support of the distribution
-and its probability mass.
+and its probability mass. The weights are normalized to @racket[1],
+even if @racket[d] is unnormalized.
 
 @examples[#:eval the-eval
 (for ([(v p) (in-dist (bernoulli-dist 1/3))])
   (printf "Result ~s has probability ~s.\n" v p))
 ]
+}
+
+@defproc[(in-measure [d finite-dist?]) sequence?]{
+
+Like @racket[in-dist], but without normalizing the weights.
 }
 
 @deftogether[[
@@ -514,8 +520,16 @@ normalized, the function may return @racket[d].
 Returns the values and weights of @racket[d], respectively.
 }
 
+@defform[(discrete-measure [value-expr weight-expr] ...)]{
+
+Equivalent to @racket[(discrete-dist #:normalize? #f [value-expr weight-expr] ...)].
+}
+
 
 @section[#:tag "dist-monad"]{Finite Distributions as a Monad}
+
+The following operations, despite the @litchar{dist-} in the names,
+may produce unnormalized discrete distributions.
 
 @defproc[(dist-unit [v any/c]) finite-dist?]{
 
@@ -566,21 +580,15 @@ Equivalent to @racket[(dist-bind d (compose dist-unit f))].
 }
 
 @defproc[(dist-filter [d finite-dist?]
-                      [pred (-> any/c boolean?)]
-                      [empty any/c (lambda () (error ....))])
+                      [pred (-> any/c boolean?)])
          finite-dist?]{
 
 Returns a distribution like @racket[d] but whose support is narrowed
 to values accepted by the predicate @racket[pred].
 
-If @racket[pred] does not accept any values in the support of
-@racket[d], @racket[empty] is called, if it is a procedure, or
-returned otherwise.
-
 @examples[#:eval the-eval
 (dist-filter (binomial-dist 10 1/2) even?)
 (dist-filter (binomial-dist 10 1/2) negative?)
-(dist-filter (binomial-dist 10 1/2) negative? #f)
 ]
 }
 
