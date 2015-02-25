@@ -117,21 +117,42 @@
   (class* object% (weighted-sampler<%>)
     (init-field thunk)
     (field [successes 0]
-           [rejections 0])
+           [rejections 0]
+           [dens-dim-rejections 0]
+           [min-dens-dim +inf.0]
+           [bad-samples 0])
     (super-new)
 
     (define/public (info)
       (printf "== Importance sampler\n")
       (printf "Samples produced: ~s\n" successes)
-      (printf "Rejections: ~s\n" rejections))
+      (printf "Rejections: ~s\n" rejections)
+      (printf "Density dimension: ~s\n" min-dens-dim)
+      (unless (zero? dens-dim-rejections)
+        (printf "Density dimension rejections: ~s\n" dens-dim-rejections))
+      (unless (zero? bad-samples)
+        (printf "Bad samples emitted (wrong density dimension): ~s" bad-samples)))
 
     (define/public (sample/weight)
       (define ctx (new importance-stochastic-ctx%))
       (define v (send ctx run thunk))
       (case (car v)
         [(okay)
-         (set! successes (add1 successes))
-         (cons (cdr v) (get-field weight ctx))]
+         (define dens-dim (get-field dens-dim ctx))
+         (when (< dens-dim min-dens-dim)
+           (unless (zero? successes)
+             (eprintf "WARNING: previous ~s samples are meaningless; wrong density dimension\n"
+                      successes))
+           (vprintf "Lower density dimension seen: ~s\n" dens-dim)
+           (set! bad-samples successes)
+           (set! min-dens-dim dens-dim))
+         (cond [(<= dens-dim min-dens-dim)
+                (set! successes (add1 successes))
+                (cons (cdr v) (get-field weight ctx))]
+               [else
+                (set! dens-dim-rejections (add1 dens-dim-rejections))
+                (set! rejections (add1 rejections))
+                (sample/weight)])]
         [(fail)
          (set! rejections (add1 rejections))
          (sample/weight)]))
@@ -139,11 +160,13 @@
 
 (define importance-stochastic-ctx%
   (class rejection-stochastic-ctx%
-    (field [weight 1])
+    (field [weight 1]
+           [dens-dim 0])
     (inherit fail)
     (super-new)
     (define/override (observe-sample dist val scale)
       (define l (dist-pdf dist val))
+      (unless (dist-has-mass? dist) (set! dens-dim (add1 dens-dim)))
       (if (positive? l)
           (set! weight (* weight l scale))
           (fail 'observation)))
