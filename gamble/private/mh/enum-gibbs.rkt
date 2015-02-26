@@ -45,38 +45,41 @@
       (define (make-entry value*)
         (entry zones dist value* (dist-pdf dist value* #t) #f))
       (define enum (dist-enum dist))
+      ;; alternatives : (listof (U #f (cons Nat (cons Trace Real))))
+      (define alternatives
+        (for*/list ([value* (dist-enum dist)]
+                    [ll* (in-value (dist-pdf dist value* #t))]
+                    #:when (ll-possible? ll*))
+          (cond [(equal? value* value)
+                 (vprintf "considering value* = ~e (last value)\n" value*)
+                 (cons (trace-dens-dim last-trace) last-trace)]
+                [else
+                 (define entry* (make-entry value*))
+                 (define delta-db (hash key-to-change entry*))
+                 (vprintf "considering value* = ~e\n" value*)
+                 (define ctx (new db-stochastic-ctx%
+                                  (last-db (trace-db last-trace))
+                                  (delta-db delta-db)
+                                  (record-obs? record-obs?)
+                                  (on-fresh-choice
+                                   (lambda () (error-structural 'enumerative-gibbs key-to-change)))))
+                 (match (with-verbose> (send ctx run thunk))
+                   [(cons 'okay sample-value)
+                    (define current-trace (send ctx make-trace sample-value))
+                    (define nchoices (trace-nchoices current-trace))
+                    (define dens-dim (trace-dens-dim current-trace))
+                    (check-not-structural 'enumerative-gibbs key-to-change nchoices last-trace)
+                    (cons dens-dim current-trace)]
+                   [(cons 'fail fail-reason)
+                    #f])])))
       (define conditional-dist
         (make-discrete-dist
-         (for*/list ([value* (dist-enum dist)]
-                     [ll* (in-value (dist-pdf dist value* #t))]
-                     #:when (ll-possible? ll*))
-           (cond [(equal? value* value)
-                  (vprintf "considering value* = ~e (last value)\n" value*)
-                  (cons last-trace (exp (trace-ll last-trace)))]
-                 [else
-                  (define entry* (make-entry value*))
-                  (define delta-db (hash key-to-change entry*))
-                  (vprintf "considering value* = ~e\n" value*)
-                  (define ctx (new db-stochastic-ctx%
-                                   (last-db (trace-db last-trace))
-                                   (delta-db delta-db)
-                                   (record-obs? record-obs?)
-                                   (on-fresh-choice
-                                    (lambda () (error-structural 'enumerative-gibbs key-to-change)))))
-                  (match (with-verbose> (send ctx run thunk))
-                    [(cons 'okay sample-value)
-                     (define current-db (get-field current-db ctx))
-                     (define nchoices (get-field nchoices ctx))
-                     (define ll-free (get-field ll-free ctx))
-                     (define ll-obs (get-field ll-obs ctx))
-                     (define dens-dim (get-field dens-dim ctx))
-                     (define current-trace
-                       (trace sample-value current-db nchoices ll-free ll-obs dens-dim))
-                     (define ll (+ ll-free ll-obs))
-                     (check-not-structural 'enumerative-gibbs key-to-change nchoices last-trace)
-                     (cons current-trace (exp ll))]
-                    [(cons 'fail fail-reason)
-                     (cons #f 0)])]))))
+         (let* ([alternatives (filter values alternatives)]
+                [min-dens-dim (apply min (map car alternatives))])
+           (for/list ([alternative (in-list alternatives)]
+                      #:when (= (car alternative) min-dens-dim))
+             (define trace (cdr alternative))
+             (cons trace (exp (trace-ll trace)))))))
       (vprintf "conditional-dist = ~s\n" conditional-dist)
       (define t (dist-sample conditional-dist))
       (vprintf "chose ~e w/ prob ~s\n"

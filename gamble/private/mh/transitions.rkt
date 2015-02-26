@@ -46,14 +46,8 @@
       (define result (with-verbose> (send ctx run thunk)))
       (match result
         [(cons 'okay sample-value)
-         (define current-db (get-field current-db ctx))
-         (define nchoices (get-field nchoices ctx))
-         (define ll-free (get-field ll-free ctx))
-         (define ll-obs (get-field ll-obs ctx))
          (define ll-diff (get-field ll-diff ctx))
-         (define dens-dim (get-field dens-dim ctx))
-         (define current-trace
-           (trace sample-value current-db nchoices ll-free ll-obs dens-dim))
+         (define current-trace (send ctx make-trace sample-value))
          (define threshold
            (accept-threshold last-trace R-F current-trace ll-diff record-obs?))
          (cons threshold current-trace)]

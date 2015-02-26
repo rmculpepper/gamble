@@ -7,6 +7,7 @@
          (rename-in racket/match [match-define defmatch])
          "interfaces.rkt"
          "mh/base.rkt"
+         "mh/db.rkt"
          "mh/proposal.rkt"
          "mh/transitions.rkt"
          "mh/slice.rkt"

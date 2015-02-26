@@ -13,6 +13,12 @@
          "../dist.rkt")
 (provide (all-defined-out))
 
+;; A Trace is (trace Any DB Nat Real Real Nat)
+(struct trace (value db nchoices ll-free ll-obs dens-dim))
+(define init-trace (trace #f '#hash() 0 0 0 +inf.0))
+
+(define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
+
 ;; A DB is (Hashof Address Entry)
 
 ;; An Entry is (entry (listof Zone) Dist Any Real Real/#f)
@@ -170,6 +176,11 @@
                          ;; if not record-obs?: ll-free - OLD(ll-free)
            [dens-dim 0]) ;; density dimension
     (super-new)
+
+    ;; make-trace : Any -> Trace
+    ;; Should only be called after run, once current-db has stopped changing.
+    (define/public (make-trace value)
+      (trace value current-db nchoices ll-free ll-obs dens-dim))
 
     ;; db-add! : Address Entry -> Void
     ;; Add entry to current-db and update nchoices, ll-free, ll-obs.

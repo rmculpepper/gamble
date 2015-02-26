@@ -50,6 +50,7 @@
       (vprintf "slice threshold = ~s\n" (exp threshold))
       (define-values (support-min support-max) (get-support-bounds dist))
       (define trace-cache (make-hash)) ;; (hashof Real => Trace/#f)
+      (define last-dens-dim (trace-dens-dim last-trace))
       (define (eval-trace value*)
         (hash-ref! trace-cache value* (lambda () (eval-trace* value*))))
       (define (eval-trace* value*)
@@ -66,22 +67,17 @@
                (match (send ctx run thunk)
                  [(cons 'okay sample-value)
                   (check-not-structural 'slice key-to-change (get-field nchoices ctx) last-trace)
-                  (define current-db (get-field current-db ctx))
-                  (define nchoices (get-field nchoices ctx))
-                  (define ll-free (get-field ll-free ctx))
-                  (define ll-obs (get-field ll-obs ctx))
-                  (define dens-dim (get-field dens-dim ctx))
-                  (trace sample-value current-db nchoices ll-free ll-obs dens-dim)]
+                  (send ctx make-trace sample-value)]
                  [(cons 'fail fail-reason)
                   #f])]
               [else #f]))
       (define (eval-ll value*)
-        (trace-ll* (eval-trace value*)))
+        (trace-ll/dim (eval-trace value*) last-dens-dim))
       (vprintf "Finding slice bounds\n")
       ;; inclusive bounds
       (define-values (lo hi)
         (with-verbose> (find-slice-bounds dist value eval-ll threshold)))
-      (select-value* dist value lo hi eval-trace threshold))
+      (select-value* dist value lo hi eval-trace last-dens-dim threshold))
 
     (define/private (find-slice-bounds dist value eval-ll threshold)
       (cond [(small-dist? dist)
@@ -156,7 +152,7 @@
         (values (loop-lo lo (eval-ll lo))
                 (loop-hi hi (eval-ll hi)))))
 
-    (define/private (select-value* dist value lo0 hi0 eval-trace threshold)
+    (define/private (select-value* dist value lo0 hi0 eval-trace last-dens-dim threshold)
       (define-values (support-min support-max) (get-support-bounds dist))
       (define lo (max lo0 support-min))
       (define hi (min hi0 support-max))
@@ -173,13 +169,15 @@
         (vprintf "Trying value* = ~e\n" value*)
         (set! in-slice-counter (add1 in-slice-counter))
         (define current-trace (with-verbose> (eval-trace value*)))
+        (define current-ll (trace-ll/dim current-trace last-dens-dim))
         (cond [(and current-trace
-                    (> (trace-ll current-trace) threshold)
+                    (> current-ll threshold)
                     (acceptable? dist value value* lo0 hi0 eval-trace threshold))
                current-trace]
               [else
                (vprintf "Retrying (~a)\n"
-                        (cond [(and current-trace (> (trace-ll current-trace) threshold))
+                        (cond [(and current-trace
+                                    (> current-ll threshold))
                                "value not acceptable"]
                               [current-trace
                                "below threshold"]
@@ -233,3 +231,6 @@
 
 (define (trace-ll* t)
   (if (trace? t) (trace-ll t) -inf.0))
+
+(define (trace-ll/dim t last-dens-dim)
+  (ll+dim->ll (trace-ll* t) (- (trace-dens-dim t) last-dens-dim)))

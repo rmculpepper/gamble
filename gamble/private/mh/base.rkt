@@ -25,10 +25,6 @@
 ;; - Trace  -- run completed, threshold already checked (if applicable)
 ;; - #f     -- run failed or mh-rejected
 
-;; A Trace is (trace Any DB Nat Real Real Nat)
-(struct trace (value db nchoices ll-free ll-obs dens-dim))
-(define init-trace (trace #f '#hash() 0 0 0 +inf.0))
-
 ;; ============================================================
 
 (define mh-transition-base%
@@ -52,16 +48,10 @@
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (match (run* thunk last-trace)
-        [(cons (? real? threshold) trace)
+        [(cons (? real? threshold0) trace)
          (define last-dens-dim (trace-dens-dim last-trace))
          (define dens-dim (trace-dens-dim trace))
-         (define threshold*
-           (cond [(= dens-dim last-dens-dim)
-                  threshold]
-                 [(< dens-dim last-dens-dim)
-                  +inf.0]
-                 [(> dens-dim last-dens-dim)
-                  -inf.0]))
+         (define threshold (ll+dim->ll threshold0 (- dens-dim last-dens-dim)))
          (vprintf "accept threshold = ~s (density dimension ~s -> ~s)\n"
                   (exp threshold) last-dens-dim dens-dim)
          (define u (log (random)))
@@ -87,6 +77,19 @@
     ;; feedback : Boolean -> Void
     (define/public (feedback success?) (void))
     ))
+
+;; ll+dim->ll : Real Int -> Real
+;; Takes a log likelihood and a density dimension difference (current - last)
+;; and converts them into a single extended real.
+;; A positive density dimension change meand infinitely less likely.
+;; A negative density dimension change means infintely more likely.
+(define (ll+dim->ll ll dens-dim-diff)
+  (cond [(zero? dens-dim-diff)
+         ll]
+        [(positive? dens-dim-diff)
+         -inf.0]
+        [(negative? dens-dim-diff)
+         +inf.0]))
 
 ;; ============================================================
 
@@ -182,8 +185,6 @@
         [else '=]))
 
 ;; ============================================================
-
-(define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
 
 (define (error-no-key who zone)
   (error who "no random choice available to change~a"
