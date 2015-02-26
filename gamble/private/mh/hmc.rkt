@@ -460,7 +460,8 @@ choices do not affect control flow through the probabilistic program).
          (trace ans ans-db
                 (get-field nchoices ctx)
                 (get-field ll-free ctx)
-                (get-field ll-obs ctx))]
+                (get-field ll-obs ctx)
+                (get-field dens-dim ctx))]
         [(cons 'fail fail-reason)
          (run/collect-gradients thunk last-trace)]))
 
@@ -488,11 +489,12 @@ choices do not affect control flow through the probabilistic program).
            (cons alpha (hmc-system->trace last-trace val proposal-sys)))]))
 
     (define/private (hmc-system->trace last-trace sample-value proposal-sys)
-      (defmatch (trace _ _ last-nchoices _ _) last-trace)
+      (defmatch (trace _ _ last-nchoices _ _ _) last-trace)
       (define proposal-db (hmc-system-X proposal-sys))
       ; XXX - is this right?
       (define ll-free 0.0)
       (define ll-obs 0.0)
-      (trace sample-value proposal-db last-nchoices ll-free ll-obs))
+      (define dens-dim 0)
+      (trace sample-value proposal-db last-nchoices ll-free ll-obs dens-dim))
 
     ))

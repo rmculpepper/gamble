@@ -166,8 +166,9 @@
            [nchoices 0]  ;; number of unpinned entries in current-db
            [ll-free  0]  ;; sum of ll of all unpinned entries in current-db
            [ll-obs   0]  ;; sum of ll of all observations
-           [ll-diff  0]) ;; if record-obs?: (ll-free + ll-obs) - OLD(ll-free + ll-obs)
+           [ll-diff  0]  ;; if record-obs?: (ll-free + ll-obs) - OLD(ll-free + ll-obs)
                          ;; if not record-obs?: ll-free - OLD(ll-free)
+           [dens-dim 0]) ;; density dimension
     (super-new)
 
     ;; db-add! : Address Entry -> Void
@@ -290,6 +291,8 @@
                   ;; relevant cases? Do we care if an obs value changed?
                   (vprintf "OBS UPDATE ....\n")
                   (define ll (+ lscale (dist-pdf dist val #t)))
+                  (unless (dist-has-mass? dist)
+                    (set! dens-dim (add1 dens-dim)))
                   (cond [(ll-possible? ll)
                          (db-add! context (entry (current-zones) dist val ll lscale))
                          (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
@@ -298,6 +301,8 @@
             [else
              (vprintf "OBS~a ~e: ~s = ~e\n" (if record-obs? "" " NEW") dist context val)
              (define ll (+ lscale (dist-pdf dist val #t)))
+             (unless (dist-has-mass? dist)
+               (set! dens-dim (add1 dens-dim)))
              (cond [(ll-possible? ll)
                     (cond [record-obs?
                            (db-add! context (entry (current-zones) dist val ll lscale))]

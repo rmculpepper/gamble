@@ -31,7 +31,7 @@
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" this%)
       (set! run-counter (add1 run-counter))
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       (define key-to-change (pick-a-key last-nchoices last-db zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'enumerative-gibbs zone))
@@ -69,8 +69,9 @@
                      (define nchoices (get-field nchoices ctx))
                      (define ll-free (get-field ll-free ctx))
                      (define ll-obs (get-field ll-obs ctx))
+                     (define dens-dim (get-field dens-dim ctx))
                      (define current-trace
-                       (trace sample-value current-db nchoices ll-free ll-obs))
+                       (trace sample-value current-db nchoices ll-free ll-obs dens-dim))
                      (define ll (+ ll-free ll-obs))
                      (check-not-structural 'enumerative-gibbs key-to-change nchoices last-trace)
                      (cons current-trace (exp ll))]

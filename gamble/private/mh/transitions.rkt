@@ -51,8 +51,9 @@
          (define ll-free (get-field ll-free ctx))
          (define ll-obs (get-field ll-obs ctx))
          (define ll-diff (get-field ll-diff ctx))
+         (define dens-dim (get-field dens-dim ctx))
          (define current-trace
-           (trace sample-value current-db nchoices ll-free ll-obs))
+           (trace sample-value current-db nchoices ll-free ll-obs dens-dim))
          (define threshold
            (accept-threshold last-trace R-F current-trace ll-diff record-obs?))
          (cons threshold current-trace)]
@@ -104,7 +105,7 @@
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       (define key-to-change (send selector select-one last-trace zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (if key-to-change
@@ -128,8 +129,8 @@
     (define/private (accept-threshold/nchoices last-trace current-trace)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
-      (defmatch (trace _ current-db nchoices _ _) current-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
+      (defmatch (trace _ current-db nchoices _ _ _) current-trace)
       (cond [(zero? last-nchoices)
              +inf.0]
             [else
@@ -163,7 +164,7 @@
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       (define-values (delta-db R-F)
         (for/fold ([delta-db '#hash()] [R-F 0])
             ([(key e) (in-hash last-db)]
@@ -178,7 +179,7 @@
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     (define/override (accept-threshold last-trace R-F current-trace ll-diff record-obs?)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       (if (zero? last-nchoices)
           +inf.0
           ;; FIXME: what if nchoices != last-nchoices ???

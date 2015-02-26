@@ -25,9 +25,9 @@
 ;; - Trace  -- run completed, threshold already checked (if applicable)
 ;; - #f     -- run failed or mh-rejected
 
-;; A Trace is (trace Any DB Nat Real Real)
-(struct trace (value db nchoices ll-free ll-obs))
-(define init-trace (trace #f '#hash() 0 0 0))
+;; A Trace is (trace Any DB Nat Real Real Nat)
+(struct trace (value db nchoices ll-free ll-obs dens-dim))
+(define init-trace (trace #f '#hash() 0 0 0 +inf.0))
 
 ;; ============================================================
 
@@ -53,7 +53,17 @@
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (match (run* thunk last-trace)
         [(cons (? real? threshold) trace)
-         (vprintf "accept threshold = ~s\n" (exp threshold))
+         (define last-dens-dim (trace-dens-dim last-trace))
+         (define dens-dim (trace-dens-dim trace))
+         (define threshold*
+           (cond [(= dens-dim last-dens-dim)
+                  threshold]
+                 [(< dens-dim last-dens-dim)
+                  +inf.0]
+                 [(> dens-dim last-dens-dim)
+                  -inf.0]))
+         (vprintf "accept threshold = ~s (density dimension ~s -> ~s)\n"
+                  (exp threshold) last-dens-dim dens-dim)
          (define u (log (random)))
          (cond [(< u threshold)
                 (vprintf "Accepted MH step with ~s\n" (exp u))
@@ -94,7 +104,7 @@
       (iprintf i "-- Random selector\n"))
 
     (define/public (select-one last-trace zone)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       (define nchoices/zone
         (cond [(eq? zone #f) last-nchoices]
               [else (db-count-unpinned last-db #:zone zone)]))
@@ -116,7 +126,7 @@
 
     (define/public (select-one last-trace zone)
       (vprintf "last-key = ~s\n" last-key)
-      (defmatch (trace _ last-db last-nchoices _ _) last-trace)
+      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       ;; Take first key > last-key; or failing that, take first key.
       (define-values (first-key next-key)
         (for/fold ([first-key #f] [next-key #f])
