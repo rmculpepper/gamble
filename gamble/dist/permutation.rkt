@@ -24,7 +24,7 @@
   #:has-mass
   #:drift (lambda (value scale-factor)
             (cond [(<= n 1)
-                   value]
+                   (cons value 0)]
                   [else
                    (define v (vector-copy value))
                    (define idx1 (random n))
@@ -34,7 +34,7 @@
                    (define elt2 (vector-ref v idx2))
                    (vector-set! v idx1 elt1)
                    (vector-set! v idx2 elt2)
-                   v])))
+                   (cons v 0)])))
 
 (define (permutation-pdf n perm log?)
   (cond [(permutation? perm n)
