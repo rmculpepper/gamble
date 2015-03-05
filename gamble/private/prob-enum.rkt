@@ -66,8 +66,6 @@
 ;; ----------------------------------------
 
 ;; https://hips.seas.harvard.edu/blog/2013/01/09/computing-log-sum-exp/
-(provide logspace+
-         logspace-)
 
 ;; logspace+ : Real Real -> Real
 ;; Given (log A) and (log B), return (log (+ A B)).
@@ -90,16 +88,6 @@
   (define r (logspace+* a b))
   (when (eqv? r +nan.0)
     (error 'logspace+ "~s + ~s => ~s" a b r))
-  r)
-
-(define (logspace-* a b)
-  (define m (max a b))
-  (+ m (log (- (exp (- a m)) (exp (- b m))))))
-
-(define (logspace- a b)
-  (define r (logspace-* a b))
-  (when (eqv? r +nan.0)
-    (error 'logspace- "~s - ~s => ~s" a b r))
   r)
 
 ;; explore : (EnumTree A) ...
