@@ -207,15 +207,13 @@
     [(enumerate def:expr ... result:expr
                 (~or (~optional (~seq #:when condition:expr))
                      (~optional (~seq #:limit limit:expr))
-                     (~optional (~seq #:normalize? normalize?))
-                     (~optional (~seq #:exact? exact?)))
+                     (~optional (~seq #:normalize? normalize?)))
                 ...)
      (template
       (enumerate*
        (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
        (?? limit #f)
-       (?? normalize? #t)
-       (?? exact? #t)))]))
+       (?? normalize? #t)))]))
 
 (define-syntax (enum-importance-sampler stx)
   (syntax-parse stx

@@ -7,6 +7,7 @@
 
 #lang racket/base
 (provide heap
+         heap->list
          heap-empty?
          heap-count
          heap-insert
@@ -22,12 +23,23 @@
 (struct Tree (elem heaps))
 (struct PairingHeap (comparer heap))
 
+;; heap->list : (PairingHeap A) -> (Listof A)
+;; Returns list of elements in no particular order.
+(define (heap->list pheap)
+  (define (loop t onto)
+    (cond [(null? t) onto]
+          [else (loop* (Tree-heaps t) (cons (Tree-elem t) onto))]))
+  (define (loop* ts onto)
+    (for/fold ([onto onto]) ([t (in-list ts)])
+      (loop t onto)))
+  (loop (PairingHeap-heap pheap) null))
+
 ;; heap-count : (PairingHeap A) -> Integer
 (define (heap-count pheap)
   (let loop ([ih (PairingHeap-heap pheap)])
     (cond [(null? ih) 0]
           [else (apply + 1 (map loop (Tree-heaps ih)))])))
-  
+
 ;; An empty heap
 (define empty null)
 

@@ -176,7 +176,7 @@
    [mh-sampler* ;; FIXME
     (-poly (a) (-> (-> a) (-Sampler a)))]
    [enumerate* ;; FIXME
-    (-poly (a) (-> (-> a) (Un -False -Real) -Boolean -Boolean -DistTop))]
+    (-poly (a) (-> (-> a) (Un -False -Real) -Boolean -DistTop))]
    ;; pdelay
    ;; table
    ;; ppromise?

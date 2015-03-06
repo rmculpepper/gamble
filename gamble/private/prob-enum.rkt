@@ -3,7 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/match
+(require (rename-in racket/match [match-define defmatch])
          racket/class
          "../dist.rkt"
          "prob-lazy-tree.rkt"
@@ -35,33 +35,13 @@
 ;; ============================================================
 
 ;; enumerate* : (-> A) etc -> (Listof (List A Prob))
-(define (enumerate* thunk limit normalize? exact?)
+(define (enumerate* thunk limit normalize?)
   (vprintf "Enumerating\n")
   (define tree (reify-tree thunk))
-  (define-values (table prob-explored prob-accepted)
-    (explore tree limit (not exact?)))
-  (vprintf "explored rate = ~s\n" prob-explored)
-  (vprintf "accept rate = ~s\n" (/ prob-accepted prob-explored))
-  (when (zero? (hash-count table))
+  (define table (explore tree limit))
+  (when (and normalize? (zero? (hash-count table)))
     (error 'enumerate "condition accepted no paths"))
-  (when (and normalize? (zero? prob-accepted))
-    (error 'enumerate "probability of accepted paths underflowed to 0"))
-  (tabulate table prob-accepted (not exact?) #:normalize? normalize?))
-
-(define (tabulate table prob-accepted logspace? #:normalize? [normalize? #t])
-  (define (p->real p)
-    (if normalize?
-        (if logspace?
-            (exp (- p prob-accepted))
-            (/ p prob-accepted))
-        (if logspace?
-            (exp p)
-            p)))
-  (define prob-accepted* (if logspace? (exp prob-accepted) prob-accepted))
-  (define entries
-    (for/list ([(val prob) (in-hash table)])
-      (cons val (p->real prob))))
-  (make-discrete-dist entries #:normalize? normalize?))
+  (make-discrete-dist table #:normalize? normalize?))
 
 ;; ----------------------------------------
 
@@ -90,11 +70,53 @@
     (error 'logspace+ "~s + ~s => ~s" a b r))
   r)
 
-;; explore : (EnumTree A) ...
-;;        -> hash[A => Prob] Prob Prob
-;; Limit means: explore until potential accepted dist is < limit unaccounted for,
-;; ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
-(define (explore tree limit logspace?)
+(define (logspace-compl a)
+  (log (- 1.0 (exp a))))
+
+;; An ExpST is (expst Prob Prob Hash[A => Prob] Nat)
+;; where Prob is Real or Real+ depending on logspace?,
+;; and dim is density dimension of every entry in table.
+(struct expst (explored accepted table table-ddim) #:transparent)
+
+(define (expst->logspace st)
+  (defmatch (expst explored accepted table table-ddim) st)
+  (expst (log (exact->inexact explored)) (log (exact->inexact accepted))
+         (table->logspace table) table-ddim))
+
+(define (table->logspace table)
+  (for/hash ([(k v) (in-hash table)])
+    (values k (log (exact->inexact v)))))
+
+;; A (HeapEntry A) is (list* Prob Nat (-> (EnumTree A))).
+(define (entry->=? x y) (>= (car x) (car y)))
+
+(define (heap->logspace h)
+  (for/fold ([new-h (heap entry->=?)])
+            ([entry (in-list (heap->list h))])
+    (heap-insert new-h (cons (log (car entry)) (cdr entry)))))
+
+;; explore : (EnumTree A) (U #f Real>0) -> Hash[A => Real+]
+;; * Starts with logspace? = #f, but switches to logspace if an inexact
+;;   density is ever seen.
+;; * Limit means: explore until potential accepted dist is < limit unaccounted for,
+;;   ie, unexplored < limit * accepted. Thus, limit is nonlocal; use BFS.
+;;   Limit is always realspace, not logspace. If no limit, prob-{explored,accepted}
+;;   can be meaningless. Note: Cannot observe continuous dist if limit given.
+(define (explore tree limit)
+  (define initial-st (expst 0 0 '#hash() 0))
+  (define initial-heap
+    ;; lib provides "min-heap", but want max prob, so use >= comparison
+    (heap entry->=?))
+  (define initial-ddim 0)
+  (define initial-p 1)
+  (explore* limit #f initial-heap initial-st tree initial-ddim initial-p))
+
+;; explore* : (EnumTree A) (U #f Real>0) ExpSt Heap Nat -> Hash[A => Real+]
+;; - st   : ExpST, rep of Prob depends on logspace?
+;; - h    : heap[(cons Prob (-> (EnumTree A)))]
+;; - ddim : Nat, density dimension
+(define (explore* limit logspace? h st tree tree-ddim tree-p)
+  ;; type Prob = Real
   ;; The representation of probabilities in this code is determined by
   ;; the logspace? argument.  If logspace? is true, then values
   ;; represent log of prob; if false, values represent prob directly.
@@ -105,98 +127,105 @@
     (if logspace? (exp a) a))
   (define (p+ a b)
     (if logspace? (logspace+ a b) (+ a b)))
+  (define (pcompl a)
+    (if logspace? (logspace-compl a) (- 1 a)))
   (define (p* a b)
     (if logspace? (+ a b) (* a b)))
   (define pzero (->p 0))
 
-  (define (entry->=? x y)
-    (>= (car x) (car y)))
+  (define (switch-to-logspace h st tree tree-ddim tree-p)
+    (explore* limit #t (heap->logspace h) (expst->logspace st) tree tree-ddim (log tree-p)))
 
-  ;; prob-explored -- prob of all explored paths
-  ;; prob-accepted -- prob of all accepted paths
-  ;; table         -- hash[A => Prob], probs are not normalized
-  ;; h             -- heap[(cons Prob (-> (EnumTree A)))]
-
-  ;; add : A Prob table prob-explored prob-accepted
-  ;;    -> (values table prob-explored prob-accepted)
-  (define (add a p table prob-explored prob-accepted)
-    ;; (eprintf "- consider add A=~s\n" a)
-    (cond [(> p pzero) ;; ie, possible
-           (let* ([prob-explored (p+ prob-explored p)]
-                  [prob-accepted (p+ p prob-accepted)]
-                  [table (hash-set table a (p+ p (hash-ref table a pzero)))])
-             ;; (eprintf "- add B=~s\n" b)
-             (values table prob-explored prob-accepted))]
+  ;; add : A Prob Nat ExpST -> ExpST
+  ;; Don't bother to watch for underflow, since we switch to logspace
+  ;; for inexact numbers, and logspace is hard to underflow.
+  (define (add a p ddim st)
+    (defmatch (expst prob-explored prob-accepted table table-ddim) st)
+    (cond [(> ddim table-ddim) ;; ie, infinitesimally likely
+           st]
+          [(< ddim table-ddim) ;; ie, infinitely more likely than table
+           ;; Can only happen if continuous obs allowed; therefore,
+           ;; explored and accepted probs don't really matter.
+           (expst p p (hash a p) ddim)]
           [else
-           (vprintf "WARNING: bad prob ~s for ~s\n" (p->real p) a)
-           (values table prob-explored prob-accepted)]))
+           (let* ([prob-explored (if limit (p+ prob-explored p) 0)]
+                  [prob-accepted (if limit (p+ prob-accepted p) 0)]
+                  [table (hash-set table a (p+ p (hash-ref table a pzero)))])
+             (expst prob-explored prob-accepted table table-ddim))]))
 
-  ;; traverse-tree : (EnumTree A) Prob ...
-  ;;              -> (values h table prob-explored prob-accepted)
-  (define (traverse-tree et prob-of-tree h table prob-explored prob-accepted)
-    (match et
+  ;; add-explored : ExpST Prob -> ExpST
+  (define (add-explored st p)
+    (cond [limit
+           (defmatch (expst prob-explored prob-accepted table table-ddim) st)
+           (let ([prob-explored (p+ prob-explored p)])
+             (expst prob-explored prob-accepted table table-ddim))]
+          [else st]))
+
+  ;; traverse-tree : (EnumTree A) Prob Heap Nat ExpSt -> Answer
+  (define (traverse-tree h st tree tree-ddim tree-p)
+    (match tree
       [(only a)
-       (let-values ([(table prob-explored prob-accepted)
-                     (add a prob-of-tree table prob-explored prob-accepted)])
-         (values h table prob-explored prob-accepted))]
+       (heap-loop h (add a tree-p tree-ddim st))]
       [(? split? et)
-       (define subs (split->subtrees et logspace?))
-       (for/fold ([h h] [table table] [prob-explored prob-explored] [prob-accepted prob-accepted])
-           ([sub (in-list subs)])
-         (match sub
-           [(cons p lt)
-            (let ([p* (p* prob-of-tree p)])
-              (cond [(> p* pzero) ;; ie, possible
-                     (values (heap-insert h (cons p* lt)) table prob-explored prob-accepted)]
-                    [else
-                     (vprintf "WARNING: probability of a path may have underflowed: ~s\n" p*)
-                     (values h table prob-explored prob-accepted)]))]))]
+       (define subs (split->subtrees tree logspace?))
+       (cond [(and (not logspace?) (for/or ([sub (in-list subs)]) (inexact? (car sub))))
+              ;; Switch to logspace!
+              (switch-to-logspace h st tree tree-ddim tree-p)]
+             [else
+              (define h*
+                (for/fold ([h h]) ([sub (in-list subs)])
+                  (defmatch (cons p lt) sub)
+                  (let ([p (p* tree-p p)])
+                    (heap-insert h (list* p tree-ddim lt)))))
+              (heap-loop h* st)])]
       [(weight dist val scale k)
-       (when (and limit (not (or (finite-dist? dist) (integer-dist? dist))))
+       (when (and limit (not (dist-has-mass? dist)))
          ;; limit applies to mass; it can't handle densities
          (error 'enumerate "cannot use both #:limit and observe with continuous distribution"))
-       (traverse-tree (k)
-                      (p* prob-of-tree (p* (->p scale) (dist-pdf dist val logspace?)))
-                      h table prob-explored prob-accepted)]
+       (let ([p (dist-pdf dist val logspace?)])
+         (cond [(and (not logspace?) (inexact? p))
+                ;; Switch to logspace!
+                (switch-to-logspace h st tree tree-ddim tree-p)]
+               [else
+                (let* ([tree-ddim (+ tree-ddim (if (dist-has-mass? dist) 0 1))]
+                       [scaled-p (p* (->p scale) p)]
+                       [tree-p (p* tree-p scaled-p)]
+                       [st (add-explored st (p* tree-p (pcompl scaled-p)))])
+                  (traverse-tree h st (k) tree-ddim tree-p))]))]
       [(failed reason)
-       (let ([prob-explored (p+ prob-explored prob-of-tree)])
-         (values h table prob-explored prob-accepted))]))
+       (heap-loop h (add-explored st tree-p))]))
 
-  ;; heap-loop : ... -> ...
-  (define (heap-loop h table prob-explored prob-accepted)
+  ;; heap-loop : Heap ExpST -> Answer
+  (define (heap-loop h st)
+    (defmatch (expst prob-explored prob-accepted table table-ddim) st)
     (cond [;;     unexplored < limit * accepted
            ;; ie, (1 - explored) < limit * accepted
            ;; ie, 1 < limit * accepted + explored
            ;; ie, limit * accepted + explored > 1
            (and limit (> (p+ prob-explored (p* (->p limit) prob-accepted)) (->p 1)))
            ;; Done!
-           (when (positive? (heap-count h))
+           (unless (heap-empty? h)
              (vprintf "stopping with ~s unexplored path(s)\n" (heap-count h)))
-           (done h table prob-explored prob-accepted)]
-          [(zero? (heap-count h))
+           (done table)]
+          [(heap-empty? h)
            ;; explored all paths
-           (done h table prob-explored prob-accepted)]
+           (done table)]
           [else
            (let* ([sub (heap-find-min/max h)]
                   [h (heap-delete-min/max h)])
-             (let-values ([(h table prob-explored prob-accepted)
-                           (traverse-tree ((cdr sub)) (car sub)
-                                          h table prob-explored prob-accepted)])
-               (heap-loop h table prob-explored prob-accepted)))]))
+             (defmatch (list* prob ddim k) sub)
+             (traverse-tree h st (k) ddim prob))]))
 
-  (define (done h table prob-explored prob-accepted)
-    (values table (p->real prob-explored) (p->real prob-accepted)))
+  ;; done : Hash Real Real -> Hash[A => Real+]
+  (define (done table)
+    (cond [logspace?
+           (define m (for/fold ([m -inf.0]) ([(k v) (in-hash table)]) (max m v)))
+           ;; FIXME: scale max to 1 first
+           (for/hash ([(k v) (in-hash table)])
+             (values k (exp (- v m))))]
+          [else table]))
 
-  (let ()
-    (define prob-explored pzero)
-    (define prob-accepted pzero)
-    (define table (hash))
-    (define h (heap entry->=?)) ;; "min-heap", but want max prob, so >=
-    ;; FIXME: prob-explored can rise above 1 because of floating-point
-    ;; inaccuracy. (Maybe?) Any remedy?
-    (let-values ([(h table prob-explored prob-accepted)
-                  (traverse-tree tree (->p 1) h table prob-explored prob-accepted)])
-      (heap-loop h table prob-explored prob-accepted))))
+  (traverse-tree h st tree tree-ddim tree-p))
 
 ;; ============================================================
 
