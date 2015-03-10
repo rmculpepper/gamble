@@ -504,11 +504,15 @@
 ;; Inverse gamma distribution
 
 (define (m:flinverse-gamma-pdf shape scale x log?)
-  (m:flgamma-pdf shape scale (/ x) log?))
+  (define uncorrected (m:flgamma-pdf shape scale (/ x) log?))
+  ;; Correct by a factor of 1/x² (comes from change of variables x -> 1/x)
+  (if log?
+    (- uncorrected (* 2 (log x)))
+    (/ uncorrected x x)))
 (define (m:flinverse-gamma-cdf shape scale x log? 1-p?)
-  (m:flgamma-cdf shape scale (/ x) log? 1-p?))
+  (m:flgamma-cdf shape scale (/ x) log? (not 1-p?)))
 (define (m:flinverse-gamma-inv-cdf shape scale x log? 1-p?)
-  (/ (m:flgamma-inv-cdf shape scale x log? 1-p?)))
+  (/ (m:flgamma-inv-cdf shape scale x log? (not 1-p?))))
 (define (m:flinverse-gamma-sample shape scale n)
   (define flv (m:flgamma-sample shape scale n))
   (for ([i (in-range n)])
@@ -689,7 +693,7 @@
           [bernoulli
            (->* [] [probability?] any)]
           [categorical
-           (-> (vectorof (>=/c 0)) 
+           (-> (vectorof (>=/c 0))
                any)]
           [discrete-uniform
            (-> exact-positive-integer? any)]
