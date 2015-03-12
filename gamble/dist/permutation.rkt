@@ -11,6 +11,8 @@
          racket/vector
          racket/list
          racket/fixnum
+         racket/flonum
+         (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "../private/dist.rkt"
          "../private/dist-impl.rkt"
@@ -22,19 +24,7 @@
   #:pdf permutation-pdf
   #:sample permutation-sample
   #:has-mass
-  #:drift (lambda (value scale-factor)
-            (cond [(<= n 1)
-                   (cons value 0)]
-                  [else
-                   (define v (vector-copy value))
-                   (define idx1 (random n))
-                   (define idx2-pre (random (sub1 n)))
-                   (define idx2 (+ idx2-pre (if (>= idx2-pre idx1) 1 0)))
-                   (define elt1 (vector-ref v idx1))
-                   (define elt2 (vector-ref v idx2))
-                   (vector-set! v idx1 elt1)
-                   (vector-set! v idx2 elt2)
-                   (cons v 0)])))
+  #:drift (lambda (value scale-factor) (permutation-drift n value scale-factor)))
 
 (define (permutation-pdf n perm log?)
   (cond [(permutation? perm n)
@@ -84,3 +74,24 @@
     (vector-set! perm i vj)
     (vector-set! perm j vi))
   perm)
+
+(define (permutation-drift n value scale-factor)
+  (cond [(<= n 1)
+         (cons value 0)]
+        [else
+         (define v (vector-copy value))
+         (define nswaps
+           (inexact->exact (ceiling (exponential (* 0.25 n scale-factor)))))
+         ;; FIXME: if nswaps >> n, just resample; faster ??
+         (for ([_swap (in-range nswaps)])
+           (define idx1 (random n))
+           (define idx2-pre (random (sub1 n)))
+           (define idx2 (+ idx2-pre (if (>= idx2-pre idx1) 1 0)))
+           (define elt1 (vector-ref v idx1))
+           (define elt2 (vector-ref v idx2))
+           (vector-set! v idx1 elt2)
+           (vector-set! v idx2 elt1))
+         (cons v 0)]))
+
+(define (exponential scale)
+  (flvector-ref (m:flexponential-sample (exact->inexact scale) 1) 0))
