@@ -17,7 +17,8 @@
          "../private/dist.rkt"
          "../private/dist-impl.rkt"
          "../private/dist-define.rkt")
-(provide permutation?)
+(provide permutation?
+         apply-permutation)
 
 (define-dist-type permutation-dist
   ([n exact-nonnegative-integer?])
@@ -95,3 +96,10 @@
 
 (define (exponential scale)
   (flvector-ref (m:flexponential-sample (exact->inexact scale) 1) 0))
+
+(define (apply-permutation p v)
+  (define v* (make-vector (vector-length p)))
+  (for ([i (in-range (vector-length p))]
+        [pi (in-vector p)])
+    (vector-set! v* i (vector-ref v pi)))
+  v*)
