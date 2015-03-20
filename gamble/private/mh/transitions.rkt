@@ -69,8 +69,8 @@
       (vprintf "  R/F = ~s\n" (exp R-F))
       (define ll* (dist-pdf dist value* #t))
       (unless (ll-possible? ll*)
-        (error 'perturb "proposal produced impossible value\n  dist: ~e\n  value: ~e"
-               dist value*))
+        (eprintf "proposal produced impossible value\n  dist: ~e\n  value: ~e\n"
+                 dist value*))
       (cons (entry zones dist value* ll* #f) R-F))
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
