@@ -79,7 +79,7 @@
 (define (adapt-all-trials a) (+ (adapt-batch-trials a) (adapt-old-trials a)))
 (define (adapt-all-successes a) (+ (adapt-batch-successes a) (adapt-old-successes a)))
 
-(define ADAPT-BATCH 100)
+(define ADAPT-BATCH 40)
 (define ADAPT-GOAL-HI 0.50)
 (define ADAPT-GOAL-LO 0.25)
 (define ADAPT-INIT 1.0)
