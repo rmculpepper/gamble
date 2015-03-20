@@ -46,8 +46,9 @@
          (perturb/slice key-to-change dist value zones thunk last-trace)]))
 
     (define/private (perturb/slice key-to-change dist value zones thunk last-trace)
+      (vprintf "last-ll = ~s\n" (trace-ll last-trace))
       (define threshold (+ (log (random)) (trace-ll last-trace)))
-      (vprintf "slice threshold = ~s\n" (exp threshold))
+      (vprintf "slice threshold = ~s (logspace ~s)\n" (exp threshold) threshold)
       (define-values (support-min support-max) (get-support-bounds dist))
       (define trace-cache (make-hash)) ;; (hashof Real => Trace/#f)
       (define last-dens-dim (trace-dens-dim last-trace))
@@ -83,6 +84,11 @@
       (cond [(small-dist? dist)
              (vprintf "Small integer distribution, using whole support\n")
              (get-support-bounds dist)]
+            [(integer-dist? dist)
+             (case method
+               [(step) (find-integer-slice-bounds/step dist value eval-ll threshold)]
+               [(double) (find-integer-slice-bounds/double dist value eval-ll threshold)]
+               [(unimodal) (find-slice-bounds/unimodal dist value eval-ll threshold)])]
             [else
              (case method
                [(step) (find-slice-bounds/step dist value eval-ll threshold)]
@@ -107,7 +113,28 @@
       (let* ([u (* (random) W)]
              [lo (- value u)]
              [hi (+ value W (- u))]
-             [ku (random)]
+             [lo-k (if (= M +inf.0) +inf.0 (random M))]
+             [hi-k (if (= M +inf.0) +inf.0 (- M 1 lo-k))])
+        (values (loop-lo lo-k lo (eval-ll lo))
+                (loop-hi hi-k hi (eval-ll hi)))))
+
+    (define/private (find-integer-slice-bounds/step dist value eval-ll threshold)
+      (define Wint (get-integer-W))
+      (define (loop-lo k lo lo-ll)
+        (if (or (zero? k) (< lo-ll threshold))
+            lo
+            (let ([lo* (- lo Wint)])
+              (vprintf "Stepping to ~e for lower bound\n" lo*)
+              (loop-lo (sub1 k) lo* (with-verbose> (eval-ll lo*))))))
+      (define (loop-hi k hi hi-ll)
+        (if (or (zero? k) (< hi-ll threshold))
+            hi
+            (let ([hi* (+ hi Wint)])
+              (vprintf "Stepping to ~e for upper bound\n" hi*)
+              (loop-hi (sub1 k) hi* (with-verbose> (eval-ll hi*))))))
+      (let* ([u (inexact->exact (round (* (random) Wint)))]
+             [lo (- value u)]
+             [hi (+ value Wint (- u))]
              [lo-k (if (= M +inf.0) +inf.0 (random M))]
              [hi-k (if (= M +inf.0) +inf.0 (- M 1 lo-k))])
         (values (loop-lo lo-k lo (eval-ll lo))
@@ -133,6 +160,25 @@
              [hi-ll (eval-ll hi)])
         (loop lo lo-ll hi hi-ll)))
 
+    (define/public (find-integer-slice-bounds/double dist value eval-ll threshold)
+      (define Wint (get-integer-W))
+      (define (loop lo lo-ll hi hi-ll)
+        (if (and (< lo-ll threshold) (< hi-ll threshold))
+            (values lo hi)
+            (if (zero? (random 2))
+                (let ([lo* (- lo (- hi lo))])
+                  (vprintf "Stepping to ~e for lower bound\n" lo*)
+                  (loop lo* (with-verbose> (eval-ll lo*)) hi hi-ll))
+                (let ([hi* (+ hi (- hi lo))])
+                  (vprintf "Stepping to ~e for upper bound\n" hi*)
+                  (loop lo lo-ll hi* (with-verbose> (eval-ll hi*)))))))
+      (let* ([u (inexact->exact (round (* (random) Wint)))]
+             [lo (- value u)]
+             [hi (+ value Wint (- u))]
+             [lo-ll (eval-ll lo)]
+             [hi-ll (eval-ll hi)])
+        (loop lo lo-ll hi hi-ll)))
+
     ;; Implements a simpler doubling suitable only for unimodal distributions
     (define/public (find-slice-bounds/unimodal dist value eval-ll threshold)
       (define (loop-lo k lo lo-ll)
@@ -147,8 +193,12 @@
             (let ([hi* (+ hi (- hi value))])
               (vprintf "Stepping to ~e for upper bound\n" hi*)
               (loop-hi hi* (with-verbose> (eval-ll hi*))))))
-      (let* ([lo (- value (* 0.5 W))]
-             [hi (+ value (* 0.5 W))])
+      (define halfW
+        (if (integer-dist? dist)
+            (inexact->exact (ceiling (* 0.5 W)))
+            (* 0.5 W)))
+      (let* ([lo (- value halfW)]
+             [hi (+ value halfW)])
         (values (loop-lo lo (eval-ll lo))
                 (loop-hi hi (eval-ll hi)))))
 
@@ -195,7 +245,10 @@
       (or (small-dist? dist)
           (case method
             [(step unimodal) #t]
-            [(double) (acceptable?/double value value* lo hi eval-trace threshold)])))
+            [(double)
+             (if (integer-dist? dist)
+                 (acceptable?/double/integer value value* lo hi eval-trace threshold)
+                 (acceptable?/double value value* lo hi eval-trace threshold))])))
 
     (define/private (acceptable?/double value value* lo hi eval-trace threshold)
       (define (eval-ll x) (trace-ll* (eval-trace x)))
@@ -204,6 +257,25 @@
                #t]
               [else
                (define mid (* 0.5 (+ lo hi)))
+               (define D
+                 (or (and (<  value mid) (>= value* mid))
+                     (and (>= value mid) (<  value* mid))))
+               (define lo* (if (< value* mid) lo mid))
+               (define hi* (if (< value* mid) mid hi))
+               (if (and D
+                        (<= (eval-ll lo*) threshold)
+                        (<= (eval-ll hi*) threshold))
+                   #f ;; not acceptable
+                   (loop lo* hi*))])))
+
+    (define/private (acceptable?/double/integer value value* lo hi eval-trace threshold)
+      (define (eval-ll x) (trace-ll* (eval-trace x)))
+      (define Wint (get-integer-W))
+      (let loop ([lo lo] [hi hi])
+        (cond [(<= (- hi lo) Wint)
+               #t]
+              [else
+               (define mid (round (/ (+ lo hi) 2)))
                (define D
                  (or (and (<  value mid) (>= value* mid))
                      (and (>= value mid) (<  value* mid))))
@@ -225,6 +297,9 @@
       (match (dist-support dist)
         [(integer-range min max) (< (- max min) small-dist)]
         [_ #f]))
+
+    (define/private (get-integer-W)
+      (max 1 (inexact->exact (round W))))
 
     (define/public (feedback success?) (void))
     ))

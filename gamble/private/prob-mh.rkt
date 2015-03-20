@@ -66,7 +66,7 @@
        [zone zone]
        [record-obs? record-obs?]))
 
-(define (slice #:method [method 'double] #:w [w 1] #:m [m 1] #:zone [zone #f])
+(define (slice #:method [method 'double] #:w [w 1] #:m [m +inf.0] #:zone [zone #f])
   (new slice-mh-transition% (method method) (W w) (M m) (zone zone)))
 
 (define (enumerative-gibbs #:zone [zone #f] #:record-obs? [record-obs? #t])
