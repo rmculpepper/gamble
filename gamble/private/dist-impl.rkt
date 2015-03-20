@@ -34,12 +34,19 @@
 
 (define (drift:add-normal value scale)
   (cons (sample-normal value scale) 0))
+
 (define (drift:mult-exp-normal value scale)
-  (define sn (sample-normal 0 scale))
+  ;; Want to multiply by factor log-normally distributed, with stddev proportional
+  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
+  ;; Let's approximate as exp[2s^2] - 1. So we want
+  ;; exp[2s^2] - 1 ~= scale^2, so
+  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
+  (define sn (sample-normal 0 (sqrt (log (add1 (* scale scale))))))
   (define value* (* value (exp sn)))
   (when (eqv? value* +nan.0)
     (eprintf "value = ~s, scale = ~s, sn = ~s\n" value scale sn))
   (cons value* 0))
+
 (define (drift:asymmetric f value)
   (define forward-dist (f value))
   (define value* (dist-sample forward-dist))

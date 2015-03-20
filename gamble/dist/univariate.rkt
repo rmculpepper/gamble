@@ -190,7 +190,8 @@
                                      (* 1/2 (for/sum ([x (in-vector data)])
                                               (sqr (- x data-mean)))))))]
                   [_ #f]))
-  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor))))
+  #:drift (lambda (value scale-factor)
+            (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor))))
 
 (define-fl-dist-type inverse-gamma-dist
   ([shape (>/c 0)]
@@ -302,7 +303,7 @@
                     [else 0]))
   #:drift (lambda (value scale-factor)
             ;; Use beta to get proposal for Uniform(0,1), adjust.
-            (define S 10) ;; "peakedness"
+            (define S (+ 2 (/ 10 scale-factor))) ;; "peakedness"
             (define (to-01 x) (/ (- x min) (- max min)))
             (define (from-01 x) (+ (* x (- max min)) min))
             (defmatch (cons value* R-F)
