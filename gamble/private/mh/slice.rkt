@@ -233,4 +233,6 @@
   (if (trace? t) (trace-ll t) -inf.0))
 
 (define (trace-ll/dim t last-dens-dim)
-  (ll+dim->ll (trace-ll* t) (- (trace-dens-dim t) last-dens-dim)))
+  (if (trace? t)
+      (ll+dim->ll (trace-ll t) (- (trace-dens-dim t) last-dens-dim))
+      -inf.0))
