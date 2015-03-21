@@ -31,7 +31,7 @@
       (iprintf i "Evals to find slice: ~s\n" find-slice-counter)
       (iprintf i "Evals in slice: ~s\n" in-slice-counter))
 
-    ;; run : (-> A) Trace -> TransitionResult
+    ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (set! run-counter (add1 run-counter))
@@ -223,7 +223,8 @@
         (cond [(and current-trace
                     (> current-ll threshold)
                     (acceptable? dist value value* lo0 hi0 eval-trace threshold))
-               current-trace]
+               ;; FIXME: add more info to TxInfo
+               (cons current-trace (vector 'slice lo0 hi0))]
               [else
                (vprintf "Retrying (~a)\n"
                         (cond [(and current-trace

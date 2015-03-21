@@ -95,6 +95,7 @@
     (init-field thunk
                 transition)
     (field [last-trace init-trace]
+           [last-txinfo #f]
            [accepts 0]
            [cond-rejects 0]
            [mh-rejects 0]
@@ -140,10 +141,12 @@
     ;; Updates last-sample; returns #t for new sample, #f if unchanged (tx failed).
     (define/public (sample! tx retries)
       (match (send tx run thunk last-trace)
-        [(? trace? t)
+        [(cons (? trace? t) txinfo)
          (set! last-trace t)
+         (set! last-txinfo txinfo)
          #t]
-        [#f
+        [(cons #f txinfo)
+         (set! last-txinfo txinfo)
          (if (zero? retries)
              #f
              (sample! tx (sub1 retries)))]))

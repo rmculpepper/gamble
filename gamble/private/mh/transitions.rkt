@@ -32,7 +32,7 @@
       (iprintf i "Fall-through perturbs: ~s\n" resampled)
       (send proposal info i))
 
-    ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
+    ;; run* : (-> A) Trace -> (U (list* Real Trace TxInfo) (list* 'fail Any TxInfo))
     (define/override (run* thunk last-trace)
       (define last-db (trace-db last-trace))
       (defmatch (cons delta-db R-F) (perturb last-trace))
@@ -50,9 +50,9 @@
          (define current-trace (send ctx make-trace sample-value))
          (define threshold
            (accept-threshold last-trace R-F current-trace ll-diff record-obs?))
-         (cons threshold current-trace)]
+         (list* threshold current-trace (vector 'delta delta-db))]
         [(cons 'fail fail-reason)
-         result]))
+         (list* 'fail fail-reason (vector 'delta delta-db))]))
 
     ;; perturb : Trace -> (cons DB Real)
     (abstract perturb)
@@ -196,7 +196,7 @@
 
     (define/public (run thunk last-trace)
       (define r (send (get-transition) run thunk last-trace))
-      (update-transition (and r #t))
+      (update-transition (and (car r) #t))
       r)
 
     (define/public (feedback success?) (void))

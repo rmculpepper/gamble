@@ -473,7 +473,7 @@ choices do not affect control flow through the probabilistic program).
                   thunk zone))
       (match step-result
         [(list 'fail reason)
-         step-result]
+         '(#f . #f)]
         [(list 'okay initial-sys val proposal-sys)
          (let-values ([(proposal-energy alpha)
                        (hmc-acceptance-threshold initial-sys proposal-sys)])
@@ -486,7 +486,7 @@ choices do not affect control flow through the probabilistic program).
                       proposal-energy
                       (db-kinetic-energy (hmc-system-P proposal-sys))
                       (db-potential-energy (hmc-system-X proposal-sys)) ))
-           (cons alpha (hmc-system->trace last-trace val proposal-sys)))]))
+           (list* alpha (hmc-system->trace last-trace val proposal-sys) #f))]))
 
     (define/private (hmc-system->trace last-trace sample-value proposal-sys)
       (defmatch (trace _ _ last-nchoices _ _ _) last-trace)

@@ -27,7 +27,7 @@
       (iprintf "Total runs: ~s\n" run-counter)
       (iprintf "Total evals: ~s\n" eval-counter))
 
-    ;; run : (-> A) Trace -> TransitionResult
+    ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" this%)
       (set! run-counter (add1 run-counter))
@@ -85,7 +85,7 @@
       (vprintf "chose ~e w/ prob ~s\n"
                (entry-value (hash-ref (trace-db t) key-to-change))
                (dist-pdf conditional-dist t))
-      t)
+      (cons t #f))
 
     (define/public (feedback success?) (void))
     ))

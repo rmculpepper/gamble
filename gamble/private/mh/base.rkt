@@ -16,14 +16,15 @@
 
 (define mh-transition<%>
   (interface ()
-    run  ;; (-> A) Trace -> TransitionResult
+    run  ;; (-> A) Trace -> (cons (U Trace #f) TxInfo)
     info ;; Nat -> Void
     feedback ;; Boolean -> Void
     ))
 
-;; A TransitionResult is one of
-;; - Trace  -- run completed, threshold already checked (if applicable)
-;; - #f     -- run failed or mh-rejected
+;; A TxInfo
+;; - (vector 'delta DB)          -- delta db
+;; - (vector 'slice Real Real)   -- slice w/ interval bounds
+;; - #f
 
 ;; ============================================================
 
@@ -44,11 +45,11 @@
       (iprintf i "Traces rejected by MH threshold: ~s, ~a%\n"
                mh-rejects (%age mh-rejects total)))
 
-    ;; run : (-> A) Trace -> TransitionResult
+    ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (match (run* thunk last-trace)
-        [(cons (? real? threshold0) trace)
+        [(list* (? real? threshold0) trace txinfo)
          (define last-dens-dim (trace-dens-dim last-trace))
          (define dens-dim (trace-dens-dim trace))
          (define threshold (ll+dim->ll threshold0 (- dens-dim last-dens-dim)))
@@ -59,19 +60,19 @@
                 (vprintf "Accepted MH step with ~s\n" (exp u))
                 (set! accepts (add1 accepts))
                 (feedback #t)
-                trace]
+                (cons trace txinfo)]
                [else
                 (vprintf "Rejected MH step with ~s\n" (exp u))
                 (set! mh-rejects (add1 mh-rejects))
                 (feedback #f)
-                #f])]
-        [(cons 'fail reason)
+                (cons #f txinfo)])]
+        [(list* 'fail reason txinfo)
          (set! cond-rejects (add1 cond-rejects))
          (feedback #f)
          (vprintf "Rejected condition, reason = ~e\n" reason)
-         #f]))
+         (cons #f txinfo)]))
 
-    ;; run* : (-> A) Trace -> (U (cons Real Trace) (cons 'fail any))
+    ;; run* : (-> A) Trace -> (U (list* Real Trace TxInfo) (cons 'fail any TxInfo))
     (abstract run*)
 
     ;; feedback : Boolean -> Void
