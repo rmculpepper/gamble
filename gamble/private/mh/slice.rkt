@@ -39,65 +39,110 @@
       (define key-to-change (pick-a-key last-nchoices last-db zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'slice zone))
-      (match (hash-ref last-db key-to-change)
-        [(entry zones dist value ll #f)
-         (unless (or (real-dist? dist) (integer-dist? dist))
-           (error 'slice "distribution does not support slice sampling\n  dist: ~e" dist))
-         (perturb/slice key-to-change dist value zones thunk last-trace)]))
+      (define slice
+        (new slice%
+             (parent this)
+             (thunk thunk)
+             (last-trace last-trace)
+             (key-to-change key-to-change)
+             (last-entry (hash-ref last-db key-to-change))))
+      (send slice perturb/slice))
 
-    (define/private (perturb/slice key-to-change dist value zones thunk last-trace)
+    (define/public (feedback success?) (void))
+    ))
+
+(define slice%
+  (class object%
+    (init-field parent
+                thunk
+                last-trace
+                key-to-change
+                last-entry)
+    (super-new)
+
+    (defmatch (entry zones dist value _ #f) last-entry)
+    (unless (or (real-dist? dist) (integer-dist? dist))
+      (error 'slice "distribution does not support slice sampling\n  dist: ~e" dist))
+
+    (define/private (get-method) (get-field method parent))
+    (define/private (get-W) (get-field W parent))
+    (define/private (get-integer-W) (max 1 (inexact->exact (round (get-W)))))
+    (define/private (get-M) (get-field M parent))
+    (define/private (get-small-dist) (get-field small-dist parent))
+    (define/private (get-last-dens-dim) (trace-dens-dim last-trace))
+
+    (define/private (incr-find-slice-counter! n)
+      (set-field! find-slice-counter parent (+ n (get-field find-slice-counter parent))))
+    (define/private (incr-in-slice-counter! n)
+      (set-field! in-slice-counter parent (+ n (get-field in-slice-counter parent))))
+
+    ;; ----------------------------------------
+    ;; Entry point
+
+    ;; perturb/slice : -> (cons (U Trace #f) TxInfo)
+    (define/public (perturb/slice)
       (vprintf "last-ll = ~s\n" (trace-ll last-trace))
       (define threshold (+ (log (random)) (trace-ll last-trace)))
       (vprintf "slice threshold = ~s (logspace ~s)\n" (exp threshold) threshold)
-      (define-values (support-min support-max) (get-support-bounds dist))
-      (define trace-cache (make-hash)) ;; (hashof Real => Trace/#f)
-      (define last-dens-dim (trace-dens-dim last-trace))
-      (define (eval-trace value*)
-        (hash-ref! trace-cache value* (lambda () (eval-trace* value*))))
-      (define (eval-trace* value*)
-        (cond [(<= support-min value* support-max)
-               (define delta-db 
-                 (hash key-to-change (entry zones dist value* (dist-pdf dist value* #t) #f)))
-               (define ctx
-                 (new db-stochastic-ctx% 
-                      (last-db (trace-db last-trace))
-                      (delta-db delta-db)
-                      (record-obs? #f)
-                      (on-fresh-choice (lambda () (error-structural 'slice key-to-change)))))
-               (set! find-slice-counter (add1 find-slice-counter))
-               (match (send ctx run thunk)
-                 [(cons 'okay sample-value)
-                  (check-not-structural 'slice key-to-change (get-field nchoices ctx) last-trace)
-                  (send ctx make-trace sample-value)]
-                 [(cons 'fail fail-reason)
-                  #f])]
-              [else #f]))
-      (define (eval-ll value*)
-        (trace-ll/dim (eval-trace value*) last-dens-dim))
       (vprintf "Finding slice bounds\n")
       ;; inclusive bounds
       (define-values (lo hi)
-        (with-verbose> (find-slice-bounds dist value eval-ll threshold)))
-      (select-value* dist value lo hi eval-trace last-dens-dim threshold))
+        (with-verbose> (find-slice-bounds threshold)))
+      (select-value* lo hi threshold))
 
-    (define/private (find-slice-bounds dist value eval-ll threshold)
+    ;; ----------------------------------------
+    ;; Eval trace/ll
+
+    (define trace-cache (make-hash)) ;; (hashof Real => Trace/#f)
+
+    (define/private (make-delta-db value*)
+      (hash key-to-change (entry zones dist value* (dist-pdf dist value* #t) #f)))
+    (define/private (eval-ll value*)
+      (trace-ll/dim (eval-trace value*)))
+    (define/private (eval-trace value*)
+      (hash-ref! trace-cache value* (lambda () (eval-trace* value*))))
+    (define/private (eval-trace* value*)
+      (define-values (support-min support-max) (get-support-bounds dist))
+      (cond [(<= support-min value* support-max)
+             (define delta-db (make-delta-db value*))
+             (define ctx
+               (new db-stochastic-ctx% 
+                    (last-db (trace-db last-trace))
+                    (delta-db delta-db)
+                    (record-obs? #f)
+                    (on-fresh-choice (lambda () (error-structural 'slice key-to-change)))))
+             (incr-find-slice-counter! 1)
+             (match (send ctx run thunk)
+               [(cons 'okay sample-value)
+                (check-not-structural 'slice key-to-change (get-field nchoices ctx) last-trace)
+                (send ctx make-trace sample-value)]
+               [(cons 'fail fail-reason)
+                #f])]
+            [else #f]))
+
+    ;; ----------------------------------------
+    ;; Find slice bounds
+
+    (define/private (find-slice-bounds threshold)
       (cond [(small-dist? dist)
              (vprintf "Small integer distribution, using whole support\n")
              (get-support-bounds dist)]
             [(integer-dist? dist)
-             (case method
-               [(step) (find-integer-slice-bounds/step dist value eval-ll threshold)]
-               [(double) (find-integer-slice-bounds/double dist value eval-ll threshold)]
-               [(unimodal) (find-slice-bounds/unimodal dist value eval-ll threshold)])]
+             (case (get-method)
+               [(step) (find-integer-slice-bounds/step threshold)]
+               [(double) (find-integer-slice-bounds/double threshold)]
+               [(unimodal) (find-slice-bounds/unimodal threshold)])]
             [else
-             (case method
-               [(step) (find-slice-bounds/step dist value eval-ll threshold)]
-               [(double) (find-slice-bounds/double dist value eval-ll threshold)]
-               [(unimodal) (find-slice-bounds/unimodal dist value eval-ll threshold)])]))
+             (case (get-method)
+               [(step) (find-slice-bounds/step threshold)]
+               [(double) (find-slice-bounds/double threshold)]
+               [(unimodal) (find-slice-bounds/unimodal threshold)])]))
 
     ;; Implements the stepping-out method from
     ;; http://people.ee.duke.edu/~lcarin/slice.pdf
-    (define/private (find-slice-bounds/step dist value eval-ll threshold)
+    (define/private (find-slice-bounds/step threshold)
+      (define W (get-W))
+      (define M (get-M))
       (define (loop-lo k lo lo-ll)
         (if (or (zero? k) (< lo-ll threshold))
             lo
@@ -118,7 +163,8 @@
         (values (loop-lo lo-k lo (eval-ll lo))
                 (loop-hi hi-k hi (eval-ll hi)))))
 
-    (define/private (find-integer-slice-bounds/step dist value eval-ll threshold)
+    (define/private (find-integer-slice-bounds/step threshold)
+      (define M (get-M))
       (define Wint (get-integer-W))
       (define (loop-lo k lo lo-ll)
         (if (or (zero? k) (< lo-ll threshold))
@@ -142,7 +188,8 @@
 
     ;; Implements the doubling method from
     ;; http://people.ee.duke.edu/~lcarin/slice.pdf
-    (define/public (find-slice-bounds/double dist value eval-ll threshold)
+    (define/public (find-slice-bounds/double threshold)
+      (define W (get-W))
       (define (loop lo lo-ll hi hi-ll)
         (if (and (< lo-ll threshold) (< hi-ll threshold))
             (values lo hi)
@@ -160,7 +207,7 @@
              [hi-ll (eval-ll hi)])
         (loop lo lo-ll hi hi-ll)))
 
-    (define/public (find-integer-slice-bounds/double dist value eval-ll threshold)
+    (define/public (find-integer-slice-bounds/double threshold)
       (define Wint (get-integer-W))
       (define (loop lo lo-ll hi hi-ll)
         (if (and (< lo-ll threshold) (< hi-ll threshold))
@@ -180,7 +227,8 @@
         (loop lo lo-ll hi hi-ll)))
 
     ;; Implements a simpler doubling suitable only for unimodal distributions
-    (define/public (find-slice-bounds/unimodal dist value eval-ll threshold)
+    (define/public (find-slice-bounds/unimodal threshold)
+      (define W (get-W))
       (define (loop-lo k lo lo-ll)
         (if (< lo-ll threshold)
             lo
@@ -202,7 +250,11 @@
         (values (loop-lo lo (eval-ll lo))
                 (loop-hi hi (eval-ll hi)))))
 
-    (define/private (select-value* dist value lo0 hi0 eval-trace last-dens-dim threshold)
+    ;; ----------------------------------------
+    ;; Select value in slice
+
+    ;; select-value* : Real Real Real -> (cons (U Trace #f) TxInfo)
+    (define/private (select-value* lo0 hi0 threshold)
       (define-values (support-min support-max) (get-support-bounds dist))
       (define lo (max lo0 support-min))
       (define hi (min hi0 support-max))
@@ -217,12 +269,12 @@
                 [else
                  (+ lo (* (random) (- hi lo)))]))
         (vprintf "Trying value* = ~e\n" value*)
-        (set! in-slice-counter (add1 in-slice-counter))
+        (incr-in-slice-counter! 1)
         (define current-trace (with-verbose> (eval-trace value*)))
-        (define current-ll (trace-ll/dim current-trace last-dens-dim))
+        (define current-ll (trace-ll/dim current-trace))
         (cond [(and current-trace
                     (> current-ll threshold)
-                    (acceptable? dist value value* lo0 hi0 eval-trace threshold))
+                    (acceptable? value* lo0 hi0 threshold))
                ;; FIXME: add more info to TxInfo
                (cons current-trace (vector 'slice lo0 hi0))]
               [else
@@ -242,17 +294,17 @@
                        (loop value* hi)
                        (loop lo value*)))])))
 
-    (define/private (acceptable? dist value value* lo hi eval-trace threshold)
+    (define/private (acceptable? value* lo hi threshold)
       (or (small-dist? dist)
-          (case method
+          (case (get-method)
             [(step unimodal) #t]
             [(double)
              (if (integer-dist? dist)
-                 (acceptable?/double/integer value value* lo hi eval-trace threshold)
-                 (acceptable?/double value value* lo hi eval-trace threshold))])))
+                 (acceptable?/double/integer value* lo hi threshold)
+                 (acceptable?/double value* lo hi threshold))])))
 
-    (define/private (acceptable?/double value value* lo hi eval-trace threshold)
-      (define (eval-ll x) (trace-ll* (eval-trace x)))
+    (define/private (acceptable?/double value* lo hi threshold)
+      (define W (get-W))
       (let loop ([lo lo] [hi hi])
         (cond [(< (- hi lo) (* W 1.1)) ;; to prevent rounding problems
                #t]
@@ -269,8 +321,7 @@
                    #f ;; not acceptable
                    (loop lo* hi*))])))
 
-    (define/private (acceptable?/double/integer value value* lo hi eval-trace threshold)
-      (define (eval-ll x) (trace-ll* (eval-trace x)))
+    (define/private (acceptable?/double/integer value* lo hi threshold)
       (define Wint (get-integer-W))
       (let loop ([lo lo] [hi hi])
         (cond [(<= (- hi lo) Wint)
@@ -288,27 +339,25 @@
                    #f ;; not acceptable
                    (loop lo* hi*))])))
 
-    (define/private (get-support-bounds dist)
-      (match (dist-support dist)
-        [(integer-range min max) (values min max)]
-        [(real-range min max) (values min max)]
-        [_ (values -inf.0 +inf.0)]))
+    ;; ----------------------------------------
+    ;; Utils
 
     (define/private (small-dist? dist)
       (match (dist-support dist)
-        [(integer-range min max) (< (- max min) small-dist)]
+        [(integer-range min max) (< (- max min) (get-small-dist))]
         [_ #f]))
 
-    (define/private (get-integer-W)
-      (max 1 (inexact->exact (round W))))
-
-    (define/public (feedback success?) (void))
+    (define/private (trace-ll/dim t)
+      (if (trace? t)
+          (ll+dim->ll (trace-ll t) (- (trace-dens-dim t) (get-last-dens-dim)))
+          -inf.0))
     ))
 
 (define (trace-ll* t)
   (if (trace? t) (trace-ll t) -inf.0))
 
-(define (trace-ll/dim t last-dens-dim)
-  (if (trace? t)
-      (ll+dim->ll (trace-ll t) (- (trace-dens-dim t) last-dens-dim))
-      -inf.0))
+(define (get-support-bounds dist)
+  (match (dist-support dist)
+    [(integer-range min max) (values min max)]
+    [(real-range min max) (values min max)]
+    [_ (values -inf.0 +inf.0)]))
