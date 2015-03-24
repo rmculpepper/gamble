@@ -101,7 +101,7 @@ eg, if f(x) = exp(x)
 ;; FIXME: real? vs number? (ie, complex?) --- scale requires real ???
 
 (declare-observation-propagator (+ a ... _)
-  real?
+  rational?
   (lambda (y) (- y a ...))
   (lambda (x) 1))
 
@@ -112,14 +112,19 @@ eg, if f(x) = exp(x)
 ;;   then x = (- y) = (- a ... y)
 ;; So can handle both cases with same pattern!
 (declare-observation-propagator (- a ... _)
-  real?
+  rational?
   (lambda (y) (- a ... y))
   (lambda (x) 1))
 
 (declare-observation-propagator (* a ... _)
-  real?
+  rational?
   (lambda (y) (/ y a ...))
   (lambda (x) (abs (/ (* a ...)))))
+
+(declare-observation-propagator (/ a ... _)
+  (lambda (y) (and (rational? y) (not (eq? y 0))))
+  (lambda (y) (/ (/ a ... 1) y))
+  (lambda (x) (abs (/ (* x x) (* a ...)))))
 
 (declare-observation-propagator (exp _)
   real?
