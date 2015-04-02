@@ -276,7 +276,7 @@
                     (> current-ll threshold)
                     (acceptable? value* lo0 hi0 threshold))
                ;; FIXME: add more info to TxInfo
-               (cons current-trace (vector 'slice lo0 hi0))]
+               (cons current-trace (vector 'slice key-to-change lo0 hi0))]
               [else
                (vprintf "Retrying (~a)\n"
                         (cond [(and current-trace
