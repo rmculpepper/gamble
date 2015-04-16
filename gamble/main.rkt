@@ -56,9 +56,6 @@
           [discrete-dist-error
            (-> discrete-dist? discrete-dist?
                (>=/c 0))]
-          [repeat
-           (-> (-> any) exact-nonnegative-integer? 
-               list?)]
           [generate-samples
            (->* [weighted-sampler? exact-nonnegative-integer?]
                 [#:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]

@@ -138,8 +138,5 @@
 
 ;; Misc utils
 
-(define (repeat thunk times)
-  (for/list ([i times]) (thunk)))
-
 (define (probability? x)
   (and (real? x) (<= 0 x 1)))

@@ -88,8 +88,6 @@
    [indicator/predicate
     (-> (-> Univ -Boolean) (-> Univ -Real))]
    ;; discrete-dist-error
-   [repeat
-    (-poly (a) (-> (-> a) -Integer (-lst a)))]
    ;; resample
    ;; probability?
    [flip

@@ -10,6 +10,7 @@
          ormap
          foldr
          foldl
+         repeat
          build-list)
 
 (define map
@@ -113,3 +114,10 @@
     (if (< i n)
         (cons (f i) (loop (add1 i)))
         null)))
+
+(define (repeat thunk times)
+  (unless (procedure? thunk)
+    (raise-argument-error 'repeat "procedure?" 0 thunk times))
+  (unless (exact-nonnegative-integer? times)
+    (raise-argument-error 'repeat "exact-nonnegative-integer?" 1 thunk times))
+  (for/list ([i (in-range times)]) (thunk)))
