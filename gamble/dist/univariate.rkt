@@ -383,8 +383,8 @@
 ;; Not a real dist. Useful for throwing arbitrary factors into a trace.
 (define-dist-type improper-dist
   ([ldensity real?])
-  #:pdf improper-pdf #:sample improper-sample)
-
+  #:pdf improper-pdf #:sample improper-sample
+  #:Denergy (lambda (x [dldensity 0]) (- dldensity)))
 
 ;; ============================================================
 ;; Univariate dist functions
