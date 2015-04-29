@@ -29,7 +29,7 @@
     (cons (f v) w))
   (for ([_ (in-range burn)]) (send s sample/weight))
   (for ([i (in-range n)])
-    (let* ([a+p (send s sample/weight)]
+    (let* ([a+p (s*)]
            [a (car a+p)]
            [p (cdr a+p)])
       (hash-set! h a (+ p (hash-ref h a 0)))))
