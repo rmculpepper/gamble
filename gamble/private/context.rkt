@@ -156,7 +156,7 @@ CC ::=                   -- Observation rep:
            (loop (cdr expected) (cdr actual))]
           [(rational? expected)
            ;; FIXME: ??? better general way of checking "close-enough" for reals ???
-           (unless (rational? expected) (bad))
+           (unless (rational? actual) (bad))
            (unless (or (= actual expected)
                        (<= (abs (- expected actual))
                            (* 0.001 (max (abs expected) (abs actual)))))
