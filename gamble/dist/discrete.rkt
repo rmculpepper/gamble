@@ -240,7 +240,7 @@
 
 (define-sequence-syntax in-measure
   (lambda () #'in-measure*)
-  (lambda (stx) (in-measure-transformer stx #t)))
+  (lambda (stx) (in-measure-transformer stx #f)))
 
 (define (in-measure* d)
   (define-values (vs ws len) (in-dist:extract 'in-measure d #f))
