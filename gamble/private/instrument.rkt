@@ -355,167 +355,224 @@
 ;; Conditionable functions are a subset of safe functions,
 ;; so split that way.
 
+;; TODO: add disappeared-use props for direct function calls
+
+(begin-for-syntax
+  (define (add-app-tooltip! ttb stx msg)
+    (when stx
+      (define pos (syntax-position stx))
+      (define span (syntax-span stx))
+      (define tt
+        (and pos span
+             ;; offset positions by -1 to work around DrRacket bug (?)
+             (vector stx (+ pos -1) (+ pos span -1) (string-append "* " msg))))
+      ;; (log-instr-info "tooltip(~s) for ~s" (if (syntax-original? stx) 'Y 'N) stx)
+      (when tt (set-box! ttb (cons tt (unbox ttb)))))))
+
 (define-syntax (instrument-app iastx)
   (define stx (syntax-case iastx () [(_ m stx) #'stx]))
-  (define (log-app-type msg f)
-    (log-instr-info (format "~a for ~s" msg f)))
+  (define f-stx (syntax-case stx (#%plain-app) [(#%plain-app f . _) #'f]))
+  (define f-orig-id
+    (syntax-parse stx
+      #:literals (#%plain-app)
+      [(#%plain-app f:contract-indirection-id _ ...)
+       (or (for/or ([origin-id (in-list (syntax-property stx 'origin))])
+             (and (identifier? origin-id)
+                  (free-identifier=? origin-id #'f.c)
+                  origin-id))
+           #'f)]
+      [(#%plain-app f:id arg ...) #'f]
+      [_ #f]))
+  (define tooltips (box null))
+  (define (log-app-type msg)
+    (log-instr-info (format "~a for ~s" msg f-stx)))
+  (define (tt-fun-type! msg)
+    (add-app-tooltip! tooltips f-orig-id msg))
+  (unless (eq? f-stx f-orig-id)
+    (log-instr-info (format "original of ~s is ~s" f-stx f-orig-id)))
   (check-app stx)
-  (syntax-parse iastx
-    #:literals (#%plain-app)
+  (add-app-tooltip! tooltips f-orig-id
+    (syntax-case iastx ()
+      [(_ #:nt _) "call NOT in observation context"]
+      [(_ #:cc _) "call in observation context wrt enclosing lambda"]))
+  (define result
+    (syntax-parse iastx
+      #:literals (#%plain-app)
 
-    ;; Conditionable primitives in conditionable context
-    ;; All non-random first-order, so no need for address tracking.
+      ;; Conditionable primitives in conditionable context
+      ;; All non-random first-order, so no need for address tracking.
 
-    [(_ #:cc (#%plain-app op:final-arg-prop-fun e ... eFinal))
-     (log-app-type "OBS PROP app (final arg)" #'op)
-     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (#%plain-app op tmp ...
-             (with ([OBS
-                     (if OBS
-                         (let ([obs-v (observation-value OBS)])
-                           (if (op.pred obs-v tmp ...)
-                               (let* ([x (op.inverter obs-v tmp ...)]
-                                      [scale (op.scaler x tmp ...)])
-                                 (observation x (* (observation-scale OBS) scale)))
-                               (fail 'observe-failed-invert)))
-                         #f)])
-                   (instrument eFinal #:cc)))))]
+      [(_ #:cc (#%plain-app op:final-arg-prop-fun e ... eFinal))
+       (log-app-type "OBS PROP app (final arg)")
+       (tt-fun-type! "function propagates observation to final argument")
+       (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (#%plain-app op tmp ...
+               (with ([OBS
+                       (if OBS
+                           (let ([obs-v (observation-value OBS)])
+                             (if (op.pred obs-v tmp ...)
+                                 (let* ([x (op.inverter obs-v tmp ...)]
+                                        [scale (op.scaler x tmp ...)])
+                                   (observation x (* (observation-scale OBS) scale)))
+                                 (fail 'observe-failed-invert)))
+                           #f)])
+                     (instrument eFinal #:cc)))))]
 
-    ;; contracted
-    [(_ #:cc (#%plain-app op:contracted-final-arg-prop-fun ctc-info e ... eFinal))
-     (log-app-type "OBS PROP app (contracted, final arg)" #'op)
-     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (#%plain-app op ctc-info tmp ...
-             (with ([OBS
-                     (if OBS
-                         (let ([obs-v (observation-value OBS)])
-                           (if (op.pred obs-v tmp ...)
-                               (let* ([x (op.inverter obs-v tmp ...)]
-                                      [scale (op.scaler x tmp ...)])
-                                 (observation x (* (observation-scale OBS) scale)))
-                               (fail 'observe-failed-invert)))
-                         #f)])
-                   (instrument eFinal #:cc)))))]
+      ;; contracted
+      [(_ #:cc (#%plain-app op:contracted-final-arg-prop-fun ctc-info e ... eFinal))
+       (log-app-type "OBS PROP app (contracted, final arg)")
+       (tt-fun-type! "function propagates observation to final argument")
+       (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (#%plain-app op ctc-info tmp ...
+               (with ([OBS
+                       (if OBS
+                           (let ([obs-v (observation-value OBS)])
+                             (if (op.pred obs-v tmp ...)
+                                 (let* ([x (op.inverter obs-v tmp ...)]
+                                        [scale (op.scaler x tmp ...)])
+                                   (observation x (* (observation-scale OBS) scale)))
+                                 (fail 'observe-failed-invert)))
+                           #f)])
+                     (instrument eFinal #:cc)))))]
 
-    ;; lifted contracted (w/o ctc-info arg)
-    [(_ #:cc (#%plain-app op:lifted-contracted-final-arg-prop-fun e ... eFinal))
-     (log-app-type "OBS PROP app (lifted contracted, final arg)" #'op)
-     (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (#%plain-app op tmp ...
-             (with ([OBS
-                     (if OBS
-                         (let ([obs-v (observation-value OBS)])
-                           (if (op.pred obs-v tmp ...)
-                               (let* ([x (op.inverter obs-v tmp ...)]
-                                      [scale (op.scaler x tmp ...)])
-                                 (observation x (* (observation-scale OBS) scale)))
-                               (fail 'observe-failed-invert)))
-                         #f)])
-                   (instrument eFinal #:cc)))))]
+      ;; lifted contracted (w/o ctc-info arg)
+      [(_ #:cc (#%plain-app op:lifted-contracted-final-arg-prop-fun e ... eFinal))
+       (log-app-type "OBS PROP app (lifted contracted, final arg)")
+       (tt-fun-type! "function propagates observation to final argument")
+       (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (#%plain-app op tmp ...
+               (with ([OBS
+                       (if OBS
+                           (let ([obs-v (observation-value OBS)])
+                             (if (op.pred obs-v tmp ...)
+                                 (let* ([x (op.inverter obs-v tmp ...)]
+                                        [scale (op.scaler x tmp ...)])
+                                   (observation x (* (observation-scale OBS) scale)))
+                                 (fail 'observe-failed-invert)))
+                           #f)])
+                     (instrument eFinal #:cc)))))]
 
-    [(_ #:cc (#%plain-app op:all-args-prop-fun e ...))
-     (log-app-type "OBS PROP app (all args)" #'op)
-     #'(#%plain-app op
-         (with ([OBS
-                 (if OBS
-                     (let ([obs-v (observation-value OBS)])
-                       (if (op.pred obs-v) ;; FIXME: redundant for 2nd arg on
-                           (let ([x (op.inverter (observation-value OBS))])
-                             (observation x (observation-scale OBS)))
-                           (fail 'observe-failed-invert)))
-                     #f)])
-               (instrument e #:cc))
-         ...)]
-    [(_ #:cc (#%plain-app (~literal list) e ...))
-     (log-app-type "OBS PROP app (desugar list)" #'list)
-     (with-syntax ([unfolded-expr
-                    (let loop ([es (syntax->list #'(e ...))])
-                      (cond [(pair? es)
-                             #`(#%plain-app cons #,(car es) #,(loop (cdr es)))]
-                            [else
-                             #'(quote ())]))])
-       #'(instrument unfolded-expr #:cc))]
+      [(_ #:cc (#%plain-app op:all-args-prop-fun e ...))
+       (log-app-type "OBS PROP app (all args)")
+       (tt-fun-type! "function propagates observation to all arguments (constructor)")
+       #'(#%plain-app op
+           (with ([OBS
+                   (if OBS
+                       (let ([obs-v (observation-value OBS)])
+                         (if (op.pred obs-v) ;; FIXME: redundant for 2nd arg on
+                             (let ([x (op.inverter (observation-value OBS))])
+                               (observation x (observation-scale OBS)))
+                             (fail 'observe-failed-invert)))
+                       #f)])
+                 (instrument e #:cc))
+           ...)]
+      [(_ #:cc (#%plain-app (~literal list) e ...))
+       (log-app-type "OBS PROP app (desugar list)")
+       (tt-fun-type! "function propagates observation to all arguments (constructor)")
+       (with-syntax ([unfolded-expr
+                      (let loop ([es (syntax->list #'(e ...))])
+                        (cond [(pair? es)
+                               #`(#%plain-app cons #,(car es) #,(loop (cdr es)))]
+                              [else
+                               #'(quote ())]))])
+         #'(instrument unfolded-expr #:cc))]
 
-    ;; Non-conditionable-primitives in conditionable context
+      ;; Non-conditionable-primitives in conditionable context
 
-    ;; * non-random first-order non-instrumented
-    ;;   Doesn't need address tracking, doesn't need observation
-    [(_ #:cc (#%plain-app f:nrfo-fun e ...))
-     (log-app-type "STATIC app (NRFO)" #'f)
-     #'(#%plain-app f (instrument e #:nt) ...)]
-    ;; * analysis says doesn't call ERP (superset of prev case)
-    ;;   Doesn't need address tracking, doesn't need observation
-    [(_ #:cc (#%plain-app f:id e ...))
-     #:when (not (app-calls-erp? stx))
-     (log-app-type "STATIC app (!APP-CALLS-ERP)" #'f)
-     #'(#%plain-app f (instrument e #:nt) ...)]
-    ;; * instrumented function with right arity
-    ;;   Use static protocol
-    [(_ #:cc (#%plain-app f:instr-fun e ...))
-     #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
-     (with-syntax ([c (lift-call-site stx)])
-       #'(#%plain-app f.instr (cons c ADDR) OBS (instrument e #:nt) ...))]
-    ;; * unknown, function is varref
-    ;;   Use dynamic protocol
-    [(_ #:cc (#%plain-app f:id e ...))
-     (log-app-type "DYNAMIC app" #'f)
-     (with-syntax ([c (lift-call-site stx)]
-                   [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (with-continuation-mark ADDR-mark (cons c ADDR)
-             (with-continuation-mark OBS-mark OBS
-               (#%plain-app f tmp ...)))))]
-    ;; * unknown, function is expr
-    ;;   Use dynamic protocol
-    [(_ #:cc (#%plain-app e ...))
-     (with-syntax ([c (lift-call-site stx)]
-                   [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (with-continuation-mark ADDR-mark (cons c ADDR)
-             (with-continuation-mark OBS-mark OBS
-               (#%plain-app tmp ...)))))]
+      ;; * non-random first-order non-instrumented
+      ;;   Doesn't need address tracking, doesn't need observation
+      [(_ #:cc (#%plain-app f:nrfo-fun e ...))
+       (log-app-type "STATIC app (NRFO)")
+       (tt-fun-type! "non-random first-order function (cannot observe)")
+       ;; FIXME: error if OBS != #f
+       #'(#%plain-app f (instrument e #:nt) ...)]
+      ;; * analysis says doesn't call ERP (superset of prev case)
+      ;;   Doesn't need address tracking, doesn't need observation
+      [(_ #:cc (#%plain-app f:id e ...))
+       #:when (not (app-calls-erp? stx))
+       (log-app-type "STATIC app (!APP-CALLS-ERP)")
+       (tt-fun-type! "analyzed non-random function (cannot observe)")
+       ;; FIXME: error if OBS != #f
+       #'(#%plain-app f (instrument e #:nt) ...)]
+      ;; * instrumented function with right arity
+      ;;   Use static protocol
+      [(_ #:cc (#%plain-app f:instr-fun e ...))
+       #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
+       (log-app-type "STATIC app (instrumented)")
+       (tt-fun-type! "instrumented function")
+       (with-syntax ([c (lift-call-site stx)])
+         #'(#%plain-app f.instr (cons c ADDR) OBS (instrument e #:nt) ...))]
+      ;; * unknown, function is varref
+      ;;   Use dynamic protocol
+      [(_ #:cc (#%plain-app f:id e ...))
+       (log-app-type "DYNAMIC app")
+       (tt-fun-type! "uninstrumented function (passing address and observation dynamically)")
+       (with-syntax ([c (lift-call-site stx)]
+                     [(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (with-continuation-mark ADDR-mark (cons c ADDR)
+               (with-continuation-mark OBS-mark OBS
+                 (#%plain-app f tmp ...)))))]
+      ;; * unknown, function is expr
+      ;;   Use dynamic protocol
+      [(_ #:cc (#%plain-app e ...))
+       (with-syntax ([c (lift-call-site stx)]
+                     [(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (with-continuation-mark ADDR-mark (cons c ADDR)
+               (with-continuation-mark OBS-mark OBS
+                 (#%plain-app tmp ...)))))]
 
-    ;; Non-conditionable context
+      ;; Non-conditionable context
 
-    ;; * non-random first-order non-instrumented
-    ;;   Doesn't need address, doesn't need observation
-    [(_ #:nt (#%plain-app f:nrfo-fun e ...))
-     (log-app-type "STATIC app (NRFO)" #'f)
-     #'(#%plain-app f (instrument e #:nt) ...)]
-    ;; * analysis says doesn't call ERP (superset of prev case)
-    ;;   Doesn't need address tracking, doesn't need observation
-    [(_ #:nt (#%plain-app f:id e ...))
-     #:when (not (app-calls-erp? stx))
-     (log-app-type "STATIC app (!APP-CALLS-ERP)" #'f)
-     #'(#%plain-app f (instrument e #:nt) ...)]
-    ;; * instrumented function with right arity
-    ;;   Use static protocol
-    [(_ #:nt (#%plain-app f:instr-fun e ...))
-     #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
-     (with-syntax ([c (lift-call-site stx)])
-       #'(#%plain-app f.instr (cons c ADDR) #f (instrument e #:nt) ...))]
-    ;; * unknown, function is varref
-    ;;   Use dynamic protocol
-    [(_ #:nt (#%plain-app f:id e ...))
-     (log-app-type "DYNAMIC app" #'f)
-     (with-syntax ([c (lift-call-site stx)]
-                   [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (with-continuation-mark ADDR-mark (cons c ADDR)
-             (with-continuation-mark OBS-mark #f
-               (#%plain-app f tmp ...)))))]
-    ;; * unknown, function is expr
-    ;;   Use dynamic protocol
-    [(_ #:nt (#%plain-app e ...))
-     (with-syntax ([c (lift-call-site stx)]
-                   [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (instrument e #:nt)] ...)
-           (with-continuation-mark ADDR-mark (cons c ADDR)
-             (with-continuation-mark OBS-mark #f
-               (#%plain-app tmp ...)))))]))
+      ;; * non-random first-order non-instrumented
+      ;;   Doesn't need address, doesn't need observation
+      [(_ #:nt (#%plain-app f:nrfo-fun e ...))
+       (log-app-type "STATIC app (NRFO)")
+       (tt-fun-type! "non-random first-order function")
+       #'(#%plain-app f (instrument e #:nt) ...)]
+      ;; * analysis says doesn't call ERP (superset of prev case)
+      ;;   Doesn't need address tracking, doesn't need observation
+      [(_ #:nt (#%plain-app f:id e ...))
+       #:when (not (app-calls-erp? stx))
+       (log-app-type "STATIC app (!APP-CALLS-ERP)")
+       (tt-fun-type! "analyzed non-random function (not passing address)")
+       #'(#%plain-app f (instrument e #:nt) ...)]
+      ;; * instrumented function with right arity
+      ;;   Use static protocol
+      [(_ #:nt (#%plain-app f:instr-fun e ...))
+       #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
+       (log-app-type "STATIC app (instrumented)")
+       (tt-fun-type! "instrumented function")
+       (with-syntax ([c (lift-call-site stx)])
+         #'(#%plain-app f.instr (cons c ADDR) #f (instrument e #:nt) ...))]
+      ;; * unknown, function is varref
+      ;;   Use dynamic protocol
+      [(_ #:nt (#%plain-app f:id e ...))
+       (log-app-type "DYNAMIC app")
+       (tt-fun-type! "uninstrumented function (passing address dynamically)")
+       (with-syntax ([c (lift-call-site stx)]
+                     [(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (with-continuation-mark ADDR-mark (cons c ADDR)
+               (with-continuation-mark OBS-mark #f
+                 (#%plain-app f tmp ...)))))]
+      ;; * unknown, function is expr
+      ;;   Use dynamic protocol
+      [(_ #:nt (#%plain-app e ...))
+       (with-syntax ([c (lift-call-site stx)]
+                     [(tmp ...) (generate-temporaries #'(e ...))])
+         #'(let-values ([(tmp) (instrument e #:nt)] ...)
+             (with-continuation-mark ADDR-mark (cons c ADDR)
+               (with-continuation-mark OBS-mark #f
+                 (#%plain-app tmp ...)))))]))
+  (syntax-property result
+                   'mouse-over-tooltips
+                   (unbox tooltips)))
+
 
 (begin-for-syntax
   ;; check-app : Syntax -> Void

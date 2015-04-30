@@ -169,7 +169,9 @@
       ))
   ;; Rearm and track result
   (syntax-rearm
-   (syntax-property processed-stx 'tag the-tag)
+   (syntax-property
+    (syntax-property processed-stx 'tag the-tag)
+    'original-for-check-syntax #t)
    stx0))
 
 (define (relocate stx loc-stx)
