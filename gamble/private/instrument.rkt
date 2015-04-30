@@ -355,8 +355,6 @@
 ;; Conditionable functions are a subset of safe functions,
 ;; so split that way.
 
-;; TODO: add disappeared-use props for direct function calls
-
 (begin-for-syntax
   (define (add-app-tooltip! ttb stx msg)
     (when stx
@@ -503,8 +501,9 @@
        #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
        (log-app-type "STATIC app (instrumented)")
        (tt-fun-type! "instrumented function")
-       (with-syntax ([c (lift-call-site stx)])
-         #'(#%plain-app f.instr (cons c ADDR) OBS (instrument e #:nt) ...))]
+       (with-syntax ([c (lift-call-site stx)]
+                     [f-instr (syntax-property #'f.instr 'disappeared-use #'f)])
+         #'(#%plain-app f-instr (cons c ADDR) OBS (instrument e #:nt) ...))]
       ;; * unknown, function is varref
       ;;   Use dynamic protocol
       [(_ #:cc (#%plain-app f:id e ...))
@@ -547,8 +546,9 @@
        #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
        (log-app-type "STATIC app (instrumented)")
        (tt-fun-type! "instrumented function")
-       (with-syntax ([c (lift-call-site stx)])
-         #'(#%plain-app f.instr (cons c ADDR) #f (instrument e #:nt) ...))]
+       (with-syntax ([c (lift-call-site stx)]
+                     [f-instr (syntax-property #'f.instr 'disappeared-use #'f)])
+         #'(#%plain-app f-instr (cons c ADDR) #f (instrument e #:nt) ...))]
       ;; * unknown, function is varref
       ;;   Use dynamic protocol
       [(_ #:nt (#%plain-app f:id e ...))
