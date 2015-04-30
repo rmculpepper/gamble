@@ -139,16 +139,11 @@
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
 ;;    #:cc - in observing context wrt enclosing lambda
-;;    #:nt - not in observing context wrt enclosing lambda
+;;    #:nt - not in observing context wrt enclosing lambda -- so must ignore OBS!
 (define-syntax (instrument stx0)
   (syntax-parse stx0
     [(instrument form-to-instrument m)
      (define stx (syntax-disarm #'form-to-instrument stx-insp))
-     ;; Use recur-nt on non-tail sub-expressions of possible cc expression
-     (define/with-syntax recur-nt
-       (case (syntax->datum #'m)
-         [(#:cc) #'recur-cc-to-nt]
-         [(#:nt) #'recur-nt-to-nt]))
      (define instrumented
        (syntax-parse stx
          #:literal-sets (kernel-literals)
@@ -205,44 +200,39 @@
                         (instrument e #:nt) ... (instrument e* #:nt))]
                      ...)])]
          [(if e1 e2 e3)
-          #'(if (recur-nt e1)
+          #'(if (instrument e1 #:nt)
                 (instrument e2 m)
                 (instrument e3 m))]
-         [(begin e*)
-          #'(begin (instrument e* m))]
          [(begin e ... e*)
-          #'(begin (recur-nt (begin e ...))
+          #'(begin (instrument e #:nt) ...
                    (instrument e* m))]
-         [(begin0 e0)
-          #'(begin0 (instrument e0 m))]
          [(begin0 e0 e ...)
-          #'(begin0 (instrument e0 m)
-              (recur-nt (begin e ...)))]
+          #'(begin0 (instrument e0 m) (instrument e #:nt) ...)]
          [(let-values ([vars rhs] ...) body ... body*)
           ;; HACK: okay to turn let-values into intdef (letrec) because
           ;; already expanded, thus "alpha-renamed", so no risk of capture
           #'(let ()
               (instrument (define-values vars rhs) #:nt) ...
-              (#%expression (recur-nt body)) ...
+              (#%expression (instrument body #:nt)) ...
               (#%expression (instrument body* m)))]
          [(letrec-values ([vars rhs] ...) body ... body*)
           #'(let ()
               (instrument (define-values vars rhs) #:nt) ...
-              (#%expression (recur-nt body)) ...
+              (#%expression (instrument body #:nt)) ...
               (#%expression (instrument body* m)))]
          [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ... body*)
           #'(let ()
               (define-syntaxes svars srhs) ...
               (instrument (define-values vvars vrhs) #:nt) ...
-              (#%expression (recur-nt body)) ...
+              (#%expression (instrument body #:nt)) ...
               (#%expression (instrument body* m)))]
          [(set! var e)
           ;; (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
-          #'(set! var (recur-nt e))]
+          #'(set! var (instrument e #:nt))]
          [(quote d) stx]
          [(quote-syntax s) stx]
          [(with-continuation-mark e1 e2 e3)
-          #'(with-continuation-mark (recur-nt e1) (recur-nt e2)
+          #'(with-continuation-mark (instrument e1 #:nt) (instrument e2 #:nt)
               (instrument e3 m))]
          ;; #%plain-app -- see above
          [(#%top . _) stx]
@@ -263,32 +253,6 @@
     (if (identifier? stx)
         stx
         (datum->syntax stx (syntax-e stx) loc-stx stx))))
-
-(define-syntax (recur-cc-to-nt stx)
-  (syntax-parse stx
-    [(_ e0)
-     (let loop ([expr #'e0])
-       (with-syntax ([e expr])
-         (syntax-parse #'e
-           #:literal-sets (kernel-literals)
-           ;; FIXME: move this to analysis-time?
-           ;; Simple cases; avoid inserting wrap-nt
-           [(quote _) #'(instrument e #:nt)]
-           [(quote-syntax _) #'(instrument e #:nt)]
-           [var:id #'(instrument e #:nt)]
-           [(#%plain-lambda . _) #'(instrument e #:nt)]
-           [(begin inner) (loop #'inner)] ;; FIXME: stx-track?
-           [(#%expression inner) (loop #'inner)] ;; FIXME: stx-track?
-           [(begin (quote-syntax _) (#%plain-app values))
-            ;; HACK: a TR `:' annotation expands into this pattern; no need to annotate,
-            ;; and annotation just confuses TR, so avoid (FIXME: better solution?)
-            #'e]
-           ;; Normal case: need to turn off observing
-           [e #'(wrap-nt (instrument e #:nt))])))]))
-
-(define-syntax (recur-nt-to-nt stx)
-  (syntax-case stx ()
-    [(_ e) #'(instrument e #:nt)]))
 
 ;; ----
 
@@ -405,7 +369,7 @@
     [(_ #:cc (#%plain-app op:final-arg-prop-fun e ... eFinal))
      (log-app-type "OBS PROP app (final arg)" #'op)
      (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (#%plain-app op tmp ...
              (with ([OBS
                      (if OBS
@@ -422,7 +386,7 @@
     [(_ #:cc (#%plain-app op:contracted-final-arg-prop-fun ctc-info e ... eFinal))
      (log-app-type "OBS PROP app (contracted, final arg)" #'op)
      (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (#%plain-app op ctc-info tmp ...
              (with ([OBS
                      (if OBS
@@ -439,7 +403,7 @@
     [(_ #:cc (#%plain-app op:lifted-contracted-final-arg-prop-fun e ... eFinal))
      (log-app-type "OBS PROP app (lifted contracted, final arg)" #'op)
      (with-syntax ([(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (#%plain-app op tmp ...
              (with ([OBS
                      (if OBS
@@ -481,27 +445,26 @@
     ;;   Doesn't need address tracking, doesn't need observation
     [(_ #:cc (#%plain-app f:nrfo-fun e ...))
      (log-app-type "STATIC app (NRFO)" #'f)
-     #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
+     #'(#%plain-app f (instrument e #:nt) ...)]
     ;; * analysis says doesn't call ERP (superset of prev case)
     ;;   Doesn't need address tracking, doesn't need observation
     [(_ #:cc (#%plain-app f:id e ...))
      #:when (not (app-calls-erp? stx))
      (log-app-type "STATIC app (!APP-CALLS-ERP)" #'f)
-     #'(#%plain-app f (wrap-nt (instrument e #:nt)) ...)]
+     #'(#%plain-app f (instrument e #:nt) ...)]
     ;; * instrumented function with right arity
     ;;   Use static protocol
     [(_ #:cc (#%plain-app f:instr-fun e ...))
      #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
      (with-syntax ([c (lift-call-site stx)])
-       #'(#%plain-app f.instr (cons c ADDR) OBS
-                      (wrap-nt (instrument e #:nt)) ...))]
+       #'(#%plain-app f.instr (cons c ADDR) OBS (instrument e #:nt) ...))]
     ;; * unknown, function is varref
     ;;   Use dynamic protocol
     [(_ #:cc (#%plain-app f:id e ...))
      (log-app-type "DYNAMIC app" #'f)
      (with-syntax ([c (lift-call-site stx)]
                    [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (with-continuation-mark ADDR-mark (cons c ADDR)
              (with-continuation-mark OBS-mark OBS
                (#%plain-app f tmp ...)))))]
@@ -510,7 +473,7 @@
     [(_ #:cc (#%plain-app e ...))
      (with-syntax ([c (lift-call-site stx)]
                    [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (with-continuation-mark ADDR-mark (cons c ADDR)
              (with-continuation-mark OBS-mark OBS
                (#%plain-app tmp ...)))))]
@@ -533,25 +496,25 @@
     [(_ #:nt (#%plain-app f:instr-fun e ...))
      #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
      (with-syntax ([c (lift-call-site stx)])
-       #'(#%plain-app f.instr (cons c ADDR) OBS (instrument e #:nt) ...))]
+       #'(#%plain-app f.instr (cons c ADDR) #f (instrument e #:nt) ...))]
     ;; * unknown, function is varref
     ;;   Use dynamic protocol
     [(_ #:nt (#%plain-app f:id e ...))
      (log-app-type "DYNAMIC app" #'f)
      (with-syntax ([c (lift-call-site stx)]
                    [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (with-continuation-mark ADDR-mark (cons c ADDR)
-             (with-continuation-mark OBS-mark OBS
+             (with-continuation-mark OBS-mark #f
                (#%plain-app f tmp ...)))))]
     ;; * unknown, function is expr
     ;;   Use dynamic protocol
     [(_ #:nt (#%plain-app e ...))
      (with-syntax ([c (lift-call-site stx)]
                    [(tmp ...) (generate-temporaries #'(e ...))])
-       #'(let-values ([(tmp) (wrap-nt (instrument e #:nt))] ...)
+       #'(let-values ([(tmp) (instrument e #:nt)] ...)
            (with-continuation-mark ADDR-mark (cons c ADDR)
-             (with-continuation-mark OBS-mark OBS
+             (with-continuation-mark OBS-mark #f
                (#%plain-app tmp ...)))))]))
 
 (begin-for-syntax
@@ -574,9 +537,3 @@
   (define NOT-OBSERVABLE-MESSAGE
     (string-append "expression is not observable"
                    ";\n it does not sample in an observable context")))
-
-;; wrap-nt : wrapped around NT args to CC function call
-(define-syntax (wrap-nt stx)
-  (syntax-case stx ()
-    [(wrap-nt e)
-     #'(with ([OBS #f]) e)]))
