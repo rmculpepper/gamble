@@ -21,7 +21,7 @@
    (define B (normal 0 10))
    (define E (gamma 2 2))
    (define (f x)
-     (normal (+ (* A x) B) E))
+     (+ (* A x) B (normal 0 E)))
    (for ([x XS])
      (observe (f x) (vector-ref ys x)))
    (vector A B E)))
