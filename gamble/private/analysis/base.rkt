@@ -104,6 +104,7 @@
 
 ;; analyze-TAG : Syntax -> Syntax
 ;; Add unique tags to all forms under 'tag syntax-property.
+;; Also introduce names for all expressions in operator position.
 (define (analyze-TAG stx0)
   (define-template-metafunction recur
     (syntax-parser [(recur e) (analyze-TAG #'e)]))
@@ -151,15 +152,16 @@
        (T (letrec-syntaxes+values ([svars srhs] ...) ([vvars (recur vrhs)] ...)
             (recur body) ...))]
       [(set! var e)
-       ;; (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
        (T (set! var (recur e)))]
       [(quote d) stx]
       [(quote-syntax s) stx]
       [(with-continuation-mark e1 e2 e3)
        (T (with-continuation-mark (recur e1) (recur e2) (recur e3)))]
-      ;; #%plain-app -- see above
-      [(#%plain-app e ...)
-       (T (#%plain-app (recur e) ...))]
+      [(#%plain-app f:id e ...)
+       (T (#%plain-app (recur f) (recur e) ...))]
+      [(#%plain-app f e ...)
+       (with-syntax ([(ftmp) (generate-temporaries #'(f))])
+         (T (recur (let-values ([(ftmp) f]) (#%plain-app ftmp e ...)))))]
       [(#%top . _) stx]
       [(#%variable-reference . _) stx]
       [(#%expression e)
