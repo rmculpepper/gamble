@@ -232,12 +232,19 @@
 
 ;; == Section 6.11 Indexing and Slicing
 
+(define-type Slice-Spec
+  (U (Listof Integer) (Vectorof Integer) ;; not (Sequenceof Integer), overlaps Integer
+     t:Slice
+     t:Slice-Dots
+     Integer
+     t:Slice-New-Axis))
+
 (Wrap array-ref : Array In-Indexes -> Real)
 (Wrap array-set! : MutArray In-Indexes Real -> Void)
 ;; array-indexes-ref, array-indexes-set!
 
-(Wrap array-slice-ref : Array (Listof t:Slice-Spec) -> Array)
-(Wrap array-slice-set! : MutArray (Listof t:Slice-Spec) Array -> Void)
+(Wrap array-slice-ref : Array (Listof Slice-Spec) -> Array)
+(Wrap array-slice-set! : MutArray (Listof Slice-Spec) Array -> Void)
 
 (provide (rename-out [t::: ::]
                      [t:slice? slice?]
