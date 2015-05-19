@@ -103,7 +103,7 @@
 ;;   Limit is always realspace, not logspace. If no limit, prob-{explored,accepted}
 ;;   can be meaningless. Note: Cannot observe continuous dist if limit given.
 (define (explore tree limit)
-  (define initial-st (expst 0 0 '#hash() 0))
+  (define initial-st (expst 0 0 '#hash() +inf.0))
   (define initial-heap
     ;; lib provides "min-heap", but want max prob, so use >= comparison
     (heap entry->=?))
@@ -140,12 +140,15 @@
   ;; Don't bother to watch for underflow, since we switch to logspace
   ;; for inexact numbers, and logspace is hard to underflow.
   (define (add a p ddim st)
+    ;; (eprintf "! add: ~v w/p prob ~s\n" a p)
     (defmatch (expst prob-explored prob-accepted table table-ddim) st)
     (cond [(> ddim table-ddim) ;; ie, infinitesimally likely
+           ;; (eprintf "! add: infinitely unlikely (got ~s, table has ~s)\n" ddim table-ddim)
            st]
           [(< ddim table-ddim) ;; ie, infinitely more likely than table
            ;; Can only happen if continuous obs allowed; therefore,
            ;; explored and accepted probs don't really matter.
+           ;; (eprintf "! add: infinitely likely (got ~s, table has ~s)\n" ddim table-ddim)
            (expst p p (hash a p) ddim)]
           [else
            (let* ([prob-explored (if limit (p+ prob-explored p) 0)]
