@@ -12,8 +12,7 @@
 ;; Defn += (defmodel M body ...)
 ;;       | (open-model M)
 
-;; FIXME: make deflazy cooperate w/ defmodel
-;;   and need to avoid repeated wrapping!
+;; FIXME: re deflazy, avoid repeated wrapping!
 ;; FIXME: add rename/prefix options for open-model
 
 (begin-for-syntax
@@ -26,7 +25,7 @@
             (raise-syntax-error #f "illegal use of model name" stx)))
 
   ;; An Export is (export Symbol ExportKind)
-  ;; where ExportKind = 'value | 'thunk | 'illegal
+  ;; where ExportKind = 'value | 'lazy | 'illegal
   (struct export (symbol kind)))
 
 (define-syntax (defmodel stx)
@@ -56,7 +55,7 @@
   (syntax-parse stx
     [(_ expr (~datum value))
      #'expr]
-    [(_ expr (~datum thunk))
+    [(_ expr (~datum lazy))
      #'(lambda () expr)]
     [(_ expr (~datum illegal))
      #'#f]))
@@ -82,7 +81,7 @@
   (define (id-export-mode id default-mode)
     (cond [(syntax-property id 'gamble:model:export-mode)
            => (lambda (mode)
-                (unless (memq mode '(value thunk illegal))
+                (unless (memq mode '(value lazy illegal))
                   (raise-syntax-error #f (format "bad export mode: ~s" mode) id))
                 mode)]
           [else default-mode]))
@@ -145,9 +144,15 @@
          [me:id
           (case exp-kind
             [(value) var-id]
-            [(thunk) #`(#%plain-app #,var-id)]
-            [(illegal)
-             (raise-syntax-error #f "name bound as syntax in original model" stx)])]
+            [(lazy) #`(#%plain-app #,var-id)]
+            [(illegal) (illegal-use-error stx)])]
          [(me:id arg:expr ...)
           (define app-stx (cons #'(#%expression me) (syntax->list #'(arg ...))))
-          (datum->syntax stx app-stx stx)])))))
+          (datum->syntax stx app-stx stx)]))))
+
+  (define (illegal-use-error id)
+    (raise-syntax-error #f
+      (string-append
+       "use of this model export name is not allowed"
+       ";\n it is bound as syntax in original model")
+      id)))

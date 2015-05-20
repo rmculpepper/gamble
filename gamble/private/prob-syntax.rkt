@@ -236,11 +236,12 @@
 (define-syntax (deflazy stx)
   (syntax-parse stx
     [(deflazy x:id e:expr)
-     (with-syntax ([(xtmp) (generate-temporaries #'(x))])
-       #'(begin (define xtmp (pdelay e))
-                (define-syntax x
+     (with-syntax ([(xtmp) (generate-temporaries #'(x))]
+                   [x (syntax-property #'x 'gamble:model:export-mode 'lazy)])
+       #'(begin (define xtmp (mem (lambda () e)))
+                (define-syntaxes (x)
                   (make-variable-like-transformer
-                   #'(pforce xtmp)))))]))
+                   #'(xtmp)))))]))
 
 (define-syntax (defmem stx)
   (define-syntax-class formals
