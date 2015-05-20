@@ -23,6 +23,10 @@
 
 ;; ------------------------------------------------------------
 
+(require "private/model.rkt")
+(provide defmodel
+         open-model)
+
 (require "dist.rkt")
 (provide (all-from-out "dist.rkt"))
 

@@ -1,4 +1,4 @@
-;; Copyright (c) 2014 Ryan Culpepper
+;; Copyright (c) 2014-2015 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
@@ -18,6 +18,47 @@
 @(the-eval '(require gamble (only-in gamble/viz [hist-pict hist])))
 
 @title[#:tag "util"]{Utilities}
+
+@; ============================================================
+@section[#:tag "model-util"]{Models: Lightweight Modules}
+
+@defform[(defmodel model-name body ...+)]{
+
+Defines @racket[model-name] as a model---a lightweight module. The
+@racket[body] forms are not evaluated until the model is invoked using
+@racket[open-model]. A model has no ``result value''; it only exports
+the names it defines. Note that @racket[model-name] can only be used
+with @racket[open-model]; in particular, it is not a variable, and a
+model is not a value.
+
+Every name defined within the model is exported, but an export bound
+to unknown syntax (eg, a macro definition) raises an error if
+used. Names bound with @racket[defmem] and @racket[deflazy] may be
+exported and used safely. Names imported via @racket[open-model] are
+automatically re-exported.
+
+@examples[#:eval the-eval
+(defmodel m1
+  (define x 1)
+  (deflazy y (begin (displayln "running!") 2))
+  (define-syntax-rule (z) (+ x y)))
+(defmodel m2
+  (open-model m1)
+  (define w (list x y)))
+(open-model m2)
+x
+y
+(z)
+w
+]
+}
+
+@defform[(open-model model-name)]{
+
+Executes the body of the model corresponding to @racket[model-name]
+and defines its exported names in the enclosing scope.
+}
+
 
 @; ============================================================
 @section[#:tag "stat-util"]{Statistical Utilities}
