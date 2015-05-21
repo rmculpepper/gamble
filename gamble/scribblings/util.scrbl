@@ -52,6 +52,52 @@ x
 y
 (code:line (z) (code:comment "can't use macro from model"))
 ]
+
+Models can be used to define reusable generative models:
+
+@interaction[#:eval the-eval
+(defmodel true-strength
+  (code:comment "type Person = Symbol")
+  (code:comment "type Match = (list Team Team)")
+
+  (code:comment "strength : Person -> Real")
+  (defmem (strength p) (normal 10 2))
+
+  (code:comment "lazy? : Person -> Boolean")
+  (define (lazy? p) (flip 0.1))
+
+  (code:comment "pulling-power : Person -> Real")
+  (define (pulling-power p)
+    (if (lazy? p)
+        (/ (strength p) 2.0)
+        (strength p)))
+
+  (code:comment "team-pulling-power : (Listof Person) -> Real")
+  (define (team-pulling-power t)
+    (for/sum ([p (in-list t)]) (pulling-power p)))
+
+  (code:comment "team1-wins? : Match -> Boolean")
+  (define (team1-wins? m)
+    (> (team-pulling-power (car m))
+       (team-pulling-power (cadr m))))
+
+  (observe/fail (team1-wins? '((james david) (brian john))) #t))
+]
+
+The generative model can then be combined with different queries:
+
+@interaction[#:eval the-eval
+(sampler->discrete-dist
+  (mh-sampler
+    (open-model true-strength)
+    (> (strength 'james) (strength 'brian)))
+  1000)
+(sampler->discrete-dist
+  (mh-sampler
+    (open-model true-strength)
+    (team1-wins? '((james david) (bob andrew))))
+  1000)
+]
 }
 
 @defform[(open-model model-name)]{

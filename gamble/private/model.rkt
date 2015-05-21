@@ -91,10 +91,14 @@
           [(identifier? v) (cons v onto)]
           [else onto]))
 
+  ;; Note: non-empty stop list automatically implies all other core forms too.
+  ;; Could use #f, but local-expand doesn't apply defctx then (Racket bug).
+  (define stop-list (list #'define-values #'define-syntaxes #'begin))
+
   (define (expand-body stxs defctx ctx)
     (let loop ([stxs stxs] [acc null])
       (cond [(pair? stxs)
-             (define e-stx (local-expand (car stxs) ctx #f defctx))
+             (define e-stx (local-expand (car stxs) ctx stop-list defctx))
              (syntax-parse e-stx
                #:literal-sets (kernel-literals)
                [(begin part ...)
