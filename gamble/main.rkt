@@ -27,6 +27,9 @@
 (provide defmodel
          open-model)
 
+(require "private/lazy-struct.rkt")
+(provide lazy-struct)
+
 (require "dist.rkt")
 (provide (all-from-out "dist.rkt"))
 

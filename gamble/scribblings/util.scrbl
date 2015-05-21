@@ -8,6 +8,7 @@
           scribble/eval
           (for-label racket/contract
                      racket/class
+                     racket/match
                      gamble
                      gamble/viz
                      (prefix-in math: math/array)
@@ -15,7 +16,7 @@
                      (prefix-in typed: typed/racket/base)))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require gamble (only-in gamble/viz [hist-pict hist])))
+@(the-eval '(require gamble racket/match (only-in gamble/viz [hist-pict hist])))
 
 @title[#:tag "util"]{Utilities}
 
@@ -59,6 +60,53 @@ Executes the body of the model corresponding to @racket[model-name]
 and defines its exported names in the enclosing scope.
 }
 
+
+@; ============================================================
+@section[#:tag "lazy-struct"]{Lazy Structures}
+
+@defform[(lazy-struct name-id (field-id ...))]{
+
+Defines a struct type called @racket[name-id] whose constructor delays
+its arguments using @racket[pdelay] and whose accessors automatically
+force the corresponding fields. If the constructor @racket[_name] is
+used with the wrong number of arguments, a compile-time error is
+raised.
+
+In addition to the standard names (@racket[_name], @racket[_name?],
+@racket[_name-field] ...), the name @racket[_strict-make-name] is
+bound to a strict constructor procedure.
+
+Printing, @racket[equal?] comparison, and hashing all automatically
+force all fields.
+
+Instances of lazy structs can be destructured with @racket[match]
+using one of the following patterns:
+
+@specsubform[(name-id #:strict field-pattern ...)]{
+
+Forces each @racket[_field] and matches it against @racket[_field-pattern].
+}
+
+@specsubform[(name-id #:thunk field-var-id ...)]{
+
+Binds each @racket[_field-var-id] to a thunk that when applied forces
+the corresponding field.
+}
+
+@examples[#:eval the-eval
+(lazy-struct lpair (x y))
+(define lp (lpair 'a (/ 1 0)))
+(lpair-x lp)
+(lpair-y lp)
+lp
+(match lp
+  [(lpair #:thunk get-x get-y)
+   (get-x)])
+(match (lpair 'a 'b)
+  [(lpair #:strict x y)
+   (list x y)])
+]
+}
 
 @; ============================================================
 @section[#:tag "stat-util"]{Statistical Utilities}
