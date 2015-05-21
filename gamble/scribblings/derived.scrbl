@@ -12,6 +12,7 @@
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require gamble (only-in gamble/viz [hist-pict hist])))
+@(the-eval '(random-seed 1))
 
 @title[#:tag "features"]{Derived Stochastic Forms and Functions}
 

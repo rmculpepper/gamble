@@ -11,6 +11,7 @@
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require gamble (only-in gamble/viz [hist-pict hist])))
+@(the-eval '(random-seed 1))
 
 @(define (wiki url-suffix . pre-content)
    (apply hyperlink (string-append "http://en.wikipedia.org/wiki/" url-suffix)

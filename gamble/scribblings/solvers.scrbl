@@ -14,6 +14,7 @@
 @(the-eval '(require gamble (only-in gamble/viz
                                    [hist-pict hist]
                                    [bin-pict bin])))
+@(the-eval '(random-seed 1))
 
 @title[#:tag "solvers"]{Samplers and Solvers}
 

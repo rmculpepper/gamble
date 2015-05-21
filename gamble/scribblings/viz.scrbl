@@ -17,6 +17,7 @@
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require gamble (only-in gamble/viz [hist-pict hist])))
+@(the-eval '(random-seed 1))
 
 @title[#:tag "viz"]{Visualization Utilities}
 
