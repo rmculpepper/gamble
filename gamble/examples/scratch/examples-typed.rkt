@@ -10,15 +10,15 @@
 (enumerate
  (define A (flip))
  (define B (flip))
- A
- #:when (or A B))
+ (observe/fail (or A B))
+ A)
 
 (define s-mh
   (mh-sampler
    (define A (flip))
    (define B (flip))
-   A
-   #:when (or A B)))
+   (observe/fail (or A B))
+   A))
 (s-mh)
 
 (: geom : -> Nonnegative-Integer)

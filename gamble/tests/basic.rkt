@@ -53,10 +53,10 @@
   (enumerate (proc)))
 
 (define ((egibbs-compute-dist iters) proc)
-  (sampler->discrete-dist (mh-sampler (proc) #:transition (enumerative-gibbs)) iters))
+  (sampler->discrete-dist (mh-sampler #:transition (enumerative-gibbs) (proc)) iters))
 
 (define ((slice-compute-dist iters) proc)
-  (sampler->discrete-dist (mh-sampler (proc) #:transition (slice)) iters))
+  (sampler->discrete-dist (mh-sampler #:transition (slice) (proc)) iters))
 
 (make-basic-tests 'rejection (rejection-compute-dist 1000) 0.05)
 (make-basic-tests 'imp-sampl (imp-compute-dist 1000)       0.05)

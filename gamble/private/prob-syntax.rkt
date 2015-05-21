@@ -41,20 +41,12 @@
 
 ;; ----
 
-(begin-for-syntax
- (define-syntax-class special-condition
-   (pattern ((~datum =) label value:expr)
-            #:with e #'(cons `label (spcond:equal value)))))
-
-;; ----
-
 (define-syntax (rejection-sampler stx)
   (syntax-parse stx
-    [(rejection-query def:expr ... result:expr
-                      (~optional (~seq #:when condition:expr)))
+    [(rejection-query def:expr ... result:expr)
      (template
       (rejection-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
+       (lambda () def ... result)))]))
 
 (define (rejection-sampler* thunk)
   (new rejection-sampler% (thunk thunk)))
@@ -104,11 +96,10 @@
 
 (define-syntax (importance-sampler stx)
   (syntax-parse stx
-    [(importance-sampler def:expr ... result:expr
-                         (~optional (~seq #:when condition:expr)))
+    [(importance-sampler def:expr ... result:expr)
      (template
       (importance-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
+       (lambda () def ... result)))]))
 
 (define (importance-sampler* thunk)
   (new importance-sampler% (thunk thunk)))
@@ -176,52 +167,27 @@
 
 (define-syntax (mh-sampler stx)
   (syntax-parse stx
-    [(mh-sampler def:expr ... result:expr
-                 (~or (~optional (~seq #:when condition:expr))
-                      (~optional (~seq #:transition tx)))
-                 ...)
+    [(mh-sampler (~optional (~seq #:transition tx))
+                 def:expr ... result:expr)
      #:declare tx (expr/c #'mh-transition?)
      (template
       (mh-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (lambda () def ... result)
        (?? tx.c)))]))
-
-;; ----
-
-(define-syntax (hmc-sampler stx)
-  (syntax-parse stx
-    [(hmc-sampler def:expr ... result:expr
-                  (~or (~optional (~seq #:epsilon epsilon:expr))
-                       (~optional (~seq #:L L:expr))
-                       (~optional (~seq #:when condition:expr)))
-                  ...)
-     (template
-      (mh-sampler*
-       (λ () def ... (begin0 result (unless (?? condition #t) (fail))))
-       (hmc (?? epsilon 0.01) (?? L 10))))]))
 
 ;; ----
 
 (define-syntax (enumerate stx)
   (syntax-parse stx
-    [(enumerate def:expr ... result:expr
-                (~or (~optional (~seq #:when condition:expr))
-                     (~optional (~seq #:limit limit:expr))
+    [(enumerate (~or (~optional (~seq #:limit limit:expr))
                      (~optional (~seq #:normalize? normalize?)))
-                ...)
+                ...
+                def:expr ... result:expr)
      (template
       (enumerate*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))
+       (lambda () def ... result)
        (?? limit #f)
        (?? normalize? #t)))]))
-
-(define-syntax (enum-importance-sampler stx)
-  (syntax-parse stx
-    [(importance-sample def:expr ... result:expr
-                        (~optional (~seq #:when condition:expr)))
-     (template
-      (enum-importance-sampler*
-       (lambda () def ... (begin0 result (unless (?? condition #t) (fail))))))]))
 
 ;; ----
 

@@ -206,7 +206,7 @@ two scalar values.
 @examples[#:eval the-eval
 (sampler->mean+variance (rejection-sampler (flip 1/2))
                         100
-                        (indicator/value #t))
+                        (indicator #t))
 ]
 }
 
@@ -439,20 +439,27 @@ list.
 }
 
 @deftogether[[
-@defproc[(indicator/value [v any/c])
+@defproc[(indicator [value-or-pred
+                     (or/c (-> any/c) any/c)])
+         (-> any/c (or/c 1 0))]
+@defproc[(indicator/value [value any/c])
          (-> any/c (or/c 1 0))]
 @defproc[(indicator/predicate [pred (-> any/c boolean?)])
          (-> any/c (or/c 1 0))]
 ]]{
 
-Produces an indicator function for the value @racket[v] or the set of
-values accepted by the predicate @racket[pred], respectively.
+Produces an indicator function for the value @racket[value] or the set
+of values accepted by the predicate @racket[pred], respectively.
 
 @examples[#:eval the-eval
-(define z (indicator/value 0))
-(z 0)
-(z 2.74)
-(z 'apple)
+(define zero (indicator 0))
+(zero 0)
+(zero 2.74)
+(zero 'apple)
+(define pos (indicator positive?))
+(pos 0)
+(pos -2.3)
+(pos 4.5)
 ]
 }
 

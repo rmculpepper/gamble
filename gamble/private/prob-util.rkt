@@ -12,6 +12,11 @@
 
 ;; ========================================
 
+(define (indicator v)
+  (if (procedure? v)
+      (indicator/predicate v)
+      (indicator/value v)))
+
 (define ((indicator/value v) x)
   (if (equal? x v) 1 0))
 

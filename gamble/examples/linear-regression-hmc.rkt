@@ -17,9 +17,10 @@
 
 (define (make-lr a b e n)
   (define ys (build-vector n (make-point a b e)))
-  
+
   (define model
-    (hmc-sampler
+    (mh-sampler
+     #:transition (hmc 0.009 100)
      (define A (label 'A (derivative (normal 0 10) #f #f)))
      (define B (label 'B (derivative (normal 0 10) #f #f)))
      (define E (label 'E 
@@ -38,11 +39,8 @@
      (for ([x n])
        (data x (vector-ref ys x)))
 
-     (vector A B)
-     #:epsilon 0.009
-     #:L 100
-     ))
-  
+     (vector A B)))
+
   (values ys model))
 
 (define-values (ys lr) (make-lr -20 12 1 10))

@@ -20,13 +20,13 @@
 (define-syntax rejection-query
   (syntax-parser
     [(_ def/expr ... result-expr #:when condition)
-     #'((rejection-sampler def/expr ... result-expr #:when condition))]))
+     #'((rejection-sampler def/expr ... (observe/fail condition) result-expr))]))
 
 (define-syntax enumeration-query
   (syntax-parser
     [(_ def/expr ... result-expr #:when condition)
      #'(discrete-dist->lists
-        (enumerate def/expr ... result-expr #:when condition #:limit #f))]))
+        (enumerate #:limit #f def/expr ... (observe/fail condition) result-expr))]))
 
 (define (discrete-dist->lists dd)
   (list (vector->list (discrete-dist-values dd))

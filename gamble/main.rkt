@@ -55,6 +55,8 @@
            (->* [weighted-sampler? exact-nonnegative-integer?]
                 [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
                 discrete-dist?)]
+          [indicator
+           (-> any/c procedure?)]
           [indicator/value
            (-> any/c procedure?)]
           [indicator/predicate
@@ -113,7 +115,6 @@
          rejection-sampler
          importance-sampler
          mh-sampler
-         hmc-sampler
          enumerate
          label
          with-zone

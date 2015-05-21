@@ -55,23 +55,35 @@ designed to explore their probability distribution. The general form is
 @racketblock[
 (_sampler/solver-form
   _def/expr @#,(racketidfont "...")
-  _sample-result-expr 
-  #:when _condition-expr)
+  _sample-result-expr)
 ]
 
-For example, @racket[rejection-sampler] creates a sampler that simply
-runs a model until it generates a sample satisfying the given
-condition.
+For example, here is a use of @racket[rejection-sampler]
 
 @interaction[#:eval the-eval
-(define s-2flips
+(define s-or2flips
   (rejection-sampler
     (define A (flip))
     (define B (flip))
-    A
-    #:when (or A B)))
-(s-2flips)
-(s-2flips)
+    (or A B)))
+(s-or2flips)
+(s-or2flips)
+]
+
+In addition to sampling from random distributions, programs can also
+perform observations specified by a condition expression using
+@racket[observe/fail]. A rejection sampler will simply run the model
+until it generates a sample satisfying the given condition.
+
+@interaction[#:eval the-eval
+(define s-first-given-or
+  (rejection-sampler
+    (define A (flip))
+    (define B (flip))
+    (observe/fail (or A B))
+    A))
+(s-first-given-or)
+(s-first-given-or)
 ]
 
 Samplers can be run multiple times to estimate properties of the
@@ -79,8 +91,8 @@ probability distributions they represent or to finitely approximate
 the distribution.
 
 @interaction[#:eval the-eval
-(sampler->mean+variance s-2flips 100 (indicator/value #t))
-(sampler->discrete-dist s-2flips 100)
+(sampler->mean+variance s-first-given-or 100 (indicator #t))
+(sampler->discrete-dist s-first-given-or 100)
 ]
 
 Probability distributions can be visualized with the simple
@@ -88,7 +100,7 @@ Probability distributions can be visualized with the simple
 available through the @racketmodname[plot] library.
 
 @interaction[#:eval the-eval
-(hist (repeat s-2flips 100))
+(hist (repeat s-first-given-or 100))
 ]
 
 Other sampler and solver forms use more sophisticated techniques to
@@ -218,8 +230,8 @@ the distribution is correct to within the given limit.
 (define (geom)
   (if (flip) 0 (add1 (geom))))
 (enumerate
-  (geom)
-  #:limit 1e-6)
+  #:limit 1e-6
+  (geom))
 ]
 
 Note that the probabilities are not quite the negative powers of 2,
@@ -228,9 +240,9 @@ because they are normalized after the search stops at @racket[19]. Use
 
 @interaction[#:eval the-eval
 (enumerate
-  (geom)
   #:limit 1e-6
-  #:normalize? #f)
+  #:normalize? #f
+  (geom))
 ]
 
 The @racket[enumerate] form supports memoization through
@@ -242,23 +254,14 @@ The @racket[enumerate] form supports memoization through
   (list (f 1) (f 2) (f 1) (f 2)))
 ]
 
-The @racket[enumerate] form supports conditioning through a final
-@racket[#:when] clause:
+The @racket[enumerate] form supports conditioning:
 
 @interaction[#:eval the-eval
 (enumerate
-  (define A (flip))
-  (define B (flip))
-  A
-  #:when (or A B))
-]
-
-@interaction[#:eval the-eval
-(enumerate
+  #:limit 1e-6
   (define A (geom))
-  A
-  #:when (< 20 A 30)
-  #:limit 1e-6)
+  (observe/fail (< 20 A 30))
+  A)
 ]
 
 Here's an example from @cite{EPP} that shows that this technique can
@@ -268,6 +271,7 @@ resulting probabilities by the acceptance rate of the condition.
 
 @interaction[#:eval the-eval
 (enumerate
+ #:normalize? #f
  (define (drunk-flip)
    (if (flip 0.9)
        (fail) (code:comment "dropped the coin")
@@ -278,8 +282,7 @@ resulting probabilities by the acceptance rate of the condition.
          [else
           (and (drunk-flip)
                (drunk-andflips (sub1 n)))]))
- (drunk-andflips 10)
- #:normalize? #f)
+ (drunk-andflips 10))
 ]
 
 Enumeration can be nested:
@@ -291,8 +294,8 @@ Enumeration can be nested:
    (enumerate
     (define C (flip))
     (define D (flip))
-    (or C D)
-    #:when (or (and C D) A)))
+    (observe/fail (or (and C D) A))
+    (or C D)))
  (list A B))
 ]
 

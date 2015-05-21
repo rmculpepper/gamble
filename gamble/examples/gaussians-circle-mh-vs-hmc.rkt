@@ -23,7 +23,8 @@
    (vector x y #|(sqrt r2)|#)))
 
 (define sh
-  (hmc-sampler
+  (mh-sampler
+   #:transition (hmc 0.01 30)
    (define x (label 'x (derivative (normal 0 1) #f #f)))
    (define y (label 'y (derivative (normal x 1)
                                    [(x) (lambda (x) 1)]
@@ -34,9 +35,7 @@
                       [(x y)
                        (lambda (x y) (values (* 2 x) (* 2 y)))]
                       #f))
-   (vector x y #|(sqrt r2)|#)
-   #:epsilon 0.01
-   #:L 30))
+   (vector x y #|(sqrt r2)|#)))
 
 (void (for ([i BURN-IN]) (s)))
 (send sh set-transition (multi-site))

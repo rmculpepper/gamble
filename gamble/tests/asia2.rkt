@@ -92,8 +92,8 @@
                         [bronchitis (flip 0.8)]
                         [else (flip 0.1)]))
 
-  (when observe-x-ray? (unless x-ray-abnormal (fail)))
-  (when observe-smoker? (unless smoker (fail)))
+  (when observe-x-ray? (observe/fail x-ray-abnormal))
+  (when observe-smoker? (observe/fail smoker))
 
   (map one-if (list dyspnea tuberculosis lung-cancer)))
 
@@ -111,8 +111,8 @@
                               [bronchitis 0.8]
                               [else 0.1])))
 
-  (when observe-x-ray? (unless x-ray-abnormal (fail)))
-  (when observe-smoker? (unless smoker (fail)))
+  (when observe-x-ray? (observe/fail x-ray-abnormal))
+  (when observe-smoker? (observe/fail smoker))
 
   (map one-if (list dyspnea tuberculosis lung-cancer)))
 
@@ -207,9 +207,9 @@
 
   ;; Only allowed on asia*, no structural choices
   (run-asia-tests "mh enum-gibbs, asia*" asia*
-                  (lambda (thunk) (mh-sampler (thunk) #:transition (enumerative-gibbs))))
+                  (lambda (thunk) (mh-sampler #:transition (enumerative-gibbs) (thunk))))
   (run-both-tests "mh slice, asia*" asia*
-                  (lambda (thunk) (mh-sampler (thunk) #:transition (slice))))
+                  (lambda (thunk) (mh-sampler #:transition (slice) (thunk))))
   )
 
 (run)

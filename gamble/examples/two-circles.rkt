@@ -7,7 +7,8 @@
 (define HSAMPLES 5000)
 
 (define sh
-  (hmc-sampler
+  (mh-sampler
+   #:transition (hmc 0.01 30)
    (define mode (with-zone 'Mode (flip)))
    (define radiusSq (if mode 2.1 0.9))
    (define x (with-zone 'Point (label 'x (derivative (normal 0 4) #f #f))))
@@ -21,9 +22,7 @@
                                  [(x y)
                                   (lambda (x y) (values (* 2 x) (* 2 y)))]
                                  #f)))
-   (vector x y #|(sqrt r2)|#)
-   #:epsilon 0.01
-   #:L 30))
+   (vector x y #|(sqrt r2)|#)))
 
 (send sh set-transition (multi-site))
 (void (for ([i HBURN-IN]) (sh)))

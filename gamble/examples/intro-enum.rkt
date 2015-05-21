@@ -20,10 +20,10 @@
   (if (flip p) 0 (add1 (geom p))))
 
 (printf "enumerate (geom 1/2) with limit 1e-3\n")
-(enumerate (geom 1/2) #:limit 1e-3)
+(enumerate #:limit 1e-3 (geom 1/2))
 
 (printf "enumerate (geom 1/2) with limit 1e-3, unnormalized\n")
-(enumerate (geom 1/2) #:limit 1e-3 #:normalize? #f)
+(enumerate #:limit 1e-3 #:normalize? #f (geom 1/2))
 
 (newline)
 
@@ -33,15 +33,15 @@
 (enumerate
  (define A (flip))
  (define B (flip))
- A
- #:when (or A B))
+ (observe/fail (or A B))
+ A)
 
 (printf "lazy enumeration of infinite dists w/ limit\n")
 (enumerate 
-   (define A (geom 1/2))
-   A
-   #:when (< 10 A 20)
-   #:limit 1e-3)
+ #:limit 1e-3
+ (define A (geom 1/2))
+ (observe/fail (< 10 A 20))
+ A)
 
 (newline)
 
@@ -49,6 +49,7 @@
 
 (printf "drunk-flip example from EPP\n")
 (enumerate
+ #:normalize? #f
  (define (drunk-flip)
    (if (flip 0.9)
        (fail) ;; dropped the coin
@@ -59,10 +60,7 @@
          [else
           (and (drunk-flip)
                (drunk-andflips (sub1 n)))]))
- (drunk-andflips 10)
- #:normalize? #f
- ;; Need to disable limit to detect #t case
- #:limit #f)
+ (drunk-andflips 10))
 
 (newline)
 

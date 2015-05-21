@@ -35,7 +35,6 @@ The following samplers are supported:
 @item{@racket[rejection-sampler] --- unweighted sampler, does not
 support observations on continuous random variables}
 @item{@racket[importance-sampler] --- weighted sampler}
-@item{@racket[enum-importance-sampler] --- weighted sampler}
 @item{@racket[mh-sampler] --- unweighted sampler, uses MCMC to seek
 high-probability zones}
 ]
@@ -133,31 +132,24 @@ The samplers supported by this language consist of simple samplers and
 a more complicated and flexible
 @seclink["mh-sampler"]{Metropolis-Hastings sampler framework}.
 
-@defform[(rejection-sampler def/expr ... result-expr maybe-when-clause)
-         #:grammar ([maybe-when-clause (code:line)
-                                       (code:line #:when condition-expr)])]{
+@defform[(rejection-sampler def/expr ... result-expr)]{
 
 Produces a @tech{sampler} that, when applied, returns a value of
-@racket[result-expr] arising from an execution where
-@racket[condition-expr], if present, was satisfied.
+@racket[result-expr] arising from an execution where all observations
+in the body are satisfied.
 
 The sampler is implemented using rejection sampling---specifically,
-``logic sampling''---for discrete random choices. That is, the
-@racket[def/expr]s and @racket[result-expr] are evaluated. Then
-@racket[condition-expr] is evaluated, if present; if it produces
-@racket[#t], the execution is accepted and the value of
-@racket[result-expr] is returned; otherwise, the process is repeated.
-
-The rejection sampler can sample continuous random variables, but it
-cannot perform observations (@racket[observe-sample]) on them.
+``logic sampling''---for discrete random choices. The rejection
+sampler can sample continuous random variables, but it cannot perform
+observations (@racket[observe], @racket[observe-sample]) on them.
 
 @examples[#:eval the-eval
 (define s-or
   (rejection-sampler
     (define A (flip))
     (define B (flip))
-    A
-    #:when (or A B)))
+    (observe/fail (or A B))
+    A))
 (hist (repeat s-or 100))
 (hist (repeat s-or 1000))
 
@@ -170,9 +162,7 @@ cannot perform observations (@racket[observe-sample]) on them.
 ]
 }
 
-@defform[(importance-sampler def/expr ... result-expr maybe-when-clause)
-         #:grammar ([maybe-when-clause (code:line)
-				       (code:line #:when condition-expr)])]{
+@defform[(importance-sampler def/expr ... result-expr)]{
 
 Like @racket[rejection-sampler], but returns a @emph{weighted sampler}
 that uses weights to represent the quality of a particular sample
@@ -197,13 +187,9 @@ framework, and the proposal mechanisms are implemented by a variety of
 @deftech{MH transition} types.
 
 
-@defform[(mh-sampler def/expr ... result-expr 
-           maybe-when-clause 
-           maybe-transition-clause)
-         #:grammar ([maybe-when-clause (code:line)
-                                       (code:line #:when condition-expr)]
-                    [maybe-transition-clause (code:line)
-                                             (code:line #:transition transition-expr)])]{
+@defform[(mh-sampler maybe-transition def/expr ... result-expr)
+         #:grammar ([maybe-transition (code:line)
+                                      (code:line #:transition transition-expr)])]{
 
 Returns a @tech{sampler} that produces samples using a variant of
 Metropolis-Hastings.
@@ -216,8 +202,8 @@ new states. If absent, @racket[(single-site)] is used.
   (mh-sampler
     (define A (flip))
     (define B (flip))
-    A
-    #:when (or A B)))
+    (observe/fail (or A B))
+    A))
 (hist (repeat mh-or 100))
 
 (define mh-n-flips
@@ -230,21 +216,6 @@ new states. If absent, @racket[(single-site)] is used.
 (hist (repeat mh-n-flips 100))
 (hist (repeat mh-n-flips 2000))
 ]
-}
-
-@defform[(hmc-sampler def/expr ... result-expr
-                      maybe-epsilon-clause maybe-L-clause maybe-when-clause)
-         #:grammar ([maybe-epsilon-clause (code:line)
-                                          (code:line #:epsilon epsilon-expr)]
-                    [maybe-L-clause (code:line)
-                                    (code:line #:L L-expr)]
-                    [maybe-when-clause (code:line)
-                                       (code:line #:when cond-expr)])]{
-
-Equivalent to the following:
-@racketblock[(mh-sampler def/expr ... result-expr
-               #:when condition-expr
-               #:transition (hmc epsilon-expr L-expr))]
 }
 
 
@@ -333,7 +304,7 @@ restrictions:
 
 @itemlist[
 @item{There must be no structural dependencies among the distributions
-of @racket[def/expr ... result-expr]}
+of @racket[_def/expr ... _result-expr]}
 @item{All the distributions must be continuous.}
 @item{Any distribution that has parameters that depend on the value of
 another distribution must be wrapped in a @racket[derivative]
@@ -347,14 +318,13 @@ tuning may be required to achive good results.
 
 @examples[#:eval the-eval
 (define one-dim-loc-hmc
-  (hmc-sampler
-     (define Hid (label 'Hid (derivative (normal 10 1) #f #f)))
-     (derivative (observe-sample (normal-dist Hid 0.5) 9.0)
-                 [(Hid) (λ (hid) 1)]
-                 #f)
-     Hid
-     #:epsilon 0.01
-     #:L 90))
+  (mh-sampler
+    #:transition (hmc 0.01 90)
+    (define Hid (label 'Hid (derivative (normal 10 1) #f #f)))
+    (derivative (observe-sample (normal-dist Hid 0.5) 9.0)
+                [(Hid) (λ (hid) 1)]
+                #f)
+    Hid))
 
 (bin (repeat one-dim-loc-hmc 100))
 ]
@@ -466,17 +436,18 @@ variables, can be abbreviated as @racket[#f].
 
 @examples[#:eval the-eval
 (define derivative-example
-  (hmc-sampler
-   (define A (label 'A-lbl (derivative (normal 0 1) #f #f)))
-   (define B (label 'B-lbl (derivative (normal 1 1) #f #f)))
+  (mh-sampler
+    #:transition (hmc)
+    (define A (label 'A-lbl (derivative (normal 0 1) #f #f)))
+    (define B (label 'B-lbl (derivative (normal 1 1) #f #f)))
 
-   (define C (derivative (normal (- (* A A) (* B B)) 1)
-                         [(A-lbl B-lbl)
-                          (λ (a b)
-                            (values (* 2 a)
-                                    (- (* 2 b))))]
-                         #f))
-   B))
+    (define C (derivative (normal (- (* A A) (* B B)) 1)
+                          [(A-lbl B-lbl)
+                           (λ (a b)
+                             (values (* 2 a)
+                                     (- (* 2 b))))]
+                          #f))
+    B))
 ]
 
 In the example above, @racket[A] and @racket[B] do not depend on any
@@ -591,14 +562,14 @@ the sequence.
 @; ============================================================
 @section[#:tag "enum"]{Enumeration Solver}
 
-@defform[(enumerate def/expr ... result-expr
-           maybe-when-clause maybe-limit-clause maybe-normalize-clause)
-         #:grammar ([maybe-when-clause (code:line)
-                                       (code:line #:when condition-expr)]
-                    [maybe-limit-clause (code:line)
-                                        (code:line #:limit limit-expr)]
-                    [maybe-normalize-clause (code:line)
-                                            (code:line #:normalize? normalize?-expr)])]{
+@defform[(enumerate maybe-limit maybe-normalize
+           def/expr ... result-expr)
+         #:grammar ([maybe-limit (code:line)
+                                 (code:line #:limit limit-expr)]
+                    [maybe-normalize (code:line)
+                                     (code:line #:normalize? normalize?-expr)])
+         #:contracts ([limit-expr (or/c #f (>=/c 0))]
+                      [normalize?-expr any/c])]{
 
 Returns a discrete distribution of the form @racket[(discrete-dist
 [_value _prob] ...)], where @racket[_value] is a value produced by
@@ -628,8 +599,8 @@ termination.
 (enumerate
   (define A (flip))
   (define B (flip))
-  A
-  #:when (or A B))
+  (observe/fail (or A B))
+  A)
 ]
 
 Use @racket[#:limit] to control when exploration should be cut
@@ -637,8 +608,8 @@ off.
 
 @interaction[#:eval the-eval
 (enumerate
-  (geom)
-  #:limit 1e-6)
+  #:limit 1e-6
+  (geom))
 ]
 
 Use @racket[#:normalize? #f] to get the result probabilities without
@@ -646,6 +617,7 @@ normalizing by the acceptance rate:
 
 @interaction[#:eval the-eval
 (enumerate
+ #:normalize? #f
  (define (drop-coin?) (flip 0.9))
  (define (drunk-flips n)
    (cond [(zero? n)
@@ -655,12 +627,9 @@ normalizing by the acceptance rate:
          [else
           (and (flip) (drunk-flips (sub1 n)))]))
  (define A (drunk-flips 10))
- (eq? A #t)
- #:when (not (eq? A 'failed))
- #:normalize? #f)
+ (observe/fail (not (eq? A 'failed)))
+ (eq? A #t))
 ]
 }
 
-
 @(close-eval the-eval)
-

@@ -153,11 +153,9 @@ Same test cases as in summer school and for abstract interpreter. [?]
                          [tb-or-c (flip 0.7)]
                          [bronchitis (flip 0.8)]
                          [else (flip 0.1)]))
+   (observe/fail x-ray-abnormal)
    (map one-if 
-        (list dyspnea tuberculosis lung-cancer)) 
-   #:when x-ray-abnormal
-   ))
-
+        (list dyspnea tuberculosis lung-cancer))))
 
 (define asia-ab-x-samples 
   (trim-and-thin (repeat asia-abnormal-x-ray 150000) 3500 50))
@@ -193,10 +191,9 @@ Same test cases as in summer school and for abstract interpreter. [?]
                          [tb-or-c (flip 0.7)]
                          [bronchitis (flip 0.8)]
                          [else (flip 0.1)]))
+   (observe/fail (and x-ray-abnormal smoker))
    (map one-if 
-        (list dyspnea tuberculosis lung-cancer)) 
-   #:when (and x-ray-abnormal smoker)
-   ))
+        (list dyspnea tuberculosis lung-cancer))))
 
 
 (define asia-ab-x-smoker-samples 
@@ -254,8 +251,8 @@ Same test cases as in summer school and for abstract interpreter. [?]
   (mh-sampler 
    (define c1 (flip))
    (define c2 (flip))
-   (if c1 1 0)
-   #:when (or c1 c2)))
+   (observe/fail (or c1 c2))
+   (if c1 1 0)))
 
 (printf "First of two coin flips, given that at least one is true.\n")
 (compare-results 0.666667 (trim-and-thin (repeat two-coins 8000) 2500 5) mean)
@@ -268,9 +265,9 @@ Same test cases as in summer school and for abstract interpreter. [?]
   (mh-sampler
    (define p (beta 1 2))
    (define coin (mem (lambda (n) (flip p))))
-   p
-   #:when (and (coin 1) (coin 2) (coin 3) (coin 4)
-               (coin 5))))
+   (observe/fail (and (coin 1) (coin 2) (coin 3) (coin 4) (coin 5)))
+   p))
+
 (let ((pp-draws (trim-and-thin (repeat beta-the-hard-way 8000) 2500 5)))
   (begin (printf "Draws from beta(6,2) posterior, we hope.\n Mean:\n")
          (compare-results 0.75 pp-draws mean)

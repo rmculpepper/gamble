@@ -164,6 +164,8 @@
    ;; samples->KS
 
    ;; ----------------------------------------
+   [observe/fail
+    (-> Univ Univ)]
    [observe*
     (-poly (a) (-> (-> a) a a))]
 
