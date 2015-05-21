@@ -41,16 +41,16 @@ automatically re-exported.
 @examples[#:eval the-eval
 (defmodel m1
   (define x 1)
-  (deflazy y (begin (displayln "running!") 2))
+  (deflazy y (begin (displayln "computing y!") 2))
   (define-syntax-rule (z) (+ x y)))
 (defmodel m2
   (open-model m1)
-  (define w (list x y)))
+  (deflazy w (list x y)))
 (open-model m2)
+w
 x
 y
-(z)
-w
+(code:line (z) (code:comment "can't use macro from model"))
 ]
 }
 
