@@ -103,7 +103,7 @@
 ;;   Limit is always realspace, not logspace. If no limit, prob-{explored,accepted}
 ;;   can be meaningless. Note: Cannot observe continuous dist if limit given.
 (define (explore tree limit)
-  (define initial-st (expst 0 0 '#hash() +inf.0))
+  (define initial-st (expst 0 0 '#hash() (if limit 0 +inf.0)))
   (define initial-heap
     ;; lib provides "min-heap", but want max prob, so use >= comparison
     (heap entry->=?))
