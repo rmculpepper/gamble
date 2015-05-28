@@ -4,21 +4,27 @@
          (rename-in racket/match [match-define defmatch])
          "interfaces.rkt"
          "../matrix.rkt"
+         "prob-util.rkt"
          "dist.rkt")
 (provide (struct-out statistics)
          statistics-scalar-mean
          statistics-scalar-variance
          statistics-vector-mean
+         real-vector-like?
 
          sampler->statistics
          samples->statistics
          sampler->mean+variance
-         sampler->KS
-         samples->KS
-         sampler->mean)
+         samples->mean+variance
+         sampler->mean
+         samples->mean
+         samples->KS)
 
 ;; Reference: "Numerically Stable, Single-Pass, Parallel Statistics
 ;; Algorithms" by Bennett et al.
+
+;; ============================================================
+;; Statistics objects
 
 ;; A Statistics is (statistics PosNat PosNat ColumnMatrix Matrix)
 (struct statistics (dim n mean cov) #:transparent)
@@ -39,14 +45,29 @@
   (unless (= 1 (statistics-dim s))
     (error who "expected scalar statistics (dimension 1)\n  given: ~e" s)))
 
-;; ----------------------------------------
+;; merge-statistics : Statistics Statistics -> Statistics
+(define (merge-statistics st1 st2)
+  (defmatch (statistics dim1 n1 mean1 cov1) st1)
+  (defmatch (statistics dim2 n2 mean2 cov2) st2)
+  (unless (= dim1 dim2)
+    (error 'merge-statistics "statistics have different dimensions"))
+  (define mean1v (vector-copy (matrix->vector mean1)))
+  (define mean2v (matrix->vector mean2))
+  (define C21 (cov->C2 cov1 n1 #t))
+  (define C22 (cov->C2 cov2 n2 #f))
+  (merge-incstats! dim1 n1 mean1v C21 n2 mean2v C22)
+  (define n (+ n1 n2))
+  (statistics dim1 n (array->immutable-array (->col-matrix mean1v)) (C2->cov C21 n)))
+
+;; ============================================================
+;; RealVectors
 
 ;; An RV is one of
 ;; - real
 ;; - (vectorof real)
 ;; - col-matrix
 
-(define (rv? x)
+(define (real-vector-like? x)
   (or (real? x)
       (and (vector? x) (for/and ([xi (in-vector x)]) (real? xi)))
       (col-matrix? x)))
@@ -61,130 +82,37 @@
         [(vector? x) (vector-ref x i)]
         [(matrix? x) (matrix-ref x i 0)]))
 
+;; check-rv-vector : Symbol Vector -> PosNat
+(define (check-rv-vector who vs)
+  (when (zero? (vector-length vs))
+    (error who "empty vector XXXX"))
+  (define rv0 (vector-ref vs 0))
+  (define dim (check-rv who rv0 #f))
+  (for ([v (in-vector vs)])
+    (check-rv who v dim))
+  dim)
+
+;; check-rv : Symbol Any PosNat/#f -> PosNat
 (define (check-rv who v dim)
-  (unless (rv? v)
-    (error who "value is not a real vector\n  value: ~e" v))
+  (unless (real-vector-like? v)
+    (error who "expected a real, real vector, or real column matrix\n  value: ~e" v))
+  (define rvlen (rv-length v))
   (when dim
-    (unless (= (rv-length v) dim)
+    (unless (= rvlen dim)
       (error who "real vector has wrong dimension\n  expected: ~e\n  value: ~e"
-             dim v))))
+             dim v)))
+  rvlen)
 
-;; ----------------------------------------
-
-(define (sampler->mean+variance s n [f values]
-                                #:burn [burn 0]
-                                #:thin [thin 0])
-  (define s* (wrap-sampler s f burn thin))
-  (define st (sampler->statistics* 'sampler->mean+variance s* n))
-  (unless (= 1 (statistics-dim st))
-    (error 'sampler->mean+variance
-           "statistics has wrong dimension (non-scalar)\n  statistics: ~e" st))
-  (values (statistics-scalar-mean st)
-          (statistics-scalar-variance st)))
-
-#|
-(define (sampler->mean s n [f values]
-                       #:burn [burn 0]
-                       #:thin [thin 0])
-  (define s* (wrap-sampler s f burn thin))
-  (define st (sampler->statistics* 'sampler->mean s* n))
-  (unless (= 1 (statistics-dim st))
-    (error 'sampler->mean
-           "statistics has wrong dimension (non-scalar)\n  statistics: ~e" st))
-  (statistics-scalar-mean st))
-|#
-
-(define (wrap-sampler s f burn thin)
-  (cond [(sampler? s)
-         (for ([_ (in-range burn)]) (send s sample))
-         (lambda ()
-           (for ([_ (in-range thin)]) (send s sample))
-           (f (send s sample)))]
-        [(procedure? s)
-         (for ([_ (in-range burn)]) (s))
-         (lambda ()
-           (for ([_ (in-range thin)]) (s))
-           (f (s)))]))
-
-;; ----------------------------------------
-
-;; merge-statistics : Statistics Statistics -> Statistics
-(define (merge-statistics st1 st2)
-  (defmatch (statistics dim1 n1 mean1 cov1) st1)
-  (defmatch (statistics dim2 n2 mean2 cov2) st2)
-  (unless (= dim1 dim2)
-    (error 'merge-statistics "statistics have different dimensions"))
-  (define mean (vector-copy (matrix->vector mean1)))
-  (define C21 (cov->C2/copy cov1 n1))
-  (merge-incstats dim1 n1 mean C21 n2 (matrix->vector mean2) cov2)
-  (define n (+ n1 n2))
-  (statistics dim1 n (array->immutable-array (->col-matrix mean)) (C2->cov C21 n)))
-
-;; ----
-
-;; sampler->statistics : (Sampler A) Nat [(A -> Vector)] -> Statistics
-(define (sampler->statistics s n [f values]
-                             #:burn [burn 0]
-                             #:thin [thin 0])
-  (sampler->statistics* 'sampler->statistics (wrap-sampler s f burn thin) n))
-
-;; sampler->statistics : (-> (cons A Real)) Nat -> Statistics
-(define (sampler->statistics* who s n)
-  (define v (s))
-  (check-rv 'sampler->statistics v #f)
-  (define dim (rv-length v))
-  (define mean (make-vector dim 0))
-  (define C2 (make-mutable-matrix dim dim 0))
-
-  ;; After step k:
-  ;;   mean[i] = 1/k * Σ{a=1..k} s_a[i]
-  ;;   C2[i,j] = Σ{a=1..k} (s_a[i] - mean[i])*(s_a[j] - mean[j])
-  (for ([k (in-range n)])
-    (define v (s))
-    (check-rv 'sampler->statistics v dim)
-    (update-incstats1 dim k mean C2 v))
-
-  (statistics dim n (array->immutable-array (->col-matrix mean)) (C2->cov C2 n)))
-
-;; samples->statistics : (Vectorof (Vectorof Real)) -> Statistics
-(define (samples->statistics vs)
-  (unless (vector? vs)
-    (raise-argument-error 'samples->statistics "vector?" 0 vs))
-  (define n (vector-length vs))
-  (when (zero? n)
-    (error 'samples->statistics "empty sample set"))
-  (check-rv 'samples->statistics (vector-ref vs 0) #f)
-  (define dim (rv-length (vector-ref vs 0)))
-  (for ([v (in-vector vs)])
-    (check-rv 'samples->statistics v dim))
-
-  (define mean (make-vector dim 0))
-  (for ([v (in-vector vs)])
-    (for ([i (in-range dim)])
-      (vector-set! mean (+ (vector-ref mean i) (rv-ref v)))))
-  (for ([i (in-range dim)])
-    (vector-set! mean i (/ (vector-ref mean i) n)))
-
-  (define C2 (make-mutable-matrix dim dim 0))
-  (for ([v (in-vector vs)])
-    (for ([i (in-range dim)]
-          [meani (in-vector mean)])
-      (for ([j (in-range dim)]
-            [meanj (in-vector mean)])
-        (matrix-set! C2 i j
-                     (+ (matrix-ref C2 i j)
-                        (* (- (rv-ref v i) meani)
-                           (- (rv-ref v j) meanj)))))))
-
-  (statistics dim n (array->immutable-array (->col-matrix mean)) (C2->cov C2 n)))
-
-;; ----------------------------------------
+;; ============================================================
+;; Incremental Statistics
 
 ;; Incremental statistics (incstats) are represented by three values:
 ;; { n    : Nat                 -- population
 ;;   mean : (Vectorof Real)     -- mean so far
 ;;   C2   : Matrix              -- inc intermediate for covariance }
 
+;; update-incstats1 : PosNat PosNat (Vectorof Real) MutableMatrix -> Void
+;; Update incstats with one new value.
 (define (update-incstats1 dim k mean C2 v)
   ;; k is number of previous samples
   ;; Note: don't reorder; must update C2 before mean is overwritten!
@@ -205,7 +133,12 @@
     ;; μ' = μ + (v - μ)/(k+1)
     (vector-set! mean i (+ meani (/ (- ei meani) (add1 k))))))
 
-(define (merge-incstats dim n1 mean1 C21 n2 mean2 cov2)
+;; merge-incstats! : PosNat
+;;                   PosNat (Vectorof Real) MutableMatrix
+;;                   PosNat (Vectorof Real) Matrix
+;;                -> Void
+;; Merges second incstats into first, mutating first.
+(define (merge-incstats! dim n1 mean1 C21 n2 mean2 cov2)
   ;; updates mean1, C21
   ;; Note: don't reorder; must update C2 before mean is overwritten!
   ;; FIXME: could only update triangle, since symmetric
@@ -233,27 +166,140 @@
   (when (> n 1) ;; else C2 = 0, cov = 0
     (array/ C2 (array (sub1 n)))))
 
-(define (cov->C2/copy cov n)
-  (array->mutable-array
-   (array* cov (array (sub1 n)))))
+(define (cov->C2 cov n mutable-copy?)
+  (let ([C2 (array* cov (array (sub1 n)))])
+    (cond [mutable-copy? (array->mutable-array C2)]
+          [else C2])))
 
-(define (make-square-matrix len [fill 0])
-  (define m (make-vector len))
-  (for ([i (in-range len)])
-    (vector-set! m i (make-vector len fill)))
-  m)
+;; ============================================================
+;; Statistics from Samples/Samplers
+
+(define (sampler->mean+variance s n [f values]
+                                #:burn [burn 0]
+                                #:thin [thin 0])
+  (samples->mean+variance*
+   'sampler->mean+variance
+   (generate-samples s n f #:burn burn #:thin thin)))
+
+(define (samples->mean+variance vs)
+  (samples->mean+variance* 'samples->mean+variance vs))
+
+(define (samples->mean+variance* who vs)
+  (define st (samples->statistics* who vs))
+  (unless (= 1 (statistics-dim st))
+    (error who "statistics has wrong dimension (non-scalar)\n  statistics: ~e" st))
+  (values (statistics-scalar-mean st)
+          (statistics-scalar-variance st)))
+
+;; ----------------------------------------
+
+;; sampler->statistics : (Sampler A) Nat [(A -> Vector)] -> Statistics
+(define (sampler->statistics s n [f values]
+                             #:burn [burn 0]
+                             #:thin [thin 0])
+  (samples->statistics* 'sampler->statistics
+                        (generate-samples s n f #:burn burn #:thin thin)))
+
+;; samples->statistics : (Vectorof RV) -> Statistics
+(define (samples->statistics vs)
+  (samples->statistics* 'samples->statistics vs))
+
+;; samples->statistics* : Symbol (Vectorof (Vectorof Real)) -> Statistics
+;; Batch version (non-incremental).
+(define (samples->statistics* who vs)
+  (define dim (check-rv-vector who vs))
+  (define n (vector-length vs))
+
+  (define mean (make-vector dim 0))
+  (for ([v (in-vector vs)])
+    (for ([i (in-range dim)])
+      (vector-set! mean i (+ (vector-ref mean i) (rv-ref v i)))))
+  (for ([i (in-range dim)])
+    (vector-set! mean i (/ (vector-ref mean i) n)))
+
+  (define C2 (make-mutable-matrix dim dim 0))
+  (for ([v (in-vector vs)])
+    (for ([i (in-range dim)]
+          [meani (in-vector mean)])
+      (for ([j (in-range dim)]
+            [meanj (in-vector mean)])
+        (matrix-set! C2 i j
+                     (+ (matrix-ref C2 i j)
+                        (* (- (rv-ref v i) meani)
+                           (- (rv-ref v j) meanj)))))))
+
+  (statistics dim n (array->immutable-array (->col-matrix mean)) (C2->cov C2 n)))
+
+;; samples->statistics*/incremental : Symbol (Vectorof (Cons RV Real)) -> Statistics
+;; Incremental version.
+(define (samples->statistics*/incremental who vs)
+  (define dim (check-rv-vector who vs))
+  (define n (vector-length vs))
+  (define mean (make-vector dim 0))
+  (define C2 (make-mutable-matrix dim dim 0))
+
+  ;; After step k:
+  ;;   mean[i] = 1/k * Σ{a=1..k} s_a[i]
+  ;;   C2[i,j] = Σ{a=1..k} (s_a[i] - mean[i])*(s_a[j] - mean[j])
+  (for ([v (in-vector vs)]
+        [k (in-range n)])
+    (update-incstats1 dim k mean C2 v))
+
+  (statistics dim n (array->immutable-array (->col-matrix mean)) (C2->cov C2 n)))
+
+
+;; ============================================================
+;; Shape-generic mean
+
+(define (sampler->mean s n [f values]
+                       #:burn [burn 0]
+                       #:thin [thin 0])
+  (samples->mean (generate-weighted-samples s n f #:burn burn #:thin thin)))
+
+(define (samples->mean wvs)
+  (define wv0 (vector-ref wvs 0))
+  (define-values (sum weight)
+    (for/fold ([sum (car wv0)] [weight (cdr wv0)])
+              ([v+w (in-vector wvs 1)])
+      (defmatch (cons v w) v+w)
+      (values (generic+ sum (generic* v w)) (+ weight w))))
+  (generic* sum (/ weight)))
+
+;; generic+ : Any Any -> Any
+(define (generic+ a b)
+  (cond [(and (number? a) (number? b))
+         (+ a b)]
+        [(and (pair? a) (pair? b))
+         (cons (generic+ (car a) (car b))
+               (generic+ (cdr a) (cdr b)))]
+        [(and (null? a) (null? b))
+         '()]
+        [(and (vector? a) (vector? b)
+              (= (vector-length a) (vector-length b)))
+         (build-vector (vector-length a)
+                       (lambda (i) (generic+ (vector-ref a i) (vector-ref b i))))]
+        [(and (array? a) (array? b)
+              (equal? (array-shape a) (array-shape b)))
+         (array+ a b)]
+        [else +nan.0]))
+
+;; generic* : Any Real -> Any
+(define (generic* a b)
+  (cond [(number? a)
+         (* a b)]
+        [(pair? a)
+         (cons (generic* (car a) b) (generic* (cdr a) b))]
+        [(null? a)
+         '()]
+        [(vector? a)
+         (build-vector (vector-length a) (lambda (i) (generic* (vector-ref a i) b)))]
+        [(array? a)
+         (array* a (array b))]
+        [else +nan.0]))
+
 
 ;; ============================================================
 ;; Kolmogorov-Smirov statistic
-
-;; sampler->KS : Sampler Nat Dist -> Real
-(define (sampler->KS sampler iters dist)
-  (define v0 (for/list ([i (in-range iters)]) (sampler)))
-  (for ([x (in-list v0)])
-    (unless (real? x)
-      (error 'sampler->KS "sampler produced non-real value\n  got: ~e" x)))
-  (define v (list->vector (sort v0 <)))
-  (KS v (lambda (x) (dist-cdf dist x))))
 
 ;; samples->KS : (Vectorof Real) Dist -> Real
 (define (samples->KS v0 dist)
@@ -263,7 +309,7 @@
   (define v (list->vector (sort (vector->list v0) <)))
   (KS v (lambda (x) (dist-cdf dist x))))
 
-;; KS : (Vectorof Real) (Real -> Real) Boolean -> Real
+;; KS : (Vectorof Real) (Real -> Real) -> Real
 ;; pre: v is sorted ascending, cdf is monotone nondecreasing w/ onto (0,1)
 ;; Note: need continuity to calculate sup_{x in (xa,xb)} cdf(x) = cdf(xb)
 (define (KS v cdf)
@@ -349,62 +395,3 @@
     (unless (= (vector-length v) dim)
       (error who "vector has wrong number of elements\n  expected: ~e\n  value: ~e"
              dim v))))
-
-;; ============================================================
-
-;; Shape-generic mean
-
-(define (generic+ a b)
-  (cond [(and (number? a) (number? b))
-         (+ a b)]
-        [(and (pair? a) (pair? b))
-         (cons (generic+ (car a) (car b))
-               (generic+ (cdr a) (cdr b)))]
-        [(and (null? a) (null? b))
-         '()]
-        [(and (vector? a) (vector? b)
-              (= (vector-length a) (vector-length b)))
-         (build-vector (vector-length a)
-                       (lambda (i) (generic+ (vector-ref a i) (vector-ref b i))))]
-        [(and (array? a) (array? b)
-              (equal? (array-shape a) (array-shape b)))
-         (array+ a b)]
-        [else +nan.0]))
-
-(define (generic* a b)
-  (cond [(number? a)
-         (* a b)]
-        [(pair? a)
-         (cons (generic* (car a) b) (generic* (cdr a) b))]
-        [(null? a)
-         '()]
-        [(vector? a)
-         (build-vector (vector-length a) (lambda (i) (generic* (vector-ref a i) b)))]
-        [(array? a)
-         (array* a (array b))]
-        [else +nan.0]))
-
-(define (wrap-weighted-sampler s f burn thin)
-  (cond [(weighted-sampler? s)
-         (for ([_ (in-range burn)]) (send s sample/weight))
-         (lambda ()
-           (for ([_ (in-range thin)]) (send s sample/weight))
-           (defmatch (cons v w) (send s sample/weight))
-           (cons (f v) w))]
-        [(procedure? s)
-         (for ([_ (in-range burn)]) (s))
-         (lambda ()
-           (for ([_ (in-range thin)]) (s))
-           (cons (f (s)) 1))]))
-
-(define (sampler->mean s n [f values]
-                       #:burn [burn 0]
-                       #:thin [thin 0])
-  (define s* (wrap-weighted-sampler s f burn thin))
-  (defmatch (cons initv initw) (s*))
-  (define-values (sum weight)
-    (for/fold ([sum initv] [weight initw])
-              ([i (in-range (sub1 n))])
-      (defmatch (cons v w) (s*))
-      (values (generic+ sum (generic* v w)) (+ weight w))))
-  (generic* sum (/ weight)))

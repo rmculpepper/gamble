@@ -158,65 +158,78 @@ lp
 @; ============================================================
 @section[#:tag "stat-util"]{Statistical Utilities}
 
-For the purpose of this section, a RealVector is a real
-(@racket[real?]), a vector of reals (@racket[(vectorof real?)]), or a
-column matrix (@racket[col-matrix?]).
-
 @defstruct*[statistics
             ([dim exact-positive-integer?]
              [n exact-positive-integer?]
              [mean col-matrix?]
              [cov matrix?])]{
 
-Represents some basic statistics of a sample sequence of RealVectors
+Represents some basic statistics of a sample sequence of real vectors
 of compatible shapes. The @racket[dim] field represents the dimension
 of the sample vectors; @racket[n] is the number of samples;
 @racket[mean] is the mean of the samples; and @racket[cov] is the
 covariance matrix.
 }
 
+@defproc[(real-vector-like? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a real, a real vector, or a
+column matrix of reals; @racket[#f] otherwise.
+}
+
 @deftogether[[
+@defproc[(samples->statistics [samples (vectorof real-vector-like?)])
+         statistics?]
 @defproc[(sampler->statistics [s sampler?]
                               [n exact-positive-integer?]
-                              [f (-> any/c @#,(elem "RealVector")) values]
+                              [f (-> any/c real-vector-like?) values]
                               [#:burn burn exact-nonnegative-integer? 0]
                               [#:thin thin exact-nonnegative-integer? 0])
          statistics?]
-@defproc[(samples->statistics [samples (vectorof (vectorof real?))])
-         statistics?]
 ]]{
 
-Returns the statistics of @racket[samples] or of @racket[n] samples
-drawn from @racket[s] and passed through @racket[f].
+Returns the statistics of @racket[samples].
+
+The second form is equivalent to the following:
+@racketblock[(samples->statistics (generate-samples s n f #:burn burn #:thin thin))]
 
 @examples[#:eval the-eval
 (sampler->statistics (mh-sampler (normal 0 1)) 1000)
 ]
 }
 
+@deftogether[[
+@defproc[(samples->mean+variance [rvs (vectorof real?)])
+         (values real? real?)]
 @defproc[(sampler->mean+variance [sampler sampler?]
                                  [n exact-positive-integer?]
                                  [f (-> any/c real?) values]
                                  [#:burn burn exact-nonnegative-integer? 0]
                                  [#:thin thin exact-nonnegative-integer? 0])
-         (values real? real?)]{
+         (values real? real?)]
+]]{
 
 Like @racket[sample->statistics], but returns the mean and variance as
 two scalar values.
 
+The second form is equivalent to the following:
+@racketblock[(samples->mean+variance (generate-samples s n f #:burn burn #:thin thin))]
+
 @examples[#:eval the-eval
-(sampler->mean+variance (rejection-sampler (flip 1/2))
-                        100
-                        (indicator #t))
+(sampler->mean+variance (rejection-sampler (flip 1/2)) 100 (indicator #t))
 ]
 }
 
+@deftogether[[
+@defproc[(samples->mean [rvs (vectorof any/c)])
+         any/c]
 @defproc[(sampler->mean [sampler weighted-sampler?]
                         [n exact-positive-integer?]
-                        [f (-> any/c real?) values]
+                        [f (-> any/c any/c) values]
                         [#:burn burn exact-nonnegative-integer? 0]
                         [#:thin thin exact-nonnegative-integer? 0])
-         (values real? real?)]{
+         any/c]
+]]{
 
 Like @racket[sample->mean+variance], but returns only the mean. In
 contrast to the other functions in this section,
@@ -231,33 +244,26 @@ at the incompatible positions.
 ]
 }
 
+
 @; ============================================================
 @section[#:tag "test-util"]{Utilities for Testing and Comparing Distributions}
 
-@deftogether[[
-@defproc[(sampler->KS [sampler sampler?]
-                      [iterations exact-positive-integer?]
-                      [dist dist?])
-         (>=/c 0)]
 @defproc[(samples->KS [samples (vectorof real?)]
                       [dist dist?])
-         real?]
-]]{
+         real?]{
 
 Calculates the
 @hyperlink["http://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov
-statistic} of a sample set with @racket[dist]. The result is a measure
-of the goodness of fit of the samples to the distribution.
+statistic} of a sample set @racket[samples] with respect to
+@racket[dist]. The result is a measure of the goodness of fit of the
+samples to the distribution.
 
 @examples[#:eval the-eval
-(sampler->KS (rejection-sampler (uniform 0 1))
-             1000
+(samples->KS (generate-samples (rejection-sampler (uniform 0 1)) 1000)
              (uniform-dist 0 1))
-(sampler->KS (rejection-sampler (normal 0 1))
-             1000
+(samples->KS (generate-samples (rejection-sampler (normal 0 1)) 1000)
              (uniform-dist 0 1))
-(sampler->KS (rejection-sampler (for/sum ([i 3]) (uniform -1 1)))
-             100
+(samples->KS (generate-samples (rejection-sampler (for/sum ([i 3]) (uniform -1 1))) 100)
              (normal-dist 0 1))
 ]
 }

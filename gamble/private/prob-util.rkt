@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/class
+         racket/vector
          (rename-in racket/match [match-define defmatch])
          "interfaces.rkt"
          "context.rkt"
@@ -72,29 +73,27 @@
 
 ;; Sampling
 
-(define (generate-samples s n #:burn [burn 0] #:thin [thin 0])
+(define (generate-samples s n [f values] #:burn [burn 0] #:thin [thin 0])
   (cond [(sampler? s)
          (for ([_i (in-range burn)]) (send s sample))
          (define vs (make-vector n))
          (for ([i (in-range n)])
            (for ([_ (in-range thin)]) (send s sample))
-           (vector-set! vs i (send s sample)))
+           (vector-set! vs i (f (send s sample))))
          vs]
         [(weighted-sampler? s)
-         (define vs (make-vector n))
-         (define ws (make-vector n))
-         (for ([i (in-range n)])
-           (defmatch (cons v w) (send s sample/weight))
-           (vector-set! vs i v)
-           (vector-set! ws i w))
+         (define wvs (generate-weighted-samples s n f #:burn burn #:thin thin))
+         (define vs (vector-map car wvs))
+         (define ws (vector-map cdr wvs))
          (resample-residual vs ws n)]))
 
-(define (generate-weighted-samples s n #:burn [burn 0] #:thin [thin 0])
-  (for ([_i (in-range burn)]) (send s sample))
+(define (generate-weighted-samples s n [f values] #:burn [burn 0] #:thin [thin 0])
+  (for ([_i (in-range burn)]) (send s sample/weight))
   (define wvs (make-vector n))
   (for ([i (in-range n)])
-    (for ([_ (in-range thin)]) (send s sample))
-    (vector-set! wvs i (send s sample)))
+    (for ([_ (in-range thin)]) (send s sample/weight))
+    (defmatch (cons v w) (send s sample/weight))
+    (vector-set! wvs i (cons (f v) w)))
   wvs)
 
 ;; ----------------------------------------

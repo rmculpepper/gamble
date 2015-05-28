@@ -86,15 +86,14 @@
              [n exact-positive-integer?]
              [mean vector?]
              [cov vector?])]
+          [real-vector-like?
+           (-> any/c any)]
           [sampler->statistics
            (->* [(or/c sampler? procedure?) exact-positive-integer?]
                 [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
                 statistics?)]
           [samples->statistics
            (-> vector? statistics?)]
-          [sampler->KS
-           (-> procedure? exact-positive-integer? dist?
-               real?)]
           [samples->KS
            (-> vector? dist?
                real?)]
@@ -102,10 +101,14 @@
            (->* [(or/c weighted-sampler? procedure?) exact-positive-integer?]
                 [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
                 any)]
+          [samples->mean
+           (-> vector? any)]
           [sampler->mean+variance
            (->* [(or/c sampler? procedure?) exact-positive-integer?]
                 [procedure? #:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
-                any)]))
+                any)]
+          [samples->mean+variance
+           (-> vector? any)]))
 
 (require "private/prob-syntax.rkt")
 (provide observe

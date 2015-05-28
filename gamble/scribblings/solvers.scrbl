@@ -81,13 +81,15 @@ produces always have weight @racket[1].
 
 @defproc[(generate-samples [s weighted-sampler?]
                            [n exact-nonnegative-integer?]
+                           [f (-> any/c any/c) values]
                            [#:burn burn exact-nonnegative-integer? 0]
                            [#:thin thin exact-nonnegative-integer? 0])
          (vectorof any/c)]{
 
-Generates @racket[n] samples from the sampler @racket[s]. If
-@racket[s] is not a sampler but only a weighted sampler, unweighted
-samples are produced by residual resampling (see @racket[resample]).
+Generates @racket[n] samples from the sampler @racket[s] passed
+through the optional function @racket[f]. If @racket[s] is not a
+sampler but only a weighted sampler, unweighted samples are produced
+by residual resampling (see @racket[resample]).
 
 The sampler is first called @racket[burn] times and the results are
 discarded. In addition, the sampler is called @racket[thin] times
@@ -96,12 +98,14 @@ before every sample to be retained.
 
 @defproc[(generate-weighted-samples [s weighted-sampler?] 
                                     [n exact-nonnegative-integer?]
+                                    [f (-> any/c any/c) values]
                                     [#:burn burn exact-nonnegative-integer? 0]
                                     [#:thin thin exact-nonnegative-integer? 0])
          (vectorof (cons/c any/c (>=/c 0)))]{
 
 Generates @racket[n] weighted samples from the @tech{weighted sampler}
-@racket[s] and returns them as a vector of value-weight pairs.
+@racket[s] passed through the optional function @racket[f]. The
+weighted samples are returned as a vector of value-weight pairs.
 }
 
 @defproc[(sampler->discrete-dist [sampler weighted-sampler?]
