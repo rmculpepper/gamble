@@ -7,7 +7,8 @@
          (for-syntax racket/base)
          syntax/stx
          syntax/parse
-         "base.rkt")
+         "base.rkt"
+         "stxclass.rkt")
 (provide analyze-COND-CTX
          lam-cond-ctx?)
 
@@ -129,16 +130,24 @@
        (recur #'e3)]
       ;; #%plain-app
       ;; Conditionable functions --- keep synced with instrument.rkt
-      [(#%plain-app + e ... e*)
+      [(#%plain-app op:final-arg-prop-fun e ... e*)
        (set-cond-ctx!)
        (recur-nt* #'(e ...))
        (recur #'e*)]
-      [(#%plain-app reverse e*)
+      [(#%plain-app op:contracted-final-arg-prop-fun e ... e*)
        (set-cond-ctx!)
+       (recur-nt* #'(e ...))
        (recur #'e*)]
-      [(#%plain-app cons e1 e2)
+      [(#%plain-app op:lifted-contracted-final-arg-prop-fun e ... e*)
        (set-cond-ctx!)
-       (recur* #'(e1 e2))]
+       (recur-nt* #'(e ...))
+       (recur #'e*)]
+      [(#%plain-app op:all-args-prop-fun e* ...)
+       (set-cond-ctx!)
+       (recur* #'(e* ...))]
+      [(#%plain-app (~literal list) e* ...)
+       (set-cond-ctx!)
+       (recur* #'(e* ...))]
       ;; Direct calls to local functions
       [(#%plain-app f:id e ...)
        (set-cond-ctx!)
