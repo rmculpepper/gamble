@@ -128,20 +128,6 @@ CC ::=                   -- Observation rep:
   (check-observe-result 'observe expected actual)
   actual)
 
-;; Checks that the result of thunk is consistent with observe context,
-;; if observe context exists.
-(define (check-observe* thunk)
-  (call-with-immediate-continuation-mark OBS-mark
-    (lambda (obs)
-      (cond [obs
-             (define actual (with-continuation-mark OBS-mark obs (thunk)))
-             (define expected (observation-value obs))
-             (check-observe-result 'check-observe expected actual)
-             actual]
-            [else
-             ;; For consistency: thunk non-tail applied.
-             (values (thunk))]))))
-
 (define (check-observe-result who expected0 actual0)
   (define (bad)
     ;; This is an error rather than a (fail) because it indicates that

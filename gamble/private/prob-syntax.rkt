@@ -27,11 +27,6 @@
      (with-syntax ([thunk (syntax-property #'(lambda () e) 'observe-form stx)])
        #'(observe* thunk v))]))
 
-(define-syntax (check-observe stx)
-  (syntax-case stx ()
-    [(check-observe e)
-     #'(check-observe* (lambda () e))]))
-
 (define observe/fail
   ;; FIXME: turn 2nd case into observe with fail instead of error?
   ;; FIXME: then convert 1st case w/ =, equal?, etc into 2nd case

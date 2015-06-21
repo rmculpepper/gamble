@@ -113,7 +113,6 @@
 (require "private/prob-syntax.rkt")
 (provide observe
          observe/fail
-         check-observe
          with-zone
          rejection-sampler
          importance-sampler
