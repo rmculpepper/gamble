@@ -7,6 +7,7 @@
          syntax/stx
          syntax/parse
          "base.rkt"
+         "stxclass.rkt"
          "known-functions.rkt")
 (provide OBS-EXP
          OBS-LAM
@@ -114,19 +115,14 @@
        (recur* #'(e1 e2))
        (recur #'e3)]
       ;; ----------------------------------------
-      ;; FIXME: use common declaration for analysis and instrumentation
-      ;; rather than duplicating knowledge and code
-      [(#%plain-app (~literal +) e ... e*)
+      [(#%plain-app op:any-final-arg-prop-fun e ... e*)
        (recur* #'(e ...))
        (define obs? (recur #'e*))
        (OBS-EXP-set! stx obs?)
        obs?]
-      [(#%plain-app (~literal cons) e1 e2)
-       (define obs? (strict-or (recur #'e1) (recur #'e2)))
-       (OBS-EXP-set! stx obs?)
-       obs?]
-      [(#%plain-app (~literal reverse) e)
-       (define obs? (recur #'e))
+      [(#%plain-app op:all-args-prop-fun e* ...)
+       ;; FIXME: should this be ormap or andmap???
+       (define obs? (strict-andmap recur (syntax->list #'(e* ...))))
        (OBS-EXP-set! stx obs?)
        obs?]
       ;; ----------------------------------------
@@ -147,3 +143,6 @@
 
 (define (strict-or x y) (or x y))
 (define (strict-ormap f xs) (ormap values (map f xs)))
+
+(define (strict-and x y) (and x y))
+(define (strict-andmap f xs) (andmap values (map f xs)))

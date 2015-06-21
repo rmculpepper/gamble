@@ -129,16 +129,7 @@
        (recur-nt* #'(e1 e2))
        (recur #'e3)]
       ;; #%plain-app
-      ;; Conditionable functions --- keep synced with instrument.rkt
-      [(#%plain-app op:final-arg-prop-fun e ... e*)
-       (set-cond-ctx!)
-       (recur-nt* #'(e ...))
-       (recur #'e*)]
-      [(#%plain-app op:contracted-final-arg-prop-fun e ... e*)
-       (set-cond-ctx!)
-       (recur-nt* #'(e ...))
-       (recur #'e*)]
-      [(#%plain-app op:lifted-contracted-final-arg-prop-fun e ... e*)
+      [(#%plain-app op:any-final-arg-prop-fun e ... e*)
        (set-cond-ctx!)
        (recur-nt* #'(e ...))
        (recur #'e*)]

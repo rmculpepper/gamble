@@ -23,7 +23,8 @@
          contracted-export-id
          contract-indirection-id
          contracted-final-arg-prop-fun
-         lifted-contracted-final-arg-prop-fun)
+         lifted-contracted-final-arg-prop-fun
+         any-final-arg-prop-fun)
 
 ;; ============================================================
 ;; Syntax classes for recognizing observation propagators
@@ -76,3 +77,8 @@
   (pattern c:contract-indirection-id
            #:when (regexp-match? #rx"^lifted\\." (symbol->string (syntax-e #'c)))
            #:with :final-arg-prop-fun #'c.original-id))
+
+(define-syntax-class any-final-arg-prop-fun
+  (pattern _:final-arg-prop-fun)
+  (pattern _:contracted-final-arg-prop-fun)
+  (pattern _:lifted-contracted-final-arg-prop-fun))
