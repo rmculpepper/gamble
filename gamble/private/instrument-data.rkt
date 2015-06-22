@@ -10,12 +10,72 @@
                      syntax/id-table)
          "interfaces.rkt"
          "context.rkt")
-(provide declare-observation-propagator
+(provide define/instr-protocol
+         (for-syntax instr-fun-table
+                     register-instrumented-fun!
+                     instr-fun)
+         declare-observation-propagator
          (for-syntax observation-propagators
                      non-random-first-order-funs))
 
-;; ------------------------------------------------------------
-;; Compile-time tables
+;; ============================================================
+;; Instrumented function protocol
+
+(begin-for-syntax
+
+ ;; instr-fun-table : (free-id-table Id => (cons Id (Listof Nat)))
+ (define instr-fun-table
+   (make-free-id-table))
+
+ (define (register-instrumented-fun! id id* arity)
+   (free-id-table-set! instr-fun-table id (cons id* arity)))
+
+ (define-syntax-class instr-fun
+   #:attributes (instr arity)
+   (pattern f:id
+            #:do [(define p (free-id-table-ref instr-fun-table #'f #f))]
+            #:when p
+            #:with instr (car p)
+            #:attr arity (cdr p)))
+ )
+
+(define-syntax (define/instr-protocol stx)
+  (syntax-parse stx
+    #:literals (case-lambda)
+    [(_ (f:id arg:id ...) body ...)
+     #'(define/instr-protocol f (case-lambda [(arg ...) body ...]))]
+    [(define/instr-protocol f:id (case-lambda [(arg:id ...) body ...] ...))
+     (define/with-syntax (f*) (generate-temporaries #'(f)))
+     (define/with-syntax arity (map length (syntax->datum #'((arg ...) ...))))
+     #'(begin (define-values (f*)
+                (case-lambda
+                  [(addr obs arg ...)
+                   (with ([ADDR addr] [OBS obs]) body ...)]
+                  ...))
+              (define-values (f)
+                (case-lambda
+                  [(arg ...)
+                   (call-with-immediate-continuation-mark OBS-mark
+                      (#%plain-lambda (obs) (f* (ADDR-mark) obs arg ...)))]
+                  ...))
+              (begin-for-syntax*
+               (register-instrumented-fun!
+                (quote-syntax f)
+                (quote-syntax f*)
+                'arity)))]))
+
+(define-syntax (begin-for-syntax* stx)
+  (syntax-case stx ()
+    [(_ expr ...)
+     (case (syntax-local-context)
+       [(module top-level)
+        #'(begin-for-syntax expr ...)]
+       [else
+        #'(define-syntaxes () (begin expr ... (values)))])]))
+
+
+;; ============================================================
+;; Observation propagators and non-random primitives
 
 (begin-for-syntax
 
@@ -35,9 +95,6 @@
   (define (register-non-random-first-order-fun! id)
     (free-id-table-set! non-random-first-order-funs id #t))
   )
-
-;; ------------------------------------------------------------
-;; Macros for adding to tables
 
 (define-syntax (declare-non-random-first-order stx)
   (syntax-parse stx

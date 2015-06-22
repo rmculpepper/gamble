@@ -115,24 +115,6 @@
             [expr
              #'(#%expression (instrument/local-expand expr))]))])]))
 
-(begin-for-syntax
-
- ;; instr-fun-table : (free-id-table Id => Id)
- (define instr-fun-table
-   (make-free-id-table))
-
- (define (register-instrumented-fun! id id* arity)
-   (free-id-table-set! instr-fun-table id (cons id* arity)))
-
- (define-syntax-class instr-fun
-   #:attributes (instr arity)
-   (pattern f:id
-            #:do [(define p (free-id-table-ref instr-fun-table #'f #f))]
-            #:when p
-            #:with instr (car p)
-            #:attr arity (cdr p)))
- )
-
 ;; (instrument expanded-form Mode)
 ;; where Mode is one of:
 ;;    #:cc - in observing context wrt enclosing lambda
@@ -261,37 +243,20 @@
        #:literals (#%plain-lambda case-lambda)
        ;; FIXME: handle rest args
        [(#%plain-lambda (arg ...) body ... body*)
-        (define/with-syntax (var*) (generate-temporaries #'(var)))
-        (define/with-syntax arity (length (syntax->list #'(arg ...))))
-        #'(begin (define-values (var*)
-                   (#%plain-lambda (addr obs arg ...)
-                     (with ([ADDR addr] [OBS obs])
-                       (instrument body #:nt) ...
-                       (instrument body* #:cc))))
-                 (define-values (var)
-                   (#%plain-lambda (arg ...)
-                     (call-with-immediate-continuation-mark OBS-mark
-                       (lambda (obs)
-                         (var* (ADDR-mark) obs arg ...)))))
-                 (begin-for-syntax*
-                  (register-instrumented-fun!
-                   (quote-syntax var)
-                   (quote-syntax var*)
-                   'arity)))]
-       ;; FIXME: handle case-lambda
+        #'(define/instr-protocol (var arg ...)
+            (instrument body #:nt) ...
+            (instrument body* #:cc))]
+       [(case-lambda [(arg ...) body ... body*] ...)
+        #'(define/instr-protocol var
+            (case-lambda
+              [(arg ...)
+               (instrument body #:nt) ...
+               (instrument body* #:cc)]
+              ...))]
        [_
         #'(define-values (var) (instrument e #:nt))])]
     [(_ (define-values vars e))
      #'(define-values vars (instrument e #:nt))]))
-
-(define-syntax (begin-for-syntax* stx)
-  (syntax-case stx ()
-    [(_ expr ...)
-     (case (syntax-local-context)
-       [(module top-level)
-        #'(begin-for-syntax expr ...)]
-       [else
-        #'(define-syntaxes () (begin expr ... (values)))])]))
 
 ;; ------------------------------------------------------------
 
@@ -444,7 +409,7 @@
       ;; * instrumented function with right arity
       ;;   Use static protocol
       [(_ #:cc (#%plain-app f:instr-fun e ...))
-       #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
+       #:when (member (length (syntax->list #'(e ...))) (attribute f.arity))
        (log-app-type "STATIC app (instrumented)")
        (tt-fun-type! "instrumented function")
        (with-syntax ([c (lift-call-site stx)]
@@ -489,7 +454,7 @@
       ;; * instrumented function with right arity
       ;;   Use static protocol
       [(_ #:nt (#%plain-app f:instr-fun e ...))
-       #:when (= (length (syntax->list #'(e ...))) (attribute f.arity))
+       #:when (member (length (syntax->list #'(e ...))) (attribute f.arity))
        (log-app-type "STATIC app (instrumented)")
        (tt-fun-type! "instrumented function")
        (with-syntax ([c (lift-call-site stx)]
