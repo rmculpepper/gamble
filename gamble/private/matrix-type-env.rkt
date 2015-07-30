@@ -15,13 +15,13 @@
   (define -serialize-info
     (cond [(member (version) '("6.1" "6.1.1"))
            (make-Name #'serialize-info null #f #f)]
-          [else
-           (make-Name #'serialize-info null #f)]))
+          [else ;; >= 6.2
+           (make-Name #'serialize-info 0 #f)]))
   (define -deserialize-info
     (cond [(member (version) '("6.1" "6.1.1"))
            (make-Name #'deserialize-info null #f #f)]
-          [else
-           (make-Name #'deserialize-info null #f)])))
+          [else ;; >= 6.2
+           (make-Name #'deserialize-info 0 #f)])))
 
 (define (make-deserialize-info* make)
   (make-deserialize-info
