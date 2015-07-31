@@ -38,11 +38,3 @@
          (-> (-> Univ a)
              -deserialize-info))]
  )
-
-;; ------------------------------------------------------------
-
-(begin-for-syntax
-  ;; Box for unsafe export of deserialize info
-  ;; Filled by matrix-base.rkt, see also matrix-syntax.rkt
-  (provide array-deserialize-info-box)
-  (define array-deserialize-info-box (box #f)))

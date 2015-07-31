@@ -22,6 +22,7 @@
 ;; ----------------------------------------
 ;; Serialization
 
+(provide t:array-deserialize-info-v0)
 (define t:array-deserialize-info-v0
   ((inst make-deserialize-info* Array)
    (lambda (v)
@@ -31,10 +32,6 @@
           (if mutable?
               (MutArray marr)
               (ImmArray (t:array-map (inst values Real) marr))))]))))
-
-;; Hack to provide/unsafe to avoid Any contract wrapper on export
-(begin-for-syntax
-  (set-box! array-deserialize-info-box #'t:array-deserialize-info-v0))
 
 (define array-serialize-info-v0
   ((inst make-serialize-info Array (Vector Boolean t:Indexes (Vectorof Real)))

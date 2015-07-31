@@ -13,7 +13,6 @@
          (prefix-in t: math/array)
          (prefix-in t: math/matrix)
          (only-in typed/racket/base :)
-         (only-in "matrix-type-env.rkt" array-deserialize-info-box)
          "matrix-base.rkt")
 (provide array
          mutable-array
@@ -84,6 +83,4 @@
 ;; With this change, each deserialization takes ~1ms.
 
 (provide array-deserialize-info-v0)
-(define array-deserialize-info-v0
-  (let-syntax ([get-ref (lambda (stx) (unbox array-deserialize-info-box))])
-    (get-ref)))
+(define array-deserialize-info-v0 t:array-deserialize-info-v0)
