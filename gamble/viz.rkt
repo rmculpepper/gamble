@@ -3,15 +3,17 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (rename-in plot
-                    [density plot-density]
-                    )
+(require (rename-in plot/no-gui [density plot-density])
+         racket/lazy-require
          data/order)
 (provide hist
          hist-pict
          bin
          bin-pict
-         density)
+         density
+         density-pict)
+
+(lazy-require [plot (plot)])
 
 (define (hist xs #:invert? [invert? #f])
   (hist* xs invert? plot))
@@ -32,9 +34,6 @@
 (define (bin-pict xs [nbins0 #f])
   (bin* xs nbins0 plot-pict))
 
-(define (density xs)
-  (plot (plot-density xs)))
-
 ;; Alternatively, use (plot (density ...))
 (define (bin* xs nbins0 plot)
   (define n (length xs))
@@ -51,3 +50,9 @@
   (plot (discrete-histogram
          (for/list ([(index count) (in-hash t)])
            (list (+ lo (* index binlen)) count)))))
+
+(define (density xs)
+  (plot (plot-density xs)))
+
+(define (density-pict xs)
+  (plot-pict (plot-density xs)))
