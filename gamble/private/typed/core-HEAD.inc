@@ -17,6 +17,8 @@
          typed-racket/standard-inits
          typed-racket/tc-setup)
 
+(require (for-template gamble/private/instrument))
+
 (provide mb-core ti-core wt-core)
 
 (define (mb-core stx)
