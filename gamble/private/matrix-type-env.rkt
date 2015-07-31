@@ -9,19 +9,19 @@
 ;; Types for racket/serialize:
 
 (require racket/serialize
-         (for-syntax (only-in typed-racket/rep/type-rep make-Name)))
+         (for-syntax (only-in typed-racket/rep/type-rep make-Name make-Opaque)))
 
 (begin-for-syntax
   (define -serialize-info
     (cond [(member (version) '("6.1" "6.1.1"))
            (make-Name #'serialize-info null #f #f)]
           [else ;; >= 6.2
-           (make-Name #'serialize-info 0 #f)]))
+           (make-Opaque #'serialize-info?)])) ;; (make-Name #'serialize-info 0 #f)
   (define -deserialize-info
     (cond [(member (version) '("6.1" "6.1.1"))
            (make-Name #'deserialize-info null #f #f)]
           [else ;; >= 6.2
-           (make-Name #'deserialize-info 0 #f)])))
+           (make-Opaque #'deserialize-info?)]))) ;; (make-Name #'deserialize-info 0 #f)
 
 (define (make-deserialize-info* make)
   (make-deserialize-info
@@ -46,3 +46,11 @@
          (-> (-> Univ a)
              -deserialize-info))]
  )
+
+;; ------------------------------------------------------------
+
+(begin-for-syntax
+  ;; Box for unsafe export of deserialize info
+  ;; Filled by matrix-base.rkt, see also matrix-syntax.rkt
+  (provide array-deserialize-info-box)
+  (define array-deserialize-info-box (box #f)))
