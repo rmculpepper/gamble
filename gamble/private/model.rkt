@@ -20,6 +20,7 @@
   ;; where the identifier is a reference to a procedure (-> Vector)
   ;; producing a vector of (possibly wrapped) export values.
   (struct modelinfo (exports fun-var)
+          #:mutable
           #:property prop:procedure
           (lambda (self stx)
             (raise-syntax-error #f "illegal use of model name" stx)))
@@ -50,6 +51,30 @@
              (vector (wrap-export exp-id exp-kind) ...))
            (define-syntax model-name
              (modelinfo (list (export 'exp-id 'exp-kind) ...) (quote-syntax modeltmp)))))]))
+
+(define-syntax (defmodel+ stx)
+  (unless (memq (syntax-local-context) '(module top-level))
+    (raise-syntax-error #f "not used in module or top-level context" stx))
+  (syntax-parse stx
+    [(_ model-name body:expr ...)
+     #:declare model-name (static modelinfo? "identifier defined as a model")
+     (with-syntax* ([open-model-form
+                     (datum->syntax stx (syntax-e #'(open-model model-name)))]
+                    [defmodel-form
+                     (datum->syntax stx (syntax-e #'(defmodel model-ext open-model-form body ...)))])
+       #'(begin
+           defmodel-form
+           (begin-for-syntax (set-model! (quote-syntax model-name) (quote-syntax model-ext)))))]
+    [(_ model-name:id body:expr ...)
+     ;; Not already defined
+     (datum->syntax stx (syntax-e #'(defmodel model-name body ...)) stx)]))
+
+(begin-for-syntax
+  (define (set-model! dest-id src-id)
+    (define dest-mi (syntax-local-value dest-id))
+    (define src-mi (syntax-local-value src-id))
+    (set-modelinfo-exports! dest-mi (modelinfo-exports src-mi))
+    (set-modelinfo-fun-var! dest-mi (modelinfo-fun-var src-mi))))
 
 (define-syntax (wrap-export stx)
   (syntax-parse stx

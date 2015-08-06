@@ -25,6 +25,7 @@
 
 (require "private/model.rkt")
 (provide defmodel
+         defmodel+
          open-model)
 
 (require "private/lazy-struct.rkt")
