@@ -325,6 +325,48 @@
 
 ;; ----------------------------------------
 
+(define-dist-type clip-distx
+  ([dist dist?] [a real?] [b real?])
+  #:pdf clip-distx-pdf
+  #:cdf clip-distx-cdf
+  #:inv-cdf clip-distx-inv-cdf
+  #:sample clip-distx-sample
+  #:support (real-range a b))
+
+(define (clip-distx-pdf d a b x log?)
+  (define w (- (dist-cdf d b) (dist-cdf d a)))
+  (if log?
+      (- (dist-pdf d x #t) (log w))
+      (/ (dist-pdf d x #f) w)))
+
+(define (clip-distx-cdf d x log? 1-p?)
+  (define pa (dist-cdf d a))
+  (define pb (dist-cdf d b))
+  (define px (dist-cdf d x))
+  (define p (/ (- px pa) (- pb pa)))
+  (convert-p p log? 1-p?))
+
+(define (clip-distx-inv-cdf d p log? 1-p?)
+  (define pa (dist-cdf d a))
+  (define pb (dist-cdf d b))
+  (define p* (unconvert-p p log? 1-p?))
+  (dist-inv-cdf d (+ (* (- pb pa) p*) pa) #f #f))
+
+(define CLIP-REJECTION-THRESHOLD 0.25)
+
+(define (clip-distx-sample d a b)
+  (define pa (dist-cdf d a))
+  (define pb (dist-cdf d b))
+  (define w (- pb pa))
+  (cond [(< w CLIP-REJECTION-THRESHOLD)
+         (dist-inv-cdf d (+ pa (* w (random))))]
+        [else
+         (let loop ()
+           (define x (dist-sample d))
+           (if (<= a x b) x (loop)))]))
+
+;; ----
+
 (define-dist-type exp-distx
   ([dist dist?])
   #:pdf exp-distx-pdf
