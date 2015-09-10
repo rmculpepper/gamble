@@ -1,4 +1,4 @@
-;; Copyright (c) 2014 Ryan Culpepper
+;; Copyright (c) 2014-2015 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
@@ -8,6 +8,7 @@
          "dist/univariate.rkt"
          "dist/multivariate.rkt"
          "dist/discrete.rkt"
+         "dist/transformer.rkt"
          "dist/permutation.rkt"
          "dist/mixture.rkt")
 (provide dist?
@@ -50,5 +51,6 @@
          (all-from-out "dist/univariate.rkt")
          (all-from-out "dist/multivariate.rkt")
          (all-from-out "dist/discrete.rkt")
+         (all-from-out "dist/transformer.rkt")
          (all-from-out "dist/permutation.rkt")
          (all-from-out "dist/mixture.rkt"))
