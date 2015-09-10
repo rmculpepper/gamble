@@ -312,6 +312,17 @@
             (cons (from-01 value*) R-F)))
 
 
+(define-fl-dist-type t-dist
+  ([degrees (>/c 0)]
+   [mean rational?]
+   [scale (>/c 0)])
+  #:real
+  #:support #s(real-range -inf.0 +inf.0)
+  #:mean (if (> degrees 1) 0 #f)
+  #:median 0
+  #:variance #f
+  )
+
 ;; ----------------------------------------
 
 (define-dist-type categorical-dist
@@ -499,6 +510,73 @@
   (vector-set! v (sub1 (vector-length probs)) 1.0)
   v)
 
+
+;; ------------------------------------------------------------
+;; Student t distribution
+
+(define (m:flt-pdf degrees mean scale x log?)
+  (define sx (/ (- x mean) scale))
+  (define logpdf (- (std-t-logpdf degrees sx) (log scale)))
+  (if log? logpdf (exp logpdf)))
+
+(define (m:flt-cdf degrees mean scale x log? 1-p?)
+  (define sx (/ (- x mean) scale))
+  (define p (std-t-cdf degrees sx))
+  (convert-p p log? 1-p?))
+
+(define (m:flt-inv-cdf degrees location scale p log? 1-p?)
+  (define p* (unconvert-p p log? 1-p?))
+  (error 't-inv-cdf "unimplemented"))
+(define (m:flt-sample degrees location scale n)
+  (define flv (make-flvector n))
+  (for ([i (in-range n)])
+    (flvector-set! flv i (+ location (* scale (std-t-sample degrees)))))
+  flv)
+
+(define (std-t-logpdf degrees x)
+  (define logprefix (std-t-logpdf-prefix degrees))
+  (- logprefix
+     (* (+ 1.0 degrees) 0.5
+        (log (+ 1.0 (/ (* x x) degrees))))))
+
+;; FIXME: memoize/special-case?
+(define (std-t-logpdf-prefix degrees)
+  (+ (m:log-gamma (* 0.5 (+ 1.0 degrees)))
+     (* -0.5 (log degrees))
+     (* -0.5 (log pi))
+     (* -1.0 (m:log-gamma (* degrees 0.5)))))
+
+(define (std-t-cdf degrees x)
+  (cond [#f ;(= degrees 1)
+         (+ 0.5 (* (/ pi) (atan x)))]
+        [#f ;(= degrees 2)
+         (+ 0.5 (/ x (* 2 (sqrt (+ 2 (* x x))))))]
+        [else
+         (define (gen-cdf x)
+           (cond [(> x 0)
+                  (define x* (/ degrees (+ (* x x) degrees)))
+                  (define a (* degrees 0.5))
+                  (define b 0.5)
+                  (- 1.0 (* 0.5 (m:beta-inc a b x* #f #t)))]
+                 [(< x 0)
+                  (- 1.0 (gen-cdf (- x)))]
+                 [(= x 0)
+                  0.5]))
+         (gen-cdf x)]))
+
+(define (std-t-sample degrees)
+  (define u (- (* 2.0 (random)) 1))
+  (define v (- (* 2.0 (random)) 1))
+  (define w (+ (* u u) (* v v)))
+  (cond [(> w 1)
+         (std-t-sample degrees)]
+        [else
+         (define c^2 (/ (* u u) w))
+         (define r^2 (* degrees (+ -1.0 (expt w (/ -2.0 degrees)))))
+         (define x-abs (sqrt (* r^2 c^2)))
+         (if (zero? (random 2))
+             x-abs
+             (- x-abs))]))
 
 ;; ------------------------------------------------------------
 ;; Inverse gamma distribution

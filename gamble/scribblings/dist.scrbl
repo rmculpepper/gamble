@@ -357,6 +357,13 @@ Note: A common alternative parameterization uses the variance
 
 Represents a @wiki["Pareto_distribution"]{Pareto distribution}.}
 
+@defstruct*[t-dist
+            ([degrees (>/c 0)]
+             [mode real?]
+             [scale (>/c 0)])]{
+
+Represents a @wiki["Student's_t-distribution"]{Student's t distribution}.}
+
 @defstruct*[uniform-dist
             ([min real?]
              [max real?])]{
