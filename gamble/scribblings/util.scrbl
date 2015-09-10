@@ -101,6 +101,22 @@ The generative model can then be combined with different queries:
 ]
 }
 
+@defform[(defmodel+ model-name body ...)]{
+
+Extends an existing model named @racket[model-name] with additional
+@racket[body] elements, or defines it if it is not already defined.
+
+@examples[#:eval the-eval
+(defmodel+ arith
+  (define a 1)
+  (define b 2))
+(defmodel+ arith
+  (define c (+ a b)))
+(open-model arith)
+(list a b c)
+]
+}
+
 @defform[(open-model model-name)]{
 
 Executes the body of the model corresponding to @racket[model-name]
