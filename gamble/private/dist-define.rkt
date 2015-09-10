@@ -51,7 +51,7 @@
             (~optional (~seq #:extra [extra-clause ...])
                        #:defaults ([(extra-clause 1) '()])))
        ...)
-     (unless (regexp-match? #rx"-dist$" (symbol->string (syntax-e #'name-dist)))
+     (unless (regexp-match? #rx"-distx?$" (symbol->string (syntax-e #'name-dist)))
        (raise-syntax-error #f "name does not end with `-dist'" stx #'name-dist))
      (with-syntax ([make-name-dist (format-id #'name-dist "make-~a" #'name-dist)]
                    [(get-param ...)

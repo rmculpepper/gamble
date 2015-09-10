@@ -325,6 +325,130 @@
 
 ;; ----------------------------------------
 
+(define-dist-type exp-distx
+  ([dist dist?])
+  #:pdf exp-distx-pdf
+  #:cdf exp-distx-cdf
+  #:inv-cdf exp-distx-inv-cdf
+  #:sample exp-distx-sample
+  #:support '#s(real-range 0 +inf.0)) ;; FIXME: depends on d
+
+;; x = exp[t]
+;; dx/dt = exp[t] = x
+(define (exp-distx-pdf d x log?)
+  (cond [(and (rational? x) (> x 0))
+         (define t (log x))
+         (cond [log? (- (dist-pdf d t #t) t)]
+               [else (/ (dist-pdf d t #f) x)])]
+        [else (if log? -inf.0 0.0)]))
+
+(define (exp-distx-cdf d x log? 1-p?)
+  (cond [(and (rational? x) (> x 0))
+         (define t (log x))
+         (dist-cdf d t log? 1-p?)]
+        [else +nan.0]))
+
+(define (exp-distx-inv-cdf d p log? 1-p?)
+  (exp (dist-inv-cdf d p log? 1-p?)))
+
+(define (exp-distx-sample d)
+  (expt (dist-sample d)))
+
+;; ----
+
+(define-dist-type log-distx
+  ([dist dist?])
+  #:pdf log-distx-pdf
+  #:cdf log-distx-cdf
+  #:inv-cdf log-distx-inv-cdf
+  #:sample log-distx-sample
+  #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
+
+;; x = log[t]
+;; dx/dt = 1/t
+(define (log-distx-pdf d x log?)
+  (cond [(real? x)
+         (define t (exp x))
+         (cond [log? (+ (dist-pdf d t #t) x)]
+               [else (* (dist-pdf d t #f) t)])]
+        [else +nan.0]))
+
+(define (log-distx-cdf d x log? 1-p?)
+  (cond [(real? x)
+         (define t (exp x))
+         (dist-cdf d t log? 1-p?)]
+        [else +nan.0]))
+
+(define (log-distx-inv-cdf d p log? 1-p?)
+  (log (dist-inv-cdf d p log? 1-p?)))
+
+(define (log-distx-sample d)
+  (log (dist-sample d)))
+
+;; ----
+
+(define-dist-type inverse-distx
+  ([dist dist?])
+  #:pdf inverse-distx-pdf
+  #:cdf inverse-distx-cdf
+  #:sample inverse-distx-sample
+  #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
+
+;; x = 1/t
+;; dx/dt = -1/t^2
+(define (inverse-distx-pdf d x log?)
+  (define t (/ x))
+  (cond [log? (+ (dist-pdf d t #t) (* 2 (log t)))]
+        [else (* (dist-pdf d t #f) t t)]))
+
+(define (inverse-distx-cdf d x log? 1-p?)
+  (cond [(real? x)
+         (define t (/ x))
+         ;; Let x = f(t)
+         (cond [(> x 0)
+                ;; then f^-1(-inf.0, x) = (-inf.0,0) U (1/x, +inf.0)
+                (define p (+ (dist-cdf d 0 #f #f) (dist-cdf d t #f #t)))
+                (convert-p p log? 1-p?)]
+               [(< x 0)
+                ;; then f^-1(-inf.0, x) = (1/x, 0)
+                (define p (- (dist-cdf d 0 #f #f) (dist-cdf d t #f #f)))
+                (convert-p p log? 1-p?)]
+               [(= x 0)
+                ;; then f^-1(-inf.0, 0) = (-inf.0, 0)
+                (dist-cdf d 0 log? 1-p?)])]
+        [else +nan.0]))
+
+(define (inverse-distx-sample d)
+  (/ (dist-sample d)))
+
+;; ----
+
+(define-dist-type affine-distx
+  ([dist dist?] [a rational?] [b rational?])
+  #:pdf affine-distx-pdf
+  #:cdf affine-distx-cdf
+  #:inv-cdf affine-distx-inv-cdf
+  #:sample affine-distx-sample
+  ;; FIXME: mean, variance???
+  #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
+
+(define (affine-distx-pdf d a b x log?)
+  (define t (/ (- x b) a))
+  (cond [log? (- (dist-pdf d t #t) (log a))]
+        [else (/ (dist-pdf d t #f) (abs a))]))
+
+(define (affine-distx-cdf d a b x log? 1-p?)
+  (define t (/ (- x b) a))
+  (dist-cdf d t log? (if (negative? a) (not 1-p?) 1-p?)))
+
+(define (affine-dist-inv-cdf d a b p log? 1-p?)
+  (+ (* (dist-inv-cdf d p log? (if (negative? a) (not 1-p?) 1-p?)) a) b))
+
+(define (affine-distx-sample d a b)
+  (+ (* (dist-sample d) a) b))
+
+;; ----------------------------------------
+
 (define-dist-type categorical-dist
   ([weights (vectorof (>=/c 0))])
   #:pdf categorical-pdf
