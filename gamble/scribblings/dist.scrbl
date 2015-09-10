@@ -372,6 +372,48 @@ Represents a @wiki["Uniform_distribution"]{uniform distribution} with
 lower bound @racket[min] and upper bound @racket[max].}
 
 
+@section[#:tag "dist-transformers"]{Real Distribution Transformers}
+
+The following constructors take and produce real-valued distributions.
+
+@defstruct*[affine-distx
+            ([dist real-dist?]
+             [a real?]
+             [b real?])]{
+
+Represents the distribution of @racket[(+ (* a _t) b)] where
+@racket[_t] is distributed according to @racket[dist].
+}
+
+@defstruct*[clip-distx
+            ([dist real-dist?]
+             [a real?]
+             [b real?])]{
+
+Clips @racket[dist] to the closed interval [@racket[a],
+@racket[b]]. 
+
+If the interval is small, the clipped dist is sampled
+using the @racket[dist-inv-cdf] method of @racket[dist]; otherwise,
+rejection sampling is used.
+}
+
+@defstruct*[exp-distx
+            ([dist real-dist?])]{
+
+Represents the distribution of @racket[(exp _t)] where @racket[_t] is
+distributed according to @racket[dist].
+}
+
+@defstruct*[log-distx
+            ([dist real-dist?])]{
+
+Represents the distribution of @racket[(log _t)] where @racket[_t] is
+distributed according to @racket[dist], whose support should include
+only the non-negative reals.
+}
+
+
 @section[#:tag "vector-dists"]{Vector Distribution Types}
 
 @defstruct*[dirichlet-dist

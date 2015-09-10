@@ -20,7 +20,7 @@
 ;; ============================================================
 
 (define-dist-type clip-distx
-  ([dist dist?] [a real?] [b real?])
+  ([dist real-dist?] [a real?] [b real?])
   #:pdf clip-distx-pdf
   #:cdf clip-distx-cdf
   #:inv-cdf clip-distx-inv-cdf
@@ -62,7 +62,7 @@
 ;; ============================================================
 
 (define-dist-type exp-distx
-  ([dist dist?])
+  ([dist real-dist?])
   #:pdf exp-distx-pdf
   #:cdf exp-distx-cdf
   #:inv-cdf exp-distx-inv-cdf
@@ -93,7 +93,7 @@
 ;; ============================================================
 
 (define-dist-type log-distx
-  ([dist dist?])
+  ([dist real-dist?])
   #:pdf log-distx-pdf
   #:cdf log-distx-cdf
   #:inv-cdf log-distx-inv-cdf
@@ -124,7 +124,7 @@
 ;; ============================================================
 
 (define-dist-type inverse-distx
-  ([dist dist?])
+  ([dist real-dist?])
   #:pdf inverse-distx-pdf
   #:cdf inverse-distx-cdf
   #:inv-cdf inverse-distx-inv-cdf
@@ -172,7 +172,7 @@
 ;; ============================================================
 
 (define-dist-type affine-distx
-  ([dist dist?] [a rational?] [b rational?])
+  ([dist real-dist?] [a rational?] [b rational?])
   #:pdf affine-distx-pdf
   #:cdf affine-distx-cdf
   #:inv-cdf affine-distx-inv-cdf
