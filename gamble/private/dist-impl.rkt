@@ -41,11 +41,17 @@
   ;; Let's approximate as exp[2s^2] - 1. So we want
   ;; exp[2s^2] - 1 ~= scale^2, so
   ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
+  ;;
+  ;; This process is equiv to value* ~ exp[ N(log(value), s) ]
+  ;; So q(->) = N(log(value*); log(value), s) * 1/value*
+  ;;    q(<-) = N(log(value); log(value*), s) * 1/value
+  ;; So R-F = log(1/value) - log(1/value*)
+  ;;        = log(value*) - log(value)
   (define sn (sample-normal 0 (sqrt (log (add1 (* scale scale))))))
   (define value* (* value (exp sn)))
   (when (eqv? value* +nan.0)
     (eprintf "value = ~s, scale = ~s, sn = ~s\n" value scale sn))
-  (cons value* 0))
+  (cons value* (- (log value*) (log value))))
 
 (define (drift:asymmetric f value)
   (define forward-dist (f value))
