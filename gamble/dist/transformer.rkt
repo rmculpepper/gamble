@@ -25,6 +25,10 @@
   #:cdf clip-distx-cdf
   #:inv-cdf clip-distx-inv-cdf
   #:sample clip-distx-sample
+  #:guard (lambda (dist a b _type)
+            (let ([a (exact->inexact a)]
+                  [b (exact->inexact b)])
+              (values dist (min a b) (max a b))))
   #:support (real-range a b))
 
 (define (clip-distx-pdf d a b x log?)
@@ -67,6 +71,18 @@
   #:cdf exp-distx-cdf
   #:inv-cdf exp-distx-inv-cdf
   #:sample exp-distx-sample
+  #:drift (lambda (x scale-factor)
+            (define t (log x))
+            (defmatch (cons t* R-F) (dist-drift dist t))
+            (define x* (exp t*))
+            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+            ;; And dx/dt = exp[t] = x
+            ;; So R-F = ...q'... + log(1/x) - log(1/x*)
+            ;;        = ...q'... + log(x*) - log(x)
+            ;;        = ...q'... + t* - t
+            (cons x*
+                  (+ R-F (- t* t))))
   #:support '#s(real-range 0 +inf.0)) ;; FIXME: depends on d
 
 ;; x = exp[t]
@@ -98,6 +114,17 @@
   #:cdf log-distx-cdf
   #:inv-cdf log-distx-inv-cdf
   #:sample log-distx-sample
+  #:drift (lambda (x scale-factor)
+            (define t (exp x))
+            (defmatch (cons t* R-F) (dist-drift dist t))
+            (define x* (log t*))
+            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+            ;; And dx/dt = 1/t
+            ;; So R-F = ...q'... + log(t) - log(t*)
+            ;;        = ...q'... + x - x*
+            (cons x*
+                  (+ R-F (- x x*))))
   #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
 
 ;; x = log[t]
@@ -129,6 +156,17 @@
   #:cdf inverse-distx-cdf
   #:inv-cdf inverse-distx-inv-cdf
   #:sample inverse-distx-sample
+  #:drift (lambda (x scale-factor)
+            (define t (/ x))
+            (defmatch (cons t* R-F) (dist-drift dist t))
+            (define x* (/ t*))
+            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+            ;; And dx/dt = -1/t^2 --- remember, take abs
+            ;; So R-F = ...q'... + log(t^2) - log(t*^2)
+            ;;        = ...q'... + x - x*
+            (cons x*
+                  (+ R-F (* 2 (- (log (abs t)) (log (abs t*)))))))
   #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
 
 ;; x = 1/t
@@ -177,7 +215,18 @@
   #:cdf affine-distx-cdf
   #:inv-cdf affine-distx-inv-cdf
   #:sample affine-distx-sample
+  #:guard (lambda (dist a b _type)
+            (values dist (exact->inexact a) (exact->inexact b)))
   ;; FIXME: mean, variance???
+  #:drift (lambda (x scale-factor)
+            (define t (/ (- x b) a))
+            (defmatch (cons t* R-F) (dist-drift dist t))
+            (define x* (+ (* t* a) b))
+            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+            ;; And dx/dt = a
+            ;; So R-F = ...q'... + log(1/a) - log(1/a)
+            (cons x* R-F))
   #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
 
 (define (affine-distx-pdf d a b x log?)
