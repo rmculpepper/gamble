@@ -194,25 +194,23 @@
              (vprintf "REUSED ~e: ~s = ~e\n" dist context (entry-value e))
              (db-add! context e)
              (entry-value e)]
-            [(and (dists-same-type? (entry-dist e) dist)
-                  (let ([new-ll (dist-pdf dist (entry-value e) #t)])
-                    (and (ll-possible? new-ll) new-ll)))
-             ;; FIXME: just fail if old value is impossible!
-             => (lambda (new-ll)
-                  (define value (entry-value e))
-                  (define new-e (entry (entry-zones e) dist value new-ll))
-                  (vprintf "RESCORE ~e: ~s = ~e\n" dist context value)
-                  (db-add! context new-e e)
-                  value)]
+            [(dists-same-type? (entry-dist e) dist)
+             (let ([new-ll (dist-pdf dist (entry-value e) #t)])
+               (cond [(ll-possible? new-ll)
+                      (define value (entry-value e))
+                      (define new-e (entry (entry-zones e) dist value new-ll))
+                      (vprintf "RESCORE ~e: ~s = ~e\n" dist context value)
+                      (db-add! context new-e e)
+                      value]
+                     [else
+                      (fail 'sample/rescore)]))]
             [else
              (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
              (sample/new dist context #f)]))
 
     (define/public (observe-sample dist val scale)
       (define context (ADDR-mark))
-      (observe-sample* dist val (log scale) context))
-
-    (define/private (observe-sample* dist val lscale context)
+      (define lscale (log scale))
       (cond [(hash-ref current-db context #f) ;; COLLISION
              => (lambda (e)
                   (vprintf "OBS COLLISION ~e / ~e: ~s\n" (entry-dist e) dist context)
