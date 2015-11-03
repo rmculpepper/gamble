@@ -284,46 +284,6 @@ Note: unlike traditional Gibbs sampling, this transition picks a
 choice at random rather than perturbing all choices round-robin.
 }
 
-@defproc[(hmc [epsilon (>/c 0) 0.01]
-              [L exact-positive-integer? 10]
-              [#:zone zone-pattern any/c #f])
-         mh-transition?]{
-
-A transition that picks a new state via HMC: Hybrid (or Hamiltonian)
-Monte Carlo. HMC is based on Hamiltonian mechanics using the negative
-log-likelihood of a state as its potential energy.
-
-This transition is @bold{experimental} and comes with a number of
-restrictions:
-
-@itemlist[
-@item{There must be no structural dependencies among the distributions
-of @racket[_def/expr ... _result-expr]}
-@item{All the distributions must be continuous.}
-@item{Any distribution that has parameters that depend on the value of
-another distribution must be wrapped in a @racket[derivative]
-form. See @seclink["hmc-utils"] for more information.}
-]
-
-The parameters @racket[epsilon] and @racket[L] specify the size of
-each Hamiltonian step and the number of Hamiltonian steps to take in
-the course of obtaining a sample, respectively.  Note that careful
-tuning may be required to achive good results.
-
-@examples[#:eval the-eval
-(define one-dim-loc-hmc
-  (mh-sampler
-    #:transition (hmc 0.01 90)
-    (define Hid (label 'Hid (derivative (normal 10 1) #f #f)))
-    (derivative (observe-sample (normal-dist Hid 0.5) 9.0)
-                [(Hid) (λ (hid) 1)]
-                #f)
-    Hid))
-
-(bin (repeat one-dim-loc-hmc 100))
-]
-}
-
 @defproc[(cycle [tx mh-transition?] ...+)
          mh-transition?]{
 
@@ -396,61 +356,6 @@ in zones.
 Associate each random choice in the dynamic extent of the evaluation
 of the @racket[body] forms with the zone produced by
 @racket[zone-expr]. Any value except @racket[#f] can identity a zone.
-}
-
-@; ----------------------------------------
-@subsection[#:tag "hmc-utils"]{Specifying Derivatives for HMC}
-
-The @racket[hmc] transition requires that all the distributions in the
-model are continuous.  It further requires partial derivatives for
-each parameter of the distribution of each random variable in terms of
-any previous random variable. Such information is provided using the
-@racket[derivative] special form.
-
-@defform[(derivative sampling-expr parameter-derivative-clause ...)
-         #:grammar ([parameter-derivative-clause
-                     (code:line [(label-ids ...) partial-fn-expr])
-                     (code:line #f)])]{
-
-Annotates the @racket[sampling-expr] expression with the partial
-derivatives of its parameters.
-
-The @racket[sampling-expr] should be either a call to @racket[sample]
-or a use of one of the functions from @secref["erps"].
-
-There should be as many parameter derivative clauses as there are
-parameters of the underlying distribution. Each
-@racket[parameter-derivative-clause] consists of a sequence of labels
-of the random variables that the parameter depends on together with a
-function that produces the partial derivative of that parameter value
-with respect to the listed random variables, given the values of those
-random variables. The clause @racket[[() (lambda () (values))]], which
-indicates that the parameter is independent of all previous random
-variables, can be abbreviated as @racket[#f].
-
-@examples[#:eval the-eval
-(define derivative-example
-  (mh-sampler
-    #:transition (hmc)
-    (define A (label 'A-lbl (derivative (normal 0 1) #f #f)))
-    (define B (label 'B-lbl (derivative (normal 1 1) #f #f)))
-
-    (define C (derivative (normal (- (* A A) (* B B)) 1)
-                          [(A-lbl B-lbl)
-                           (λ (a b)
-                             (values (* 2 a)
-                                     (- (* 2 b))))]
-                          #f))
-    B))
-]
-
-In the example above, @racket[A] and @racket[B] do not depend on any
-other random variables, so the derivatives of their parameters are
-zero (shorthand: @racket[#f]). The mean (first parameter) of
-@racket[C], on the other hand, depends on both @racket[A] and
-@racket[B], so its derivative clause lists their labels, and the
-function returns two values: the partial derivative of @racket[(- (* A
-A) (* B B))] with respect to @racket[A] and @racket[B], in that order.
 }
 
 

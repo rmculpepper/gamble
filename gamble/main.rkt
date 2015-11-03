@@ -121,7 +121,6 @@
          enumerate
          label
          with-zone
-         derivative
          ppromise?
          pdelay
          (contract-out
@@ -190,8 +189,6 @@
                 mh-transition?)]
           [multi-site
            (->* [] [proposal/c #:zone any/c] mh-transition?)]
-          [hmc
-           (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice
            (->* []
                 [#:method (or/c 'double 'step)

@@ -225,23 +225,6 @@
 ;; ----
 
 (begin-for-syntax
-  (define-syntax-class derivative-spec
-    (pattern [(ids:id ...) grad-e:expr]
-             #:with grad #'(cons (vector (quote ids) ...)
-                                 grad-e))
-    (pattern #f
-             #:with grad #'#f)))
-
-(define-syntax (derivative stx)
-  (syntax-parse stx
-    [(derivative dist:expr pderivs:derivative-spec ...)
-     (template
-      (parameterize ([current-derivatives (vector pderivs.grad ...)])
-        dist))]))
-
-;; ----
-
-(begin-for-syntax
  (define-splicing-syntax-class maybe-lazy
    (pattern (~seq #:lazy)
             #:with wrap-body #'pdelay

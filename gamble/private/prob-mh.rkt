@@ -11,8 +11,7 @@
          "mh/proposal.rkt"
          "mh/transitions.rkt"
          "mh/slice.rkt"
-         "mh/enum-gibbs.rkt"
-         "mh/hmc.rkt")
+         "mh/enum-gibbs.rkt")
 (provide mh-sampler*
          mh-sampler%
          mh-transition?
@@ -22,7 +21,6 @@
          rerun
          single-site
          multi-site
-         hmc
          slice
          enumerative-gibbs
          proposal?
@@ -67,9 +65,6 @@
 
 (define (enumerative-gibbs #:zone [zone #f])
   (new enumerative-gibbs-mh-transition% (zone zone)))
-
-(define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
-  (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))
 
 (define (rerun)
   the-rerun-mh-transition)
