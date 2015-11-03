@@ -108,7 +108,7 @@
       (iprintf i "-- Random selector\n"))
 
     (define/public (select-one last-trace zone)
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
+      (defmatch (trace _ last-db _ _ _) last-trace)
       (db-pick-a-key last-db zone))
     ))
 
@@ -126,7 +126,7 @@
 
     (define/public (select-one last-trace zone)
       (vprintf "last-key = ~s\n" last-key)
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
+      (defmatch (trace _ last-db _ _ _) last-trace)
       ;; Take first key > last-key; or failing that, take first key.
       (define-values (first-key next-key)
         (for/fold ([first-key #f] [next-key #f])

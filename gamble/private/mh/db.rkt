@@ -15,13 +15,16 @@
 
 ;; ============================================================
 
-;; A Trace is (trace Any DB Nat Real Real Nat)
-(struct trace (value db nchoices ll-free ll-obs dens-dim))
+;; A Trace is (trace Any DB Real Real Nat)
+(struct trace (value db ll-free ll-obs dens-dim))
 
-(define init-trace (trace #f '#hash() 0 0 0 +inf.0))
+(define init-trace (trace #f '#hash() 0 0 +inf.0))
 
 ;; trace-ll : Trace -> Real
 (define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
+
+;; trace-nchoices : Trace -> Nat
+(define (trace-nchoices t) (db-count (trace-db t)))
 
 ;; ============================================================
 
@@ -88,27 +91,31 @@
                 [on-fresh-choice #f] ;; (U #f (-> Any))
                 [escape-prompt (make-continuation-prompt-tag)])
 
-    ;; Observations do not affect ll-diff, only ll-obs.
-
     (field [current-db (make-hash)]
-           [nchoices 0]  ;; number of entries in current-db
            [ll-free  0]  ;; sum of ll of all entries in current-db
            [ll-obs   0]  ;; sum of ll of all observations
            [ll-diff  0]  ;; INVARIANT: ll-diff = ll-free - OLD(ll-free)
            [dens-dim 0]) ;; density dimension
     (super-new)
 
+    ;; ll-diff = SUM_{k in K} (- (entry-ll current-db[k]) (entry-ll last-db[k]))
+    ;;           where K = dom(current-db) intersected with dom(last-db)
+
+    ;; Observations do not affect ll-diff, only ll-obs.
+
     ;; make-trace : Any -> Trace
     ;; Should only be called after run, once current-db has stopped changing.
     (define/public (make-trace value)
-      (trace value current-db nchoices ll-free ll-obs dens-dim))
+      (trace value current-db ll-free ll-obs dens-dim))
 
     ;; db-add! : Address Entry -> Void
-    ;; Add entry to current-db and update nchoices, ll-free, ll-obs.
-    (define/private (db-add! context entry)
-      (hash-set! current-db context entry)
-      (set! ll-free (+ ll-free (entry-ll entry)))
-      (set! nchoices (add1 nchoices)))
+    ;; Add entry to current-db and update ll-free, ll-obs.
+    ;; When last-e is not #f, also update ll-diff.
+    (define/private (db-add! context e [last-e #f])
+      (hash-set! current-db context e)
+      (set! ll-free (+ ll-free (entry-ll e)))
+      (when last-e
+        (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))))
 
     ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
     ;; Run a prob prog using this stochastic ctx, populate current-db, etc.
@@ -165,18 +172,17 @@
                     context)]
             [(equal? (entry-dist e) dist)
              (vprintf "PERTURBED ~e: ~s = ~e\n" dist context (entry-value e))
-             (db-add! context e)
-             (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll last-e))))
+             (db-add! context e last-e)
              (entry-value e)]
             [(and (dists-same-type? (entry-dist e) dist)
                   (let ([new-ll (dist-pdf dist (entry-value e) #t)])
                     (and (ll-possible? new-ll) new-ll)))
+             ;; FIXME: delete this case? should be proposal!
              => (lambda (new-ll)
                   (define value (entry-value e))
+                  (define new-e (entry (entry-zones e) dist value new-ll))
                   (vprintf "PERTURBED* ~e: ~s = ~e\n" dist context value)
-                  (db-add! context
-                           (entry (entry-zones e) dist value new-ll))
-                  (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
+                  (db-add! context new-e last-e)
                   value)]
             [else
              (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
@@ -191,12 +197,12 @@
             [(and (dists-same-type? (entry-dist e) dist)
                   (let ([new-ll (dist-pdf dist (entry-value e) #t)])
                     (and (ll-possible? new-ll) new-ll)))
+             ;; FIXME: just fail if old value is impossible!
              => (lambda (new-ll)
                   (define value (entry-value e))
+                  (define new-e (entry (entry-zones e) dist value new-ll))
                   (vprintf "RESCORE ~e: ~s = ~e\n" dist context value)
-                  (db-add! context
-                           (entry (entry-zones e) dist value new-ll))
-                  (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
+                  (db-add! context new-e e)
                   value)]
             [else
              (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)

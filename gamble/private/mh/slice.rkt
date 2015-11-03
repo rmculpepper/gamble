@@ -35,7 +35,7 @@
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (set! run-counter (add1 run-counter))
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
+      (defmatch (trace _ last-db _ _ _) last-trace)
       (define key-to-change (db-pick-a-key last-db zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'slice zone))

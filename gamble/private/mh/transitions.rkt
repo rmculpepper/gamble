@@ -97,7 +97,7 @@
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
+      (defmatch (trace _ last-db _ _ _) last-trace)
       (define key-to-change (send selector select-one last-trace zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (if key-to-change
@@ -119,23 +119,19 @@
     (define/private (accept-threshold/nchoices last-trace current-trace)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
-      (defmatch (trace _ current-db nchoices _ _ _) current-trace)
+      (defmatch (trace _ last-db _ _ _) last-trace)
+      (defmatch (trace _ current-db _ _ _) current-trace)
+      (define nchoices (db-count current-db #:zone zone))
+      (define last-nchoices (db-count last-db #:zone zone))
       (cond [(zero? last-nchoices)
              +inf.0]
             [else
-             (define nchoices*
-               (cond [(eq? zone #f) nchoices]
-                     [else (db-count current-db #:zone zone)]))
-             (define last-nchoices*
-               (cond [(eq? zone #f) last-nchoices]
-                     [else (db-count last-db #:zone zone)]))
              ;; Note: assumes we pick uniformly from all choices.
-             ;; R = (log (/ 1 nchoices))        =(- (log nchoices))
+             ;; R = (log (/ 1 nchoices))        = (- (log nchoices))
              ;; F = (log (/ 1 last-nchoices))   = (- (log last-nchoices))
              ;; convert to inexact so (log 0.0) = -inf.0
-             (define R (- (log (exact->inexact nchoices*))))
-             (define F (- (log (exact->inexact last-nchoices*))))
+             (define R (- (log (exact->inexact nchoices))))
+             (define F (- (log (exact->inexact last-nchoices))))
              (- R F)]))
     ))
 
@@ -154,7 +150,7 @@
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
+      (defmatch (trace _ last-db _ _ _) last-trace)
       (define-values (delta-db R-F)
         (for/fold ([delta-db '#hash()] [R-F 0])
             ([(key e) (in-hash last-db)]
@@ -168,10 +164,9 @@
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     (define/override (accept-threshold last-trace R-F current-trace ll-diff)
-      (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
-      (if (zero? last-nchoices)
+      (if (zero? (trace-nchoices last-trace))
           +inf.0
-          ;; FIXME: what if nchoices != last-nchoices ???
+          ;; FIXME: what if current-nchoices != last-nchoices ???
           (let ([ll-diff-obs
                  (- (trace-ll-obs current-trace) (trace-ll-obs last-trace))])
             (+ R-F (/ (+ ll-diff ll-diff-obs) temperature)))))
