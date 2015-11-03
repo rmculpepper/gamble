@@ -64,9 +64,9 @@
                  (match (with-verbose> (send ctx run thunk))
                    [(cons 'okay sample-value)
                     (define current-trace (send ctx make-trace sample-value))
-                    (define nchoices (trace-nchoices current-trace))
                     (define dens-dim (trace-dens-dim current-trace))
-                    (check-not-structural 'enumerative-gibbs key-to-change nchoices last-trace)
+                    (check-not-structural 'enumerative-gibbs key-to-change
+                                          last-trace current-trace)
                     (cons dens-dim current-trace)]
                    [(cons 'fail fail-reason)
                     #f])])))

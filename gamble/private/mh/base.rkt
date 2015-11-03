@@ -190,8 +190,8 @@
   (error who "illegal transition for structural choice\n  choice: ~a"
          (address->string key)))
 
-(define (check-not-structural who key nchoices last-trace)
-  (unless (= nchoices (trace-nchoices last-trace))
+(define (check-not-structural who key last-trace current-trace)
+  (unless (= (trace-nchoices current-trace) (trace-nchoices last-trace))
     ;; Note: This check is not sufficient to catch all structural choices;
     ;; if one choice is lost and another added, nchoices stays the same.
     ;; See also disallow-fresh? in db-stochastic-ctx%.

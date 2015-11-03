@@ -113,8 +113,10 @@
              (incr-find-slice-counter! 1)
              (match (send ctx run thunk)
                [(cons 'okay sample-value)
-                (check-not-structural 'slice key-to-change (get-field nchoices ctx) last-trace)
-                (send ctx make-trace sample-value)]
+                (define current-trace (send ctx make-trace sample-value))
+                (check-not-structural 'slice key-to-change
+                                      last-trace current-trace)
+                current-trace]
                [(cons 'fail fail-reason)
                 #f])]
             [else #f]))
