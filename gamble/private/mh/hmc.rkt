@@ -27,6 +27,44 @@
              (list/c 'fail any/c)))]))
 |#
 
+;; ============================================================
+;; DB util functions
+
+;; db-map : (Entry -> Entry) DB #f -> DB
+;; db-map : (Address Entry -> Entry) DB #t -> DB
+;;
+;; Copy old-db to new-db and then update it using f.
+(define (db-map f old-db #:with-address [with-address #f])
+  (define new-db (make-hash))
+  (db-copy-stale old-db new-db)
+  (db-update! f new-db #:with-address with-address)
+  new-db)
+
+;; db-copy-stale : DB DB -> Void
+(define (db-copy-stale old-db new-db)
+  (for ([(k v) (in-hash old-db)])
+    (unless (hash-has-key? new-db k)
+      (hash-set! new-db k v))))
+
+;; db-update! : (Entry -> Entry) DB #f -> Void
+;; db-update! : (Address Entry -> Entry) DB #t -> Void
+;;
+;; Update each entry in the database by applying the given function to it.
+;; if #:with-address #t also pass the entry address to the funciton
+(define (db-update! f db #:with-address [with-address #f])
+  (for ([(k v) (in-hash db)])
+    (hash-set! db k (if with-address (f k v) (f v)))))
+
+;; entry-value-map : (Any -> Any) Entry Boolean -> Entry
+;; FIXME: remove
+(define (entry-value-map f e [update-ll #t])
+  (defmatch (entry zones dist value ll) e)
+  (define new-value (f value))
+  (entry zones dist new-value (if update-ll (dist-pdf dist new-value #t) ll)))
+
+
+;; ============================================================
+
 ;; Hamiltonian Monte Carlo - System
 
 ;; An HMC system is a pair of:
@@ -39,8 +77,7 @@
 ;;     disjoint Xz Xnz such that all entries in Xz are in z and none
 ;;     in Xnz are in z, then each address in P is in Xz and not in Xnz.
 ;;   - Corresponding entires x, p with the same address
-;;       obey: (and (equal? (entry-pinned? x) (entry-pinned? p))
-;;                  (equal? (entry-zones x) (entry-zones p)))
+;;       obey: (equal? (entry-zones x) (entry-zones p))
 ;;
 ;; N.B. while the system is immutable, the hashes may change.
 (struct hmc-system (X P) #:prefab)
@@ -87,13 +124,11 @@
   ;; pinned entries have zero kinetic energy
   ;; and will thus not move in next-x-db.
   (let* ([d      (normal-dist 0 1)]
-         [v      (if (or (entry-pinned? x) 
-                         (not (some-zone-matches? (entry-zones x) zone)))
+         [v      (if (or (not (some-zone-matches? (entry-zones x) zone)))
                      0
-                     (dist-sample d))]
-         [pinned (entry-pinned? x)])
-    (entry (entry-zones x) d v (dist-pdf d v #t) pinned)))
-  
+                     (dist-sample d))])
+    (entry (entry-zones x) d v (dist-pdf d v #t))))
+
 ;; synthesize-K-db : DB[X] ZonePattern -> DB[P]
 ;;  Given a database of positions, returns a database of momenta
 ;; where the momentum of each random choice is sampled independently from (normal-dist 0 1).
@@ -248,7 +283,6 @@
   (define delta-X
     (let ([delta-X (make-hash)])
       (for ([(k e) (in-hash x)]
-            #:when (not (entry-pinned? e))
             #:when (some-zone-matches? (entry-zones e) zone)
             [p     (in-value (entry-value (hash-ref p k)))])
         (let ([delta-e (entry-value-map (update-position p) e)])

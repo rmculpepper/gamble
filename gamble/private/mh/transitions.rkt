@@ -18,7 +18,6 @@
 (define perturb-mh-transition-base%
   (class mh-transition-base%
     (init-field proposal
-                record-obs?
                 [temperature 1])
     (field [proposed 0]
            [resampled 0])
@@ -40,8 +39,7 @@
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
-             (delta-db delta-db)
-             (record-obs? record-obs?)))
+             (delta-db delta-db)))
       ;; Run program
       (define result (with-verbose> (send ctx run thunk)))
       (match result
@@ -49,7 +47,7 @@
          (define ll-diff (get-field ll-diff ctx))
          (define current-trace (send ctx make-trace sample-value))
          (define threshold
-           (accept-threshold last-trace R-F current-trace ll-diff record-obs?))
+           (accept-threshold last-trace R-F current-trace ll-diff))
          (list* threshold current-trace (vector 'delta delta-db))]
         [(cons 'fail fail-reason)
          (list* 'fail fail-reason (vector 'delta delta-db))]))
@@ -71,7 +69,7 @@
       (unless (ll-possible? ll*)
         (eprintf "proposal produced impossible value\n  dist: ~e\n  value: ~e\n"
                  dist value*))
-      (cons (entry zones dist value* ll* #f) R-F))
+      (cons (entry zones dist value* ll*) R-F))
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     (abstract accept-threshold)
@@ -104,7 +102,7 @@
       (vprintf "key to change = ~s\n" key-to-change)
       (if key-to-change
           (match (hash-ref last-db key-to-change)
-            [(entry zones dist value ll #f)
+            [(entry zones dist value ll)
              (defmatch (cons e R-F)
                (perturb-a-key key-to-change dist value zones))
              (cons (hash key-to-change e) R-F)])
@@ -112,11 +110,9 @@
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/override (accept-threshold last-trace R-F current-trace ll-diff record-obs?)
+    (define/override (accept-threshold last-trace R-F current-trace ll-diff)
       (define ll-diff-obs
-        (if record-obs?
-            0 ;; already in ll-diff
-            (- (trace-ll-obs current-trace) (trace-ll-obs last-trace))))
+        (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))
       (+ R-F (accept-threshold/nchoices last-trace current-trace)
          (/ (+ ll-diff ll-diff-obs) temperature)))
 
@@ -130,10 +126,10 @@
             [else
              (define nchoices*
                (cond [(eq? zone #f) nchoices]
-                     [else (db-count-unpinned current-db #:zone zone)]))
+                     [else (db-count current-db #:zone zone)]))
              (define last-nchoices*
                (cond [(eq? zone #f) last-nchoices]
-                     [else (db-count-unpinned last-db #:zone zone)]))
+                     [else (db-count last-db #:zone zone)]))
              ;; Note: assumes we pick uniformly from all choices.
              ;; R = (log (/ 1 nchoices))        =(- (log nchoices))
              ;; F = (log (/ 1 last-nchoices))   = (- (log last-nchoices))
@@ -162,25 +158,22 @@
       (define-values (delta-db R-F)
         (for/fold ([delta-db '#hash()] [R-F 0])
             ([(key e) (in-hash last-db)]
-             #:when (not (entry-pinned? e))
              #:when (entry-in-zone? e zone))
           (match e
-            [(entry zones dist value ll #f)
+            [(entry zones dist value ll)
              (defmatch (cons e* R-F*)
                (perturb-a-key key dist value zones))
              (values (hash-set delta-db key e*) (+ R-F R-F*))])))
       (cons delta-db R-F))
 
     ;; accept-threshold : Trace Real Trace Real Boolean -> Real
-    (define/override (accept-threshold last-trace R-F current-trace ll-diff record-obs?)
+    (define/override (accept-threshold last-trace R-F current-trace ll-diff)
       (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
       (if (zero? last-nchoices)
           +inf.0
           ;; FIXME: what if nchoices != last-nchoices ???
           (let ([ll-diff-obs
-                 (if record-obs?
-                     0 ;; already in ll-diff
-                     (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))])
+                 (- (trace-ll-obs current-trace) (trace-ll-obs last-trace))])
             (+ R-F (/ (+ ll-diff ll-diff-obs) temperature)))))
     ))
 
@@ -271,7 +264,7 @@
 
 (define rerun-mh-transition%
   (class perturb-mh-transition-base%
-    (super-new [proposal (proposal:resample)] [record-obs? #f])
+    (super-new [proposal (proposal:resample)])
     (define/override (info i)
       (iprintf "== Transition (rerun)\n")
       (super info i))

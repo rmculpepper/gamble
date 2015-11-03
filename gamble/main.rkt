@@ -186,10 +186,10 @@
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
            (->* []
-                [proposal/c #:zone any/c #:selector any/c #:record-obs? any/c]
+                [proposal/c #:zone any/c #:selector any/c]
                 mh-transition?)]
           [multi-site
-           (->* [] [proposal/c #:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [proposal/c #:zone any/c] mh-transition?)]
           [hmc
            (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice
@@ -200,7 +200,7 @@
                  #:zone any/c]
                 mh-transition?)]
           [enumerative-gibbs
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [#:zone any/c] mh-transition?)]
           [mixture
            (->* [(vectorof mh-transition?)] [(vectorof (>=/c 0))] mh-transition?)]
           [rerun

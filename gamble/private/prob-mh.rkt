@@ -50,27 +50,23 @@
 
 (define (single-site [proposal (default-proposal)]
                      #:zone [zone #f]
-                     #:selector [selector (select:one)]
-                     #:record-obs? [record-obs? #t])
+                     #:selector [selector (select:one)])
   (new single-site-mh-transition%
        [proposal (->proposal proposal)]
        [zone zone]
-       [selector selector]
-       [record-obs? record-obs?]))
+       [selector selector]))
 
 (define (multi-site [proposal (default-proposal)]
-                    #:zone [zone #f]
-                    #:record-obs? [record-obs? #t])
+                    #:zone [zone #f])
   (new multi-site-mh-transition%
        [proposal (->proposal proposal)]
-       [zone zone]
-       [record-obs? record-obs?]))
+       [zone zone]))
 
 (define (slice #:method [method 'double] #:w [w 1] #:m [m +inf.0] #:zone [zone #f])
   (new slice-mh-transition% (method method) (W w) (M m) (zone zone)))
 
-(define (enumerative-gibbs #:zone [zone #f] #:record-obs? [record-obs? #t])
-  (new enumerative-gibbs-mh-transition% (zone zone) (record-obs? record-obs?)))
+(define (enumerative-gibbs #:zone [zone #f])
+  (new enumerative-gibbs-mh-transition% (zone zone)))
 
 (define (hmc [epsilon 0.01] [L 10] #:zone [zone #f])
   (new hmc-transition% [epsilon epsilon] [L L] [zone zone]))

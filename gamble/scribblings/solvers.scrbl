@@ -234,8 +234,7 @@ Returns @racket[#t] if @racket[v] represents a @tech{MH transition},
 }
 
 @defproc[(single-site [proposal (or/c proposal? (-> proposal?)) (default-proposal)]
-                      [#:zone zone-pattern any/c #f]
-                      [#:record-obs? record-obs? boolean? #t])
+                      [#:zone zone-pattern any/c #f])
          mh-transition?]{
 
 A transition that proposes a new state by randomly (uniformly)
@@ -247,19 +246,10 @@ selecting a single random choice in any zone matching
 
 A @deftech{zone pattern} matches a zone if the two values are
 @racket[equal?] or if the zone pattern is @racket[#f].
-
-If the set of observations in the probabilistic program is always the
-same (that is, the parameters may change, but the number of
-observations and the observed values stay the same), then it is safe
-to set @racket[record-obs?] to @racket[#f] to avoid creating database
-entries for observations. This can improve the efficiency of typical
-programs. If the observation set changes from run to run, however,
-then @racket[record-obs?] must be @racket[#t].
 }
 
 @defproc[(multi-site [proposal (or/c proposal? (-> proposal?)) (default-proposal)]
-                     [#:zone zone-pattern any/c #f]
-                     [#:record-obs? record-obs? boolean? #t])
+                     [#:zone zone-pattern any/c #f])
          mh-transition?]{
 
 A transition that proposes a new state by perturbing @emph{all} random
@@ -278,8 +268,7 @@ The @racket[scale-factor] argument controls the width parameter used
 to find the slice bounds.
 }
 
-@defproc[(enumerative-gibbs [#:zone zone-pattern any/c #f]
-                            [#:record-obs? record-obs? boolean? #t])
+@defproc[(enumerative-gibbs [#:zone zone-pattern any/c #f])
          mh-transition?]{
 
 A transition that chooses a single random choice from a zone matching

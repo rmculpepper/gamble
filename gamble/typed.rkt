@@ -192,15 +192,15 @@
           [sequence
            (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [#:zone any/c] mh-transition?)]
           [multi-site
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]
+           (->* [] [#:zone any/c] mh-transition?)]
           [hmc
            (->* [] [(>/c 0) exact-positive-integer? #:zone any/c] mh-transition?)]
           [slice
            (->* [] [#:scale (>/c 0) #:zone any/c] mh-transition?)]
           [enumerative-gibbs
-           (->* [] [#:zone any/c #:record-obs? any/c] mh-transition?)]))
+           (->* [] [#:zone any/c] mh-transition?)]))
 
 (require "private/ho-functions.rkt")
 (provide (all-from-out "private/ho-functions.rkt"))

@@ -109,11 +109,7 @@
 
     (define/public (select-one last-trace zone)
       (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
-      (define nchoices/zone
-        (cond [(eq? zone #f) last-nchoices]
-              [else (db-count-unpinned last-db #:zone zone)]))
-      (and (positive? nchoices/zone)
-           (db-nth-unpinned last-db (random nchoices/zone) #:zone zone)))
+      (db-pick-a-key last-db zone))
     ))
 
 ;; Note: approximates "round-robin" by selecting least key greater
@@ -135,7 +131,6 @@
       (define-values (first-key next-key)
         (for/fold ([first-key #f] [next-key #f])
                   ([(key entry) (in-hash last-db)]
-                   #:when (not (entry-pinned? entry))
                    #:when (entry-in-zone? entry zone))
           (values (cond [(not first-key) key]
                         [(address<? key first-key) key]

@@ -16,8 +16,7 @@
 
 (define enumerative-gibbs-mh-transition%
   (class* object% (mh-transition<%>)
-    (init-field [zone #f]
-                [record-obs? #t])
+    (init-field [zone #f])
     (field [run-counter 0]
            [eval-counter 0])
     (super-new)
@@ -32,18 +31,18 @@
       (vprintf "Starting transition (~s)\n" this%)
       (set! run-counter (add1 run-counter))
       (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
-      (define key-to-change (pick-a-key last-nchoices last-db zone))
+      (define key-to-change (db-pick-a-key last-db zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'enumerative-gibbs zone))
       (match (hash-ref last-db key-to-change)
-        [(entry zones dist value ll #f)
+        [(entry zones dist value ll)
          (unless (finite-dist? dist)
            (error 'enumerative-gibbs "distribution is not finite\n  dist: ~e" dist))
          (perturb/gibbs key-to-change value dist zones thunk last-trace)]))
 
     (define/private (perturb/gibbs key-to-change value dist zones thunk last-trace)
       (define (make-entry value*)
-        (entry zones dist value* (dist-pdf dist value* #t) #f))
+        (entry zones dist value* (dist-pdf dist value* #t)))
       (define enum (dist-enum dist))
       ;; alternatives : (listof (U #f (cons Nat (cons Trace Real))))
       (define alternatives
@@ -60,7 +59,6 @@
                  (define ctx (new db-stochastic-ctx%
                                   (last-db (trace-db last-trace))
                                   (delta-db delta-db)
-                                  (record-obs? record-obs?)
                                   (on-fresh-choice
                                    (lambda () (error-structural 'enumerative-gibbs key-to-change)))))
                  (match (with-verbose> (send ctx run thunk))

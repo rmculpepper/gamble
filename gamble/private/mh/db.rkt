@@ -1,4 +1,4 @@
-;; Copyright (c) 2014 Ryan Culpepper
+;; Copyright (c) 2014-215 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
@@ -13,32 +13,22 @@
          "../dist.rkt")
 (provide (all-defined-out))
 
+;; ============================================================
+
 ;; A Trace is (trace Any DB Nat Real Real Nat)
 (struct trace (value db nchoices ll-free ll-obs dens-dim))
+
 (define init-trace (trace #f '#hash() 0 0 0 +inf.0))
 
+;; trace-ll : Trace -> Real
 (define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
+
+;; ============================================================
 
 ;; A DB is (Hashof Address Entry)
 
-;; An Entry is (entry (listof Zone) Dist Any Real Real/#f)
-;; where the value is appropriate for the ERP denoted by the dist, and
-;; pinned? indicates whether the value originated from a special
-;; condition (and thus cannot be perturbed)---in which case, the scale
-;; is stored in the pinned? field.
-(struct entry (zones dist value ll pinned?) #:prefab)
-
-;; entry-value-map : (Any -> Any) Entry Boolean -> Entry
-(define (entry-value-map f e [update-ll #t])
-  (defmatch (entry zones dist value ll pinned?) e)
-  (define new-value (f value))
-  (entry zones
-         dist
-         new-value
-         (if update-ll
-             (+ (dist-pdf dist new-value #t) (or pinned? 0))
-             ll)
-         pinned?))
+;; An Entry is (entry (listof Zone) Dist Any Real)
+(struct entry (zones dist value ll) #:prefab)
 
 ;; entry-in-zone? : Entry ZonePattern -> Boolean
 (define (entry-in-zone? e zp)
@@ -49,8 +39,7 @@
 (define (ll-possible? ll)
   (> ll -inf.0))
 
-;; ------------------------------------------------------------
-
+;; print-db : DB -> Void
 (define (print-db db)
   (define entries (hash-map db list))
   (define sorted-entries
@@ -58,19 +47,20 @@
   (for ([entry (in-list sorted-entries)])
     (printf "~s => ~s\n" (car entry) (cadr entry))))
 
-;; db-count-unpinned : DB -> Nat
-(define (db-count-unpinned db #:zone [zp #f])
-  (for/sum ([(k v) (in-hash db)]
-            #:when (not (entry-pinned? v))
-            #:when (entry-in-zone? v zp))
-    1))
+;; db-count : DB [#:zone ZonePattern] -> Nat
+(define (db-count db #:zone [zp #f])
+  (if zp
+      (for/sum ([(k v) (in-hash db)]
+                #:when (entry-in-zone? v zp))
+        1)
+      (hash-count db)))
 
-;; db-nth-unpinned : DB Nat -> Address
+;; db-nth : DB Nat -> Address
 ;; FIXME: bleh, iteration
-(define (db-nth-unpinned db index #:zone [zp #f])
+(define (db-nth db index #:zone [zp #f])
   (let loop ([iter (hash-iterate-first db)] [i index])
     (cond [(let ([e (hash-iterate-value db iter)])
-             (or (entry-pinned? e) (not (entry-in-zone? e zp))))
+             (not (entry-in-zone? e zp)))
            (loop (hash-iterate-next db iter) i)]
           [(zero? i)
            (hash-iterate-key db iter)]
@@ -78,80 +68,16 @@
            (loop (hash-iterate-next db iter) (sub1 i))])))
 
 ;; db-ll : DB -> Real
-;; Returns sum of log-likelihoods of all choices (including pinned)
-;; in the db.
+;; Returns sum of log-likelihoods of all choices in the db.
 (define (db-ll db)
-  (for/sum ([(k v) (in-hash db)])
-    (match v
-      [(entry _ dist value ll _) ll])))
+  (for/sum ([(k v) (in-hash db)]) (entry-ll v)))
 
-;; db-ll-pinned : DB -> Real
-;; Returns sum of log-likelihoods of all pinned choices (ie observations)
-;; in the db.
-(define (db-ll-pinned db)
-  (for/sum ([(k v) (in-hash db)])
-    (match v
-      [(entry _ dist value ll #t) ll]
-      [_ 0])))
-
-;; db-ll/fresh : DB DB Address -> Real
-;; Returns sum of log-likelihoods of *fresh* choices (including pinned)
-;; in current-db, whose choices are partitioned into the following sets:
-;; - perturbed: the address is in delta-db
-;; - rescored: the address is in last-db (and not delta-db), but the
-;;             type and value are the same (params may be different)
-;; - fresh: otherwise
-;; Note: swapping db and last-db yields the stale entries of last-db.
-(define (db-ll/fresh current-db last-db delta-db)
-  (for/sum ([(k e) (in-hash current-db)])
-    (cond [(hash-ref delta-db k #f)
-           ;; perturbed
-           0]
-          [(hash-ref last-db k #f)
-           => (lambda (last-e)
-                (cond [(and (dists-same-type? (entry-dist e) (entry-dist last-e))
-                            (equal? (entry-value e) (entry-value last-e)))
-                       ;; rescored
-                       0]
-                      [else
-                       ;; fresh
-                       (entry-ll e)]))]
-          [else
-           (entry-ll e)])))
-
-(define (db-copy-stale old-db new-db)
-  (for ([(k v) (in-hash old-db)])
-    (unless (hash-has-key? new-db k)
-      (hash-set! new-db k v))))
-
-;; db-update! : (Entry -> Entry) DB #f -> Void
-;; db-update! : (Address Entry -> Entry) DB #t -> Void
-;;
-;; Update each entry in the database by applying the given function to it.
-;; if #:with-address #t also pass the entry address to the funciton
-(define (db-update! f db #:with-address [with-address #f])
-  (for ([(k v) (in-hash db)])
-    (hash-set! db k (if with-address (f k v) (f v)))))
-
-;; db-map : (Entry -> Entry) DB #f -> DB
-;; db-map : (Address Entry -> Entry) DB #t -> DB
-;;
-;; Copy old-db to new-db and then update it using f.
-(define (db-map f old-db #:with-address [with-address #f])
-  (define new-db (make-hash))
-  (db-copy-stale old-db new-db)
-  (db-update! f new-db #:with-address with-address)
-  new-db)
-
-;; pick-a-key : Nat DB ZonePattern -> (U Address #f)
-;; Returns a key s.t. the value is not pinned.
-(define (pick-a-key nchoices db zone)
+;; db-pick-a-key : DB ZonePattern -> (U Address #f)
+(define (db-pick-a-key db zone)
   ;; FIXME: what if zone has no choices?
-  (define nchoices/zone
-    (cond [(eq? zone #f) nchoices]
-          [else (db-count-unpinned db #:zone zone)]))
+  (define nchoices/zone (db-count db #:zone zone))
   (and (positive? nchoices/zone)
-       (db-nth-unpinned db (random nchoices/zone) #:zone zone)))
+       (db-nth db (random nchoices/zone) #:zone zone)))
 
 ;; ============================================================
 
@@ -159,21 +85,16 @@
   (class* object% (stochastic-ctx/run<%>)
     (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
-                [record-obs? #t]
                 [on-fresh-choice #f] ;; (U #f (-> Any))
                 [escape-prompt (make-continuation-prompt-tag)])
 
-    ;; Optimization: if record-obs? is #f, then don't enter observations (pinned entries)
-    ;; in current-db, and don't adjust ll-diff for them. This optimization is only safe
-    ;; if the set of observations is known to be constant; we recover the full ll-diff
-    ;; by adding difference of new ll-obs and last ll-obs.
+    ;; Observations do not affect ll-diff, only ll-obs.
 
     (field [current-db (make-hash)]
-           [nchoices 0]  ;; number of unpinned entries in current-db
-           [ll-free  0]  ;; sum of ll of all unpinned entries in current-db
+           [nchoices 0]  ;; number of entries in current-db
+           [ll-free  0]  ;; sum of ll of all entries in current-db
            [ll-obs   0]  ;; sum of ll of all observations
-           [ll-diff  0]  ;; if record-obs?: (ll-free + ll-obs) - OLD(ll-free + ll-obs)
-                         ;; if not record-obs?: ll-free - OLD(ll-free)
+           [ll-diff  0]  ;; INVARIANT: ll-diff = ll-free - OLD(ll-free)
            [dens-dim 0]) ;; density dimension
     (super-new)
 
@@ -186,11 +107,8 @@
     ;; Add entry to current-db and update nchoices, ll-free, ll-obs.
     (define/private (db-add! context entry)
       (hash-set! current-db context entry)
-      (cond [(entry-pinned? entry)
-             (set! ll-obs (+ ll-obs (entry-ll entry)))]
-            [else
-             (set! ll-free (+ ll-free (entry-ll entry)))
-             (set! nchoices (add1 nchoices))]))
+      (set! ll-free (+ ll-free (entry-ll entry)))
+      (set! nchoices (add1 nchoices)))
 
     ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
     ;; Run a prob prog using this stochastic ctx, populate current-db, etc.
@@ -237,7 +155,7 @@
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
       (when print? (vprintf "NEW ~e: ~s = ~e\n" dist context value))
-      (db-add! context (entry (current-zones) dist value ll #f))
+      (db-add! context (entry (current-zones) dist value ll))
       value)
 
     (define/private (sample/delta dist context e)
@@ -257,7 +175,7 @@
                   (define value (entry-value e))
                   (vprintf "PERTURBED* ~e: ~s = ~e\n" dist context value)
                   (db-add! context
-                           (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
+                           (entry (entry-zones e) dist value new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll last-e))))
                   value)]
             [else
@@ -277,7 +195,7 @@
                   (define value (entry-value e))
                   (vprintf "RESCORE ~e: ~s = ~e\n" dist context value)
                   (db-add! context
-                           (entry (entry-zones e) dist value new-ll (entry-pinned? e)))
+                           (entry (entry-zones e) dist value new-ll))
                   (set! ll-diff (+ ll-diff (- new-ll (entry-ll e))))
                   value)]
             [else
@@ -296,29 +214,13 @@
             [(hash-ref delta-db context #f) ;; impossible
              => (lambda (e)
                   (error 'observe-sample "internal error: cannot perturb an observation"))]
-            [(and record-obs? (hash-ref last-db context #f)) ;; RESCORE
-             => (lambda (e)
-                  ;; FIXME: better diagnostic messages. What are the
-                  ;; relevant cases? Do we care if an obs value changed?
-                  (vprintf "OBS UPDATE ....\n")
-                  (define ll (+ lscale (dist-pdf dist val #t)))
-                  (unless (dist-has-mass? dist)
-                    (set! dens-dim (add1 dens-dim)))
-                  (cond [(ll-possible? ll)
-                         (db-add! context (entry (current-zones) dist val ll lscale))
-                         (set! ll-diff (+ ll-diff (- ll (entry-ll e))))
-                         (void)]
-                        [else (fail 'observation)]))]
             [else
-             (vprintf "OBS~a ~e: ~s = ~e\n" (if record-obs? "" " NEW") dist context val)
+             (vprintf "OBS ~e: ~s = ~e\n"  dist context val)
              (define ll (+ lscale (dist-pdf dist val #t)))
              (unless (dist-has-mass? dist)
                (set! dens-dim (add1 dens-dim)))
              (cond [(ll-possible? ll)
-                    (cond [record-obs?
-                           (db-add! context (entry (current-zones) dist val ll lscale))]
-                          [else
-                           (set! ll-obs (+ ll-obs ll))])]
+                    (set! ll-obs (+ ll-obs ll))]
                    [else (fail 'observation)])]))
 
     (define/private (mem-context? context)

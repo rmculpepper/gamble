@@ -36,7 +36,7 @@
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (set! run-counter (add1 run-counter))
       (defmatch (trace _ last-db last-nchoices _ _ _) last-trace)
-      (define key-to-change (pick-a-key last-nchoices last-db zone))
+      (define key-to-change (db-pick-a-key last-db zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (unless key-to-change (error-no-key 'slice zone))
       (define slice
@@ -60,7 +60,7 @@
                 last-entry)
     (super-new)
 
-    (defmatch (entry zones dist value _ #f) last-entry)
+    (defmatch (entry zones dist value _) last-entry)
     (unless (or (real-dist? dist) (integer-dist? dist))
       (error 'slice "distribution does not support slice sampling\n  dist: ~e" dist))
 
@@ -96,7 +96,7 @@
     (define trace-cache (make-hash)) ;; (hashof Real => Trace/#f)
 
     (define/private (make-delta-db value*)
-      (hash key-to-change (entry zones dist value* (dist-pdf dist value* #t) #f)))
+      (hash key-to-change (entry zones dist value* (dist-pdf dist value* #t))))
     (define/private (eval-ll value*)
       (trace-ll/dim (eval-trace value*)))
     (define/private (eval-trace value*)
@@ -109,7 +109,6 @@
                (new db-stochastic-ctx% 
                     (last-db (trace-db last-trace))
                     (delta-db delta-db)
-                    (record-obs? #f)
                     (on-fresh-choice (lambda () (error-structural 'slice key-to-change)))))
              (incr-find-slice-counter! 1)
              (match (send ctx run thunk)
