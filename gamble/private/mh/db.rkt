@@ -96,6 +96,13 @@
            [ll-obs   0]  ;; sum of ll of all observations
            [ll-diff  0]  ;; INVARIANT: ll-diff = ll-free - OLD(ll-free)
            [dens-dim 0]) ;; density dimension
+
+    ;; TODO:
+    ;; - ll-R : sum of Reverse proposal log-densities
+    ;; - ll-F : sum of Forward proposal log-densities
+    ;; - add proposal2 method
+    ;; - elim entry variant of DeltaEntry?
+
     (super-new)
 
     ;; ll-diff = SUM_{k in K} (- (entry-ll current-db[k]) (entry-ll last-db[k]))
@@ -167,6 +174,14 @@
 
     (define/private (sample/delta dist context e)
       (define last-e (hash-ref last-db context #f))
+      ;; TODO:
+      ;; if last-e = #f, internal error
+      ;; if last-e dist is different type from dist, then
+      ;;   - could "mismatch" resample ??
+      ;;   - could error ??
+      ;; if last-e dist = dist, entry variant ok
+      ;;   - optimization opportunity: don't check dist-equality
+      ;; if last-e dist != dist, call propose2 method
       (cond [(not last-e)
              (error 'sample "internal error: choice in delta but not last\n  context: ~e"
                     context)]
