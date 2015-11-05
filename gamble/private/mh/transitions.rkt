@@ -17,37 +17,29 @@
 
 (define perturb-mh-transition-base%
   (class mh-transition-base%
-    (init-field proposal
-                [temperature 1])
-    (field [proposed 0]
-           [resampled 0])
+    (init-field [temperature 1])
+    (field [last-delta-db #f]) ;; HACK for feedback
     (super-new)
-
-    (field [last-delta-db #f]) ;; HACK: used in feedback (FIXME)
-
-    (define/override (info i)
-      (super info i)
-      (iprintf i "Proposal perturbs: ~s\n" proposed)
-      (iprintf i "Fall-through perturbs: ~s\n" resampled)
-      (send proposal info i))
 
     ;; run* : (-> A) Trace -> (U (list* Real Trace TxInfo) (list* 'fail Any TxInfo))
     (define/override (run* thunk last-trace)
       (define last-db (trace-db last-trace))
-      (defmatch (cons delta-db R-F) (perturb last-trace))
+      (defmatch (cons delta-db delta-ll-R/F) (perturb last-trace))
       (set! last-delta-db delta-db)
       (define ctx
         (new db-stochastic-ctx%
              (last-db last-db)
-             (delta-db delta-db)))
+             (delta-db delta-db)
+             (ll-R/F delta-ll-R/F)))
       ;; Run program
       (define result (with-verbose> (send ctx run thunk)))
       (match result
         [(cons 'okay sample-value)
          (define ll-diff (get-field ll-diff ctx))
+         (define ll-R/F (get-field ll-R/F ctx))
          (define current-trace (send ctx make-trace sample-value))
          (define threshold
-           (accept-threshold last-trace R-F current-trace ll-diff))
+           (accept-threshold last-trace ll-R/F current-trace ll-diff))
          (list* threshold current-trace (vector 'delta delta-db))]
         [(cons 'fail fail-reason)
          (list* 'fail fail-reason (vector 'delta delta-db))]))
@@ -55,10 +47,72 @@
     ;; perturb : Trace -> (cons DB Real)
     (abstract perturb)
 
+    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
+    ;; Computes (log) accept threshold for current trace.
+    (define/public (accept-threshold last-trace ll-R/F current-trace ll-diff)
+      (define other-factor (accept-threshold* last-trace current-trace))
+      (cond [(or (= other-factor -inf.0) (= other-factor +inf.0))
+             other-factor]
+            [else
+             (define ll-diff-obs (traces-obs-diff current-trace last-trace))
+             (+ ll-R/F (/ (+ ll-diff ll-diff-obs) temperature) other-factor)]))
+
+    ;; accept-threshold* : Trace Trace -> Real
+    ;; Computes (log) of additional factors of accept threshold.
+    ;; If +/-inf.0, then that is taken as accept factor (to avoid
+    ;; possible NaN from arithmetic).
+    (define/public (accept-threshold* last-trace current-trace)
+      0)
+
+    (define/override (feedback success?)
+      (for ([key (in-hash-keys last-delta-db)])
+        (feedback/key key success?))
+      (set! last-delta-db #f)
+      (super feedback success?))
+    (define/public (feedback/key key success?)
+      (void))
+    ))
+
+;; ============================================================
+
+(define single-site-mh-transition%
+  (class perturb-mh-transition-base%
+    (init-field zone
+                selector
+                proposal)
+    (inherit-field last-delta-db)
+    (field [proposed 0]
+           [resampled 0])
+    (super-new)
+
+    (define/override (info i)
+      (iprintf i "== Transition (single-site #:zone ~e)\n" zone)
+      (super info i)
+      (iprintf i "Proposal perturbs: ~s\n" proposed)
+      (iprintf i "Fall-through perturbs: ~s\n" resampled)
+      (send proposal info i)
+      (send selector info i))
+
+    ;; perturb : Trace -> (cons DB Real)
+    (define/override (perturb last-trace)
+      (define last-db (trace-db last-trace))
+      (define key-to-change (send selector select-one last-trace zone))
+      (vprintf "key to change = ~s\n" key-to-change)
+      (define-values (delta-db ll-R/F)
+        (cond [key-to-change
+               (match (hash-ref last-db key-to-change)
+                 [(entry zones dist value ll)
+                  (defmatch (cons e ll-R/F)
+                    (perturb-a-key key-to-change dist value zones))
+                  (values (hash key-to-change e) ll-R/F)])]
+              [else (values '#hash() 0)]))
+      (set! last-delta-db delta-db)
+      (cons delta-db ll-R/F))
+
     ;; perturb-a-key : Address Dist Value Zones -> (cons Entry Real)
     (define/public (perturb-a-key key dist value zones)
       (defmatch (cons value* R-F)
-        (cond [(send proposal propose key zones dist value)
+        (cond [(send proposal propose1 key zones dist value)
                => (lambda (r) (set! proposed (add1 proposed)) r)]
               [else
                (set! resampled (add1 resampled))
@@ -71,58 +125,11 @@
                  dist value*))
       (cons (entry zones dist value* ll*) R-F))
 
-    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
-    (abstract accept-threshold)
-
-    (define/override (feedback success?)
-      (for ([key (in-hash-keys last-delta-db)])
-        (send proposal feedback key success?))
-      (set! last-delta-db #f)
-      (super feedback success?))
-    ))
-
-;; ============================================================
-
-(define single-site-mh-transition%
-  (class perturb-mh-transition-base%
-    (inherit perturb-a-key)
-    (inherit-field temperature last-delta-db)
-    (init-field zone selector)
-    (super-new)
-
-    (define/override (info i)
-      (iprintf i "== Transition (single-site #:zone ~e)\n" zone)
-      (super info i)
-      (send selector info i))
-
-    ;; perturb : Trace -> (cons DB Real)
-    (define/override (perturb last-trace)
-      (defmatch (trace _ last-db _ _ _) last-trace)
-      (define key-to-change (send selector select-one last-trace zone))
-      (vprintf "key to change = ~s\n" key-to-change)
-      (if key-to-change
-          (match (hash-ref last-db key-to-change)
-            [(entry zones dist value ll)
-             (defmatch (cons e R-F)
-               (perturb-a-key key-to-change dist value zones))
-             (cons (hash key-to-change e) R-F)])
-          (cons '#hash() 0)))
-
-    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
-    ;; Computes (log) accept threshold for current trace.
-    (define/override (accept-threshold last-trace R-F current-trace ll-diff)
-      (define ll-diff-obs
-        (- (trace-ll-obs current-trace) (trace-ll-obs last-trace)))
-      (+ R-F (accept-threshold/nchoices last-trace current-trace)
-         (/ (+ ll-diff ll-diff-obs) temperature)))
-
-    (define/private (accept-threshold/nchoices last-trace current-trace)
+    (define/override (accept-threshold* last-trace current-trace)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
-      (defmatch (trace _ last-db _ _ _) last-trace)
-      (defmatch (trace _ current-db _ _ _) current-trace)
-      (define nchoices (db-count current-db #:zone zone))
-      (define last-nchoices (db-count last-db #:zone zone))
+      (define nchoices (db-count (trace-db current-trace) #:zone zone))
+      (define last-nchoices (db-count (trace-db last-trace) #:zone zone))
       (cond [(zero? last-nchoices)
              +inf.0]
             [else
@@ -133,15 +140,17 @@
              (define R (- (log (exact->inexact nchoices))))
              (define F (- (log (exact->inexact last-nchoices))))
              (- R F)]))
+
+    (define/override (feedback/key key success?)
+      (send proposal feedback key success?))
     ))
 
 ;; ============================================================
 
 (define multi-site-mh-transition%
   (class perturb-mh-transition-base%
-    (inherit perturb-a-key)
-    (inherit-field temperature)
-    (init-field [zone #f])
+    (init-field zone proposal)
+    (inherit-field last-delta-db)
     (super-new)
 
     (define/override (info i)
@@ -150,26 +159,23 @@
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
-      (defmatch (trace _ last-db _ _ _) last-trace)
-      (define-values (delta-db R-F)
-        (for/fold ([delta-db '#hash()] [R-F 0])
-            ([(key e) (in-hash last-db)]
-             #:when (entry-in-zone? e zone))
-          (match e
-            [(entry zones dist value ll)
-             (defmatch (cons e* R-F*)
-               (perturb-a-key key dist value zones))
-             (values (hash-set delta-db key e*) (+ R-F R-F*))])))
-      (cons delta-db R-F))
+      (define last-db (trace-db last-trace))
+      (define delta-db
+        (for/hash ([(key e) (in-hash last-db)]
+                   #:when (entry-in-zone? e zone))
+          (values key proposal)))
+      (set! last-delta-db delta-db)
+      (cons delta-db 0))
 
-    ;; accept-threshold : Trace Real Trace Real Boolean -> Real
-    (define/override (accept-threshold last-trace R-F current-trace ll-diff)
-      (if (zero? (trace-nchoices last-trace))
-          +inf.0
-          ;; FIXME: what if current-nchoices != last-nchoices ???
-          (let ([ll-diff-obs
-                 (- (trace-ll-obs current-trace) (trace-ll-obs last-trace))])
-            (+ R-F (/ (+ ll-diff ll-diff-obs) temperature)))))
+    ;; accept-threshold* : Trace Real Trace Real Boolean -> Real
+    (define/override (accept-threshold* last-trace current-trace)
+      (cond [(zero? (trace-nchoices last-trace))
+             +inf.0]
+            [else ;; FIXME: what if current-nchoices != last-nchoices ???
+             0]))
+
+    (define/override (feedback/key key success?)
+      (send proposal feedback key success?))
     ))
 
 ;; ============================================================
@@ -259,7 +265,7 @@
 
 (define rerun-mh-transition%
   (class perturb-mh-transition-base%
-    (super-new [proposal (proposal:resample)])
+    (super-new)
     (define/override (info i)
       (iprintf "== Transition (rerun)\n")
       (super info i))

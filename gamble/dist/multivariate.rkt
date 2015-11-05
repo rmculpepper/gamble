@@ -32,7 +32,7 @@
   #:mean mean
   #:modes (list mean) ;; FIXME: degenerate cases?
   #:variance cov
-  #:drift (lambda (value scale-factor) (cons (multi-normal-drift value cov scale-factor) 0)))
+  #:drift1 (lambda (value scale-factor) (cons (multi-normal-drift value cov scale-factor) 0)))
 
 (define-dist-type wishart-dist
   ([n real?] [V square-matrix?])
@@ -45,24 +45,34 @@
               (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
             ;; FIXME: check V positive definite
             (values n V))
-  #:drift (lambda (value scale-factor) (wishart-drift n V value scale-factor)))
+  #:drift1 (lambda (value scale-factor) (wishart-drift n V value scale-factor)))
 
-(define-dist-type inverse-wishart-dist
-  ([n real?] [Vinv square-matrix?])
-  #:pdf inverse-wishart-pdf #:sample inverse-wishart-sample
-  #:guard (lambda (n Vinv _name)
-            (unless (matrix-symmetric? Vinv)
-              (error 'wishart-dist "expected symmetric matrix\n  given: ~e" Vinv))
-            (define p (square-matrix-size Vinv))
-            (unless (> n (- p 1))
-              (error 'wishart-dist "expected n > p - 1\n  n: ~e\n  p: ~e" n p))
-            ;; FIXME: check V positive definite
-            (values n Vinv))
-  #:drift (lambda (value scale-factor)
-            (define V (memo-matrix-inverse Vinv))
-            (defmatch (cons value* R-F)
-              (wishart-drift n V (memo-matrix-inverse value) scale-factor))
-            (cons (memo-matrix-inverse value*) R-F)))
+(define-dist-type matrix-affine-distx
+  ;; represents A X + B, where A : n*n, X : n*1, B : n*1
+  ([dist dist?] [A square-matrix?] [B col-matrix?])
+  #:pdf matrix-affine-pdf
+  #:sample matrix-affine-sample
+  #:guard (lambda (dist A B _name)
+            (define nA (matrix-num-rows A))
+            (define nB (matrix-num-rows B))
+            ;; should check X is colum-matrix-valued, nA = nX, but no info...
+            (unless (= nA nB)
+              (error 'matrix-affine-distx
+                     (string-append "A and B do not have the same number of rows"
+                                    "\n  A: ~s rows\n  B: ~s rows")
+                     nA nB)))
+  ;; FIXME: #:drift1 ???
+  #:drift-dist (lambda (value scale-factor)
+                 ;; FIXME: should check whether inner dist supports drift before
+                 ;; doing expensive matrix-solve.
+                 (define x (matrix-affine-untransform A B value))
+                 (define scale-factor* (/ scale-factor (abs (memo-matrix-determinant A))))
+                 (cond [(dist-drift-dist x scale-factor*)
+                        => (lambda (drift-dist) (matrix-affine-distx drift-dist A B))]
+                       [else #f])))
+
+;; FIXME: define matrix-inverse-distx
+;; - What is the pdf?
 
 ;; ============================================================
 ;; Multivariate dist functions
@@ -87,6 +97,7 @@
               (* -0.5 (matrix11->value
                        (let ([x-mean (matrix- x mean)])
                          (matrix* (matrix-transpose x-mean)
+                                  ;; FIXME: use matrix-solve here instead?
                                   (memo-matrix-inverse cov)
                                   x-mean))))))
          (if log? lp (exp lp))]))
@@ -187,15 +198,21 @@
   (define R (wishart-pdf n V R-sample #t))
   (cons value* (- R F)))
 
-
 ;; ------------------------------------------------------------
-;; Inverse Wishart dist functions
+;; Affine transformation dist functions
 
-(define (inverse-wishart-pdf n Vinv X log?)
-  (wishart-pdf n (memo-matrix-inverse Vinv) (memo-matrix-inverse X) log?))
+(define (matrix-affine-pdf dist A B x log?)
+  ;; FIXME: double-check
+  (let ([t (matrix-affine-untransform A B x)])
+    (if log?
+        (- (dist-pdf dist t #t) (log (abs (memo-matrix-determinant A))))
+        (/ (dist-pdf dist t #f) (abs (memo-matrix-determinant A))))))
 
-(define (inverse-wishart-sample n Vinv)
-  (matrix-inverse (wishart-sample n (memo-matrix-inverse Vinv))))
+(define (matrix-affine-sample dist A B)
+  (matrix+ (matrix* A (dist-sample dist)) B))
+
+(define (matrix-affine-untransform A B Y)
+  (matrix-solve A (matrix- Y B)))
 
 
 ;; ============================================================
@@ -206,7 +223,7 @@
 (define (wishart n V)
   (sample (wishart-dist n V)))
 (define (inverse-wishart n V)
-  (sample (inverse-wishart n V)))
+  (matrix-inverse (sample (wishart-dist n (memo-matrix-inverse V)))))
 
 (provide (contract-out
           [multi-normal

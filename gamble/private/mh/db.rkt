@@ -10,6 +10,7 @@
          data/order
          "../context.rkt"
          "../interfaces.rkt"
+         "interfaces.rkt"
          "../dist.rkt")
 (provide (all-defined-out))
 
@@ -25,6 +26,17 @@
 
 ;; trace-nchoices : Trace -> Nat
 (define (trace-nchoices t) (db-count (trace-db t)))
+
+;; traces-obs-diff : Trace Trace -> Real
+(define (traces-obs-diff t1 t2)
+  (define dd1 (trace-dens-dim t1))
+  (define dd2 (trace-dens-dim t2))
+  (cond [(= dd1 dd2)
+         (- (trace-ll-obs t1) (trace-ll-obs t2))]
+        [(< dd1 dd2)
+         +inf.0]
+        [(> dd1 dd2)
+         -inf.0]))
 
 ;; ============================================================
 
@@ -84,24 +96,27 @@
 
 ;; ============================================================
 
+;; A DeltaDB is (Hashof Address DeltaEntry)
+;; A DeltaEntry is one of
+;; - Entry      -- single-site changes only
+;; - Proposal
+
+;; ============================================================
+
 (define db-stochastic-ctx%
   (class* object% (stochastic-ctx/run<%>)
     (init-field last-db     ;; not mutated
                 delta-db    ;; not mutated
                 [on-fresh-choice #f] ;; (U #f (-> Any))
+                [ll-R/F 0]  ;; sum of all Reverse proposal log-densities
+                            ;; minus sum of all Forward proposal log-densities
                 [escape-prompt (make-continuation-prompt-tag)])
 
     (field [current-db (make-hash)]
            [ll-free  0]  ;; sum of ll of all entries in current-db
            [ll-obs   0]  ;; sum of ll of all observations
-           [ll-diff  0]  ;; INVARIANT: ll-diff = ll-free - OLD(ll-free)
+           [ll-diff  0]  ;; see below
            [dens-dim 0]) ;; density dimension
-
-    ;; TODO:
-    ;; - ll-R : sum of Reverse proposal log-densities
-    ;; - ll-F : sum of Forward proposal log-densities
-    ;; - add proposal2 method
-    ;; - elim entry variant of DeltaEntry?
 
     (super-new)
 
@@ -174,33 +189,27 @@
 
     (define/private (sample/delta dist context e)
       (define last-e (hash-ref last-db context #f))
-      ;; TODO:
-      ;; if last-e = #f, internal error
-      ;; if last-e dist is different type from dist, then
-      ;;   - could "mismatch" resample ??
-      ;;   - could error ??
-      ;; if last-e dist = dist, entry variant ok
-      ;;   - optimization opportunity: don't check dist-equality
-      ;; if last-e dist != dist, call propose2 method
       (cond [(not last-e)
              (error 'sample "internal error: choice in delta but not last\n  context: ~e"
                     context)]
-            [(equal? (entry-dist e) dist)
+            [(proposal? e)
+             (define zones (current-zones))
+             (defmatch (entry _ old-dist old-value old-ll) last-e)
+             (match (send e propose2 context zones old-dist dist old-value)
+               [(list* new-value R F)
+                (vprintf "PERTURBED ~e: ~s = ~e\n" dist context new-value)
+                (define new-ll (dist-pdf dist new-value #t))
+                (db-add! context (entry zones dist new-value new-ll) last-e)
+                (set! ll-R/F (+ ll-R/F (- R F)))
+                new-value]
+               [#f
+                (error 'sample "no proposal for dist\n  dist: ~e" dist)])]
+            [(and (entry? e) (equal? (entry-dist e) dist))
              (vprintf "PERTURBED ~e: ~s = ~e\n" dist context (entry-value e))
              (db-add! context e last-e)
              (entry-value e)]
-            [(and (dists-same-type? (entry-dist e) dist)
-                  (let ([new-ll (dist-pdf dist (entry-value e) #t)])
-                    (and (ll-possible? new-ll) new-ll)))
-             ;; FIXME: delete this case? should be proposal!
-             => (lambda (new-ll)
-                  (define value (entry-value e))
-                  (define new-e (entry (entry-zones e) dist value new-ll))
-                  (vprintf "PERTURBED* ~e: ~s = ~e\n" dist context value)
-                  (db-add! context new-e last-e)
-                  value)]
             [else
-             (vprintf "MISMATCH ~e / ~e: ~s\n" (entry-dist e) dist context)
+             (vprintf "MISMATCH ~e / ~e: ~s\n" e dist context)
              (error 'sample "internal error: choice in delta has wrong type\n  context: ~e"
                     context)]))
 

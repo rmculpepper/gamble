@@ -25,7 +25,7 @@
   #:pdf permutation-pdf
   #:sample permutation-sample
   #:has-mass
-  #:drift (lambda (value scale-factor) (permutation-drift n value scale-factor)))
+  #:drift1 (lambda (value scale-factor) (permutation-drift n value scale-factor)))
 
 (define (permutation-pdf n perm log?)
   (cond [(permutation? perm n)

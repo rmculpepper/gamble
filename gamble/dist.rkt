@@ -29,7 +29,9 @@
            (-> dist? any)]
           [dist-has-mass?
            (-> dist? any)]
-          [dist-drift
+          [dist-drift1
+           (-> dist? any/c (>/c 0) any)]
+          [dist-drift-dist
            (-> dist? any/c (>/c 0) any)]
           [dist-support
            (-> dist? any)]

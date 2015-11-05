@@ -71,18 +71,24 @@
   #:cdf exp-distx-cdf
   #:inv-cdf exp-distx-inv-cdf
   #:sample exp-distx-sample
-  #:drift (lambda (x scale-factor)
-            (define t (log x))
-            (defmatch (cons t* R-F) (dist-drift dist t))
-            (define x* (exp t*))
-            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
-            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
-            ;; And dx/dt = exp[t] = x
-            ;; So R-F = ...q'... + log(1/x) - log(1/x*)
-            ;;        = ...q'... + log(x*) - log(x)
-            ;;        = ...q'... + t* - t
-            (cons x*
-                  (+ R-F (- t* t))))
+  ;; FIXME: adjust scale-factor?
+  #:drift-dist (lambda (x scale-factor)
+                 (cond [(dist-drift-dist dist (log x) scale-factor)
+                        => exp-distx]
+                       [else #f]))
+  #:drift1 (lambda (x scale-factor)
+             (define t (log x))
+             (match (dist-drift1 dist t scale-factor)
+               [(cons t* R-F)
+                (define x* (exp t*))
+                ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+                ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+                ;; And dx/dt = exp[t] = x
+                ;; So R-F = ...q'... + log(1/x) - log(1/x*)
+                ;;        = ...q'... + log(x*) - log(x)
+                ;;        = ...q'... + t* - t
+                (cons x* (+ R-F (- t* t)))]
+               [_ #f]))
   #:support '#s(real-range 0 +inf.0)) ;; FIXME: depends on d
 
 ;; x = exp[t]
@@ -114,17 +120,23 @@
   #:cdf log-distx-cdf
   #:inv-cdf log-distx-inv-cdf
   #:sample log-distx-sample
-  #:drift (lambda (x scale-factor)
-            (define t (exp x))
-            (defmatch (cons t* R-F) (dist-drift dist t))
-            (define x* (log t*))
-            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
-            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
-            ;; And dx/dt = 1/t
-            ;; So R-F = ...q'... + log(t) - log(t*)
-            ;;        = ...q'... + x - x*
-            (cons x*
-                  (+ R-F (- x x*))))
+  ;; FIXME: adjust scale-factor?
+  #:drift-dist (lambda (x scale-factor)
+                 (cond [(dist-drift-dist dist (exp x) scale-factor)
+                        => log-distx]
+                       [else #f]))
+  #:drift1 (lambda (x scale-factor)
+             (define t (exp x))
+             (match (dist-drift1 dist t scale-factor)
+               [(cons t* R-F)
+                (define x* (log t*))
+                ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+                ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+                ;; And dx/dt = 1/t
+                ;; So R-F = ...q'... + log(t) - log(t*)
+                ;;        = ...q'... + x - x*
+                (cons x* (+ R-F (- x x*)))]
+               [_ #f]))
   #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
 
 ;; x = log[t]
@@ -156,17 +168,23 @@
   #:cdf inverse-distx-cdf
   #:inv-cdf inverse-distx-inv-cdf
   #:sample inverse-distx-sample
-  #:drift (lambda (x scale-factor)
-            (define t (/ x))
-            (defmatch (cons t* R-F) (dist-drift dist t))
-            (define x* (/ t*))
-            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
-            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
-            ;; And dx/dt = -1/t^2 --- remember, take abs
-            ;; So R-F = ...q'... + log(t^2) - log(t*^2)
-            ;;        = ...q'... + x - x*
-            (cons x*
-                  (+ R-F (* 2 (- (log (abs t)) (log (abs t*)))))))
+  ;; FIXME: adjust scale-factor?
+  #:drift-dist (lambda (x scale-factor)
+                 (cond [(dist-drift-dist (/ x) scale-factor)
+                        => inverse-distx]
+                       [else #f]))
+  #:drift1 (lambda (x scale-factor)
+             (define t (/ x))
+             (match (dist-drift1 dist t scale-factor)
+               [(cons t* R-F)
+                (define x* (/ t*))
+                ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+                ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+                ;; And dx/dt = -1/t^2 --- remember, take abs
+                ;; So R-F = ...q'... + log(t^2) - log(t*^2)
+                ;;        = ...q'... + x - x*
+                (cons x* (+ R-F (* 2 (- (log (abs t)) (log (abs t*))))))]
+               [_ #f]))
   #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
 
 ;; x = 1/t
@@ -218,15 +236,21 @@
   #:guard (lambda (dist a b _type)
             (values dist (exact->inexact a) (exact->inexact b)))
   ;; FIXME: mean, variance???
-  #:drift (lambda (x scale-factor)
-            (define t (/ (- x b) a))
-            (defmatch (cons t* R-F) (dist-drift dist t))
-            (define x* (+ (* t* a) b))
-            ;; q(->) = q'(t*; t, s) / dx/dt(x*)
-            ;; q(<-) = q'(t; t*, s) / dx/dt(x)
-            ;; And dx/dt = a
-            ;; So R-F = ...q'... + log(1/a) - log(1/a)
-            (cons x* R-F))
+  #:drift-dist (lambda (x scale-factor)
+                 (cond [(dist-drift-dist dist (- (/ x a) b) scale-factor)
+                        => (lambda (drift-dist) (affine-distx drift-dist a b))]
+                       [else #f]))
+  #:drift1 (lambda (x scale-factor)
+             (define t (/ (- x b) a))
+             (match (dist-drift1 dist t (/ scale-factor (abs a)))
+               [(cons t* R-F)
+                (define x* (+ (* t* a) b))
+                ;; q(->) = q'(t*; t, s) / dx/dt(x*)
+                ;; q(<-) = q'(t; t*, s) / dx/dt(x)
+                ;; And dx/dt = a
+                ;; So R-F = ...q'... + log(1/a) - log(1/a)
+                (cons x* R-F)]
+               [_ #f]))
   #:support '#s(real-range -inf.0 +inf.0)) ;; FIXME: depends on d
 
 (define (affine-distx-pdf d a b x log?)
@@ -245,3 +269,27 @@
   (+ (* (dist-sample d) a) b))
 
 ;; ============================================================
+
+(define-dist-type discretize-distx
+  ([dist real-dist?])
+  #:pdf discretize-distx-pdf
+  #:cdf discretize-distx-cdf
+  #:inv-cdf discretize-distx-inv-cdf
+  #:sample discretize-distx-sample
+  #:support (integer-range -inf.0 +inf.0)) ;; FIXME
+
+(define (discretize-distx-pdf d x log?)
+  ;; integer x "unrounds" to [x-0.5, x+0.5]
+  (define p (- (dist-cdf d (+ x 0.5) #f #f)
+               (dist-cdf d (- x 0.5) #f #f)))
+  (convert-p p log? #f))
+
+(define (discretize-distx-cdf d x log? 1-p?)
+  (let ([x (round x)])
+    (dist-cdf d (+ x 0.5) log? 1-p?)))
+
+(define (discretize-distx-inv-cdf d p log? 1-p?)
+  (inexact->exact (round (dist-inv-cdf d p log? 1-p?))))
+
+(define (discretize-distx-sample d)
+  (inexact->exact (round (dist-sample d))))

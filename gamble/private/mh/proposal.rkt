@@ -9,6 +9,7 @@
          "base.rkt"
          "db.rkt"
          "../interfaces.rkt"
+         "interfaces.rkt"
          "../dist.rkt")
 (provide (all-defined-out))
 
@@ -23,26 +24,20 @@
 
 ;; ============================================================
 
-(define proposal<%>
-  (interface ()
-    propose  ;; Key Zones Dist Value -> (U (cons Value Real) #f)
-    info     ;; Nat -> Void
-    feedback ;; Key Boolean -> Void
-    ))
-
-(define (proposal? x)
-  (is-a? x proposal<%>))
-
 (define proposal-base%
   (class* object% (proposal<%>)
     (super-new)
     (field [counter 0])
     (define/public (info i)
       (iprintf i "Count: ~s\n" counter))
-    (define/public (propose key zones dist value)
+    (define/public (propose1 key zones dist value)
       (set! counter (add1 counter))
-      (propose* key zones dist value))
-    (abstract propose*)
+      (propose1* key zones dist value))
+    (abstract propose1*)
+    (define/public (propose2 key zones last-dist current-dist value)
+      (set! counter (add1 counter))
+      (propose2* key zones last-dist current-dist value))
+    (abstract propose2*)
     (define/public (feedback key success?) (void))
     ))
 
@@ -53,8 +48,10 @@
     (define/override (info i)
       (iprintf i "-- Proposal (resample)\n")
       (super info i))
-    (define/override (propose* key zones dist value)
+    (define/override (propose1* key zones dist value)
       (propose:resample dist value))
+    (define/override (propose2* key zones old-dist new-dist old-value)
+      (propose2:resample old-dist new-dist old-value))
     ))
 
 (define static-drift-proposal%
@@ -65,8 +62,17 @@
     (define/override (info i)
       (iprintf i "-- Proposal (drift)\n")
       (super info i))
-    (define/override (propose* key zones dist value)
-      (propose:drift scale-factor dist value))
+    (define/override (propose1* key zones dist value)
+      (define r (*drift1 dist value scale-factor))
+      (vprintf "DRIFTED from ~e to ~e\n" value (car r))
+      r)
+    (define/override (propose2* key zones old-dist new-dist old-value)
+      (define fd (*drift-dist new-dist old-value scale-factor))
+      (define new-value (dist-sample fd))
+      (define rd (*drift-dist old-dist new-value scale-factor))
+      (define F (dist-pdf fd new-value #t))
+      (define R (dist-pdf rd old-value #t))
+      (list* new-value F R))
     ))
 
 ;; ============================================================
@@ -114,9 +120,24 @@
                    (%age (adapt-all-successes a) (adapt-all-trials a))
                    (adapt-scale a)))))
 
-    (define/override (propose* key zones dist value)
+    (define/override (propose1* key zones dist value)
       (define a (hash-ref! table key (lambda () (adapt ADAPT-INIT 0 0 0 0))))
-      (propose:drift (adapt-scale a) dist value))
+      (define scale-factor (adapt-scale a))
+      (define r (*drift1 dist value scale-factor))
+      (vprintf "DRIFTED from ~e to ~e\n" value (car r))
+      r)
+
+    (define/override (propose2* key zones old-dist new-dist old-value)
+      (define a (hash-ref! table key (lambda () (adapt ADAPT-INIT 0 0 0 0))))
+      (define scale-factor (adapt-scale a))
+      (define fd (*drift-dist new-dist old-value scale-factor))
+      (define new-value (dist-sample fd))
+      (define rd (*drift-dist old-dist new-value scale-factor))
+      (define F (dist-pdf fd new-value #t))
+      (define R (dist-pdf rd old-value #t))
+      (vprintf "DRIFTED from ~e to ~e\n" old-value new-value)
+      (vprintf "  R = ~s, F = ~s\n" (exp R) (exp F))
+      (list* new-value R F))
 
     (define/override (feedback key success?)
       (define a (hash-ref table key))
@@ -152,11 +173,6 @@
 
 ;; ============================================================
 
-(define (propose:drift scale-factor dist value)
-  (define r (*drift dist value scale-factor))
-  (vprintf "DRIFTED from ~e to ~e\n" value (car r))
-  r)
-
 (define (propose:resample dist value)
   ;; Just resample from same dist.
   ;; Then Kt(x|x') = Kt(x) = (dist-pdf dist value)
@@ -168,3 +184,15 @@
     (vprintf "RESAMPLED from ~e to ~e\n" value value*)
     (vprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
   (cons value* (- R F)))
+
+(define (propose2:resample old-dist new-dist old-value)
+  ;; Just resample from current-dist.
+  ;; Then Q(x|x') = Q(x) =  (dist-pdf old-dist old-value)
+  ;;  and Q(x'|x) = Q(x') = (dist-pdf new-dist new-value)
+  (define new-value (dist-sample new-dist))
+  (define R (dist-pdf old-dist old-value #t))
+  (define F (dist-pdf new-dist new-value #t))
+  (when (verbose?)
+    (vprintf "RESAMPLED from ~e to ~e\n" old-value new-value)
+    (vprintf "  R = ~s, F = ~s\n" (exp R) (exp F)))
+  (list* new-value R F))

@@ -38,7 +38,8 @@
           (~optional (~seq #:variance variance:expr))
           (~optional (~seq #:conjugate conj-fun:expr))
           (~optional (~seq #:Denergy Denergy-fun:expr))
-          (~optional (~seq #:drift drift-fun:expr)))))
+          (~optional (~seq #:drift1 drift1-fun:expr))
+          (~optional (~seq #:drift-dist drift-dist-fun:expr)))))
   )
 
 (define-syntax (define-dist-type stx)
@@ -89,9 +90,12 @@
                    (?? (define (*conj d data-d data)
                          (let ([p.param (get-param d)] ...)
                            (o.conj-fun data-d data))))
-                   (?? (define (*drift d value scale-factor)
+                   (?? (define (*drift1 d value scale-factor)
                          (let ([p.param (get-param d)] ...)
-                           (o.drift-fun value scale-factor))))]
+                           (o.drift1-fun value scale-factor))))
+                   (?? (define (*drift-dist d value scale-factor)
+                         (let ([p.param (get-param d)] ...)
+                           (o.drift-dist-fun value scale-factor))))]
                   extra-clause ...
                   #:transparent)
           #,(if (attribute no-provide)

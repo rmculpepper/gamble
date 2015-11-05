@@ -22,7 +22,8 @@
          "../private/interfaces.rkt"
          "../private/instrument.rkt"
          "../private/dist-define.rkt"
-         "../private/dist-impl.rkt")
+         "../private/dist-impl.rkt"
+         "transformer.rkt")
 (provide #| implicit in define-dist-type |#)
 
 ;; Multiply, but short-circuit if first arg evals to 0.
@@ -45,7 +46,13 @@
   #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
   #:modes (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)])
   #:variance (* p (- 1 p))
-  #:drift (lambda (value scale-factor) (cons (- 1 value) 0.0)))
+  #:drift-dist (lambda (value scale-factor)
+                 (define (squash x) (/ x (+ 1 x))) ;; R+ -> [0,1]
+                 ;; FIXME: is this a good thing to do???
+                 (define driftiness (squash scale-factor))
+                 (bernoulli-dist (cond [(= value 1) (- 1 driftiness)]
+                                       [(= value 0) driftiness])))
+  #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0)))
 
 (define-fl-dist-type binomial-dist
   ([n exact-nonnegative-integer?]
@@ -57,13 +64,13 @@
                         (let ([m (inexact->exact (floor (* (+ n 1) p)))])
                           (list m (sub1 m))))
   #:variance (* n p (- 1 p))
-  #:drift (lambda (value scale-factor)
-            (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n)))
-;; DRIFT: normal w/ computed scale, discretize (round away from zero), add, reject if not in range
-;; (Q: can any reasonable scale lead to high rejection rate?)
-;; NOTE: it's harder than it looks: asymmetric, need to normalize for rejecting, etc
-;; **OR** (Sean recommends): use discrete version of beta resampling for uniform
-;; The proposal is asymmetric in either case.
+  #:drift-dist (lambda (value scale-factor)
+                 (discrete-normal-dist value (* scale-factor (sqrt (* n p (- 1 p))))))
+  #:drift1 (lambda (value scale-factor)
+             (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n)))
+
+(define (discrete-normal-dist mean stddev a b)
+  (discretize-distx (clip-distx (normal mean stddev) (- a 0.5) (+ b 0.5))))
 
 (define-fl-dist-type geometric-dist
   ([p (real-in 0 1)])
@@ -72,8 +79,10 @@
   #:mean (/ (- 1 p) p)
   #:modes '(0)
   #:variance (/ (- 1 p) (* p p))
-  #:drift (lambda (value scale-factor)
-            (drift:add-discrete-normal value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0)))
+  #:drift-dist (lambda (value scale-factor)
+                 (discrete-normal-dist value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0))
+  #:drift1 (lambda (value scale-factor)
+             (drift:add-discrete-normal value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0)))
 
 (define-fl-dist-type poisson-dist
   ([mean (>/c 0)])
@@ -84,8 +93,10 @@
               (list (inexact->exact mean) (sub1 (inexact->exact mean)))
               (list (inexact->exact (floor mean))))
   #:variance mean
-  #:drift (lambda (value scale-factor)
-            (drift:add-discrete-normal value (* scale-factor (sqrt mean)) 0 +inf.0)))
+  #:drift-dist (lambda (value scale-factor)
+                 (discrete-normal-dist value (* scale-factor (sqrt mean)) 0 +inf.0))
+  #:drift1 (lambda (value scale-factor)
+             (drift:add-discrete-normal value (* scale-factor (sqrt mean)) 0 +inf.0)))
 
 (define-fl-dist-type beta-dist
   ([a (>=/c 0)]
@@ -117,13 +128,13 @@
                    (beta-dist (+ a (vector-length data))
                               (+ b (vector-sum data)))]
                   [_ #f]))
-  #:drift (lambda (value scale-factor)
-            ;; mode = α / (α + β), peakedness = α + β = S (our choice)
-            ;; So if we want dist peaked at x:
-            ;;   α = S * x
-            ;;   β = S - α = S * (1 - x)
-            (define S 10) ;; "peakedness" parameter
-            (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x)))) value)))
+  #:drift-dist (lambda (value scale-factor)
+                 ;; mode = α / (α + β), peakedness = α + β = S (our choice)
+                 ;; So if we want dist peaked at x:
+                 ;;   α = S * x
+                 ;;   β = S - α = S * (1 - x)
+                 (define S 10) ;; "peakedness" parameter
+                 (beta-dist (* S value) (* S (- 1 value)))))
 
 (define-fl-dist-type cauchy-dist
   ([mode real?]
@@ -139,7 +150,8 @@
                  (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
                     (- (/ (- dx dm) scale)
                        (lazy* ds (/ x-m scale scale))))))
-  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
+  #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
+  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
 
 (define-fl-dist-type exponential-dist
   ([mean (>/c 0)])
@@ -153,7 +165,19 @@
               (define /mean (/ mean))
               (+ (lazy* dm (- /mean (* x /mean /mean)))
                  (* dx /mean)))
-  #:drift (lambda (value scale-factor) (drift:mult-exp-normal value (* mean scale-factor))))
+  #:drift-dist (lambda (value scale-factor)
+                 (mult-exp-normal-dist value (* mean scale-factor)))
+  #:drift1 (lambda (value scale-factor)
+             (drift:mult-exp-normal value (* mean scale-factor))))
+
+(define (mult-exp-normal-dist x scale)
+  ;; Want to multiply by factor log-normally distributed, with stddev proportional
+  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
+  ;; Let's approximate as exp[2s^2] - 1. So we want
+  ;; exp[2s^2] - 1 ~= scale^2, so
+  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
+  (define s (sqrt (log (+ 1 (* scale scale)))))
+  (affine-distx (exp-distx (normal-dist 0 (sqrt (log (+ 1 (* scale scale)))))) x 0))
 
 (define-fl-dist-type gamma-dist
   ([shape (>/c 0)]
@@ -190,27 +214,10 @@
                                      (* 1/2 (for/sum ([x (in-vector data)])
                                               (sqr (- x data-mean)))))))]
                   [_ #f]))
-  #:drift (lambda (value scale-factor)
-            (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor))))
-
-(define-fl-dist-type inverse-gamma-dist
-  ([shape (>/c 0)]
-   [scale (>/c 0)])
-  #:real
-  #:support '#s(real-range 0 +inf.0) ;; (0,inf)
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(normal-dist ,data-mean _)
-                   (inverse-gamma-dist
-                    (+ shape (/ (vector-ref data) 2))
-                    (/ (+ (/ scale)
-                          (* 1/2 (for/sum ([x (in-vector data)])
-                                   (sqr (- x data-mean)))))))]
-                  [_ #f]))
-  #:drift (lambda (value scale-factor)
-            (defmatch (cons value* R-F)
-              (drift:mult-exp-normal (/ value) (* scale (sqrt shape) scale-factor)))
-            (cons (/ value*) R-F)))
+  #:drift-dist (lambda (value scale-factor)
+                 (mult-exp-normal-dist value (* scale (sqrt shape) scale-factor)))
+  #:drift1 (lambda (value scale-factor)
+             (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor))))
 
 (define-fl-dist-type logistic-dist
   ([mean real?]
@@ -227,7 +234,8 @@
               (+ A
                  (lazy* ds (/ s))
                  (* 2 (/ (+ 1 B)) B (- A))))
-  #:drift (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
+  #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
+  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
 
 (define-fl-dist-type pareto-dist
   ([scale (>/c 0)]  ;; x_m
@@ -281,7 +289,8 @@
                                        (/ (vector-length data)
                                           (sqr data-stddev))))))]
                   [_ #f]))
-  #:drift (lambda (value scale-factor) (drift:add-normal value (* stddev scale-factor))))
+  #:drift-dist (lambda (value scale-factor) (normal-dist value (* stddev scale-factor)))
+  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* stddev scale-factor))))
 
 (define-fl-dist-type uniform-dist
   ([min real?]
@@ -301,16 +310,9 @@
               (cond [(<= min x max)
                      (lazy* (- dmax dmin) (/ (- max min)))]
                     [else 0]))
-  #:drift (lambda (value scale-factor)
-            ;; Use beta to get proposal for Uniform(0,1), adjust.
-            (define S (+ 2 (/ 10 scale-factor))) ;; "peakedness"
-            (define (to-01 x) (/ (- x min) (- max min)))
-            (define (from-01 x) (+ (* x (- max min)) min))
-            (defmatch (cons value* R-F)
-              (drift:asymmetric (lambda (x) (beta-dist (* S x) (* S (- 1 x))))
-                                (to-01 value)))
-            (cons (from-01 value*) R-F)))
-
+  #:drift-dist (lambda (value scale-factor)
+                 (define equiv-dist (affine-distx (beta-dist 1 1) min (- max min)))
+                 (dist-drift-dist equiv-dist scale-factor)))
 
 (define-fl-dist-type t-dist
   ([degrees (>/c 0)]
@@ -321,7 +323,8 @@
   #:mean (if (> degrees 1) 0 #f)
   #:median 0
   #:variance #f
-  )
+  #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
+  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
 
 ;; ----------------------------------------
 
@@ -353,10 +356,11 @@
   #:has-mass
   #:guard (lambda (n weights _name)
             (values n (validate/normalize-weights 'multinomial-dist weights)))
-  #:drift (lambda (value scale-factor)
-            (multinomial-drift n weights value scale-factor)))
+  ;; FIXME: drift by computing new multinomial-dist ??
+  ;;  eg, scale-weighted average of prior weights and derived from current value?
+  #:drift1 (lambda (value scale-factor) (multinomial-drift n weights value scale-factor)))
 
-  ;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
+;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
 ;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
 (define-dist-type dirichlet-dist
   ([alpha (vectorof (>/c 0))])
@@ -498,7 +502,6 @@
            (vector-set! v j (add1 (vector-ref v j))))
          (cons v 0)]))
 
-
 ;; Given (vector pi ...) where pi = prob(X = i), produce
 ;; (vector qi ...) where qi = prob(X = i | X >= i).
 (define (multinomial->binomial-weights probs)
@@ -577,26 +580,6 @@
          (if (zero? (random 2))
              x-abs
              (- x-abs))]))
-
-;; ------------------------------------------------------------
-;; Inverse gamma distribution
-
-(define (m:flinverse-gamma-pdf shape scale x log?)
-  (define uncorrected (m:flgamma-pdf shape scale (/ x) log?))
-  ;; Correct by a factor of 1/x² (comes from change of variables x -> 1/x)
-  (if log?
-    (- uncorrected (* 2 (log x)))
-    (/ uncorrected x x)))
-(define (m:flinverse-gamma-cdf shape scale x log? 1-p?)
-  (m:flgamma-cdf shape scale (/ x) log? (not 1-p?)))
-(define (m:flinverse-gamma-inv-cdf shape scale x log? 1-p?)
-  (/ (m:flgamma-inv-cdf shape scale x log? (not 1-p?))))
-(define (m:flinverse-gamma-sample shape scale n)
-  (define flv (m:flgamma-sample shape scale n))
-  (for ([i (in-range n)])
-    (flvector-set! flv i (/ (flvector-ref flv i))))
-  flv)
-
 
 ;; ------------------------------------------------------------
 ;; Pareto distribution
@@ -721,7 +704,7 @@
   (sample (gamma-dist shape scale)))
 
 (define (inverse-gamma [shape 1] [scale 1])
-  (sample (inverse-gamma-dist shape scale)))
+  (/ (sample (gamma-dist shape scale))))
 
 ;; logistic : Real Real -> Real
 (define (logistic [mean 0] [scale 1])

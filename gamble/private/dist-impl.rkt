@@ -53,14 +53,9 @@
     (eprintf "value = ~s, scale = ~s, sn = ~s\n" value scale sn))
   (cons value* (- (log value*) (log value))))
 
-(define (drift:asymmetric f value)
-  (define forward-dist (f value))
-  (define value* (dist-sample forward-dist))
-  (define backward-dist (f value*))
-  (cons value*
-        (- (dist-pdf backward-dist value #t)
-           (dist-pdf forward-dist value* #t))))
-
+;; Rounds away from zero to force different value. Note that this does
+;; not agree with the typical accompanying drift-dist, which allows
+;; zero. But that's okay; they don't need to agree.
 (define (drift:add-discrete-normal value0 scale0 lo0 hi0)
   (define value (exact->inexact value0))
   (define scale (exact->inexact scale0))
@@ -74,6 +69,7 @@
           s*
           (loop))))
   (define (discrete-normal-log-pdf mean stddev x)
+    ;; FIXME: should really be using difference of unrounded cdfs instead of pdf
     (- (m:flnormal-pdf mean stddev x #t)
        (log (- (discrete-normal-cdf mean stddev hi)
                (discrete-normal-cdf mean stddev lo)))))

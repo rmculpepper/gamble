@@ -8,23 +8,11 @@
          (rename-in racket/match [match-define defmatch])
          "db.rkt"
          "../interfaces.rkt"
+         "interfaces.rkt"
          "../context.rkt"
          "../dist.rkt")
-(provide (all-defined-out))
-
-;; ============================================================
-
-(define mh-transition<%>
-  (interface ()
-    run  ;; (-> A) Trace -> (cons (U Trace #f) TxInfo)
-    info ;; Nat -> Void
-    feedback ;; Boolean -> Void
-    ))
-
-;; A TxInfo
-;; - (vector 'delta DB)          -- delta db
-;; - (vector 'slice Real Real)   -- slice w/ interval bounds
-;; - #f
+(provide (all-defined-out)
+         (all-from-out "interfaces.rkt"))
 
 ;; ============================================================
 
@@ -49,12 +37,9 @@
     (define/public (run thunk last-trace)
       (vprintf "Starting transition (~s)\n" (object-name this%))
       (match (run* thunk last-trace)
-        [(list* (? real? threshold0) trace txinfo)
-         (define last-dens-dim (trace-dens-dim last-trace))
-         (define dens-dim (trace-dens-dim trace))
-         (define threshold (ll+dim->ll threshold0 (- dens-dim last-dens-dim)))
+        [(list* (? real? threshold) trace txinfo)
          (vprintf "accept threshold = ~s (density dimension ~s -> ~s)\n"
-                  (exp threshold) last-dens-dim dens-dim)
+                  (exp threshold) (trace-dens-dim last-trace) (trace-dens-dim trace))
          (define u (log (random)))
          (cond [(< u threshold)
                 (vprintf "Accepted MH step with ~s\n" (exp u))

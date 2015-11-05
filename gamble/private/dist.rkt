@@ -7,13 +7,18 @@
 (provide (all-defined-out))
 
 (define-generics dist
-  (*pdf dist x log?)
-  (*cdf dist x log? 1-p?)
-  (*inv-cdf dist x log? 1-p?)
-  (*sample dist)
-  (*type dist)
-  (*has-mass? dist)
-  (*params dist)
+  ;; pdf accepts any value, gives 0/-inf.0 if not in support
+  ;; cdf may raise error if not in support
+  ;; drift1 returns new value and log R/F; used only by single-site
+  ;;   (so dist params are the same for R and F)
+  ;; drift-dist returns drift proposal dist
+  (*pdf dist x log?)          ; Dist Value Boolean -> Real
+  (*cdf dist x log? 1-p?)     ; Dist Value Boolean Boolean -> Real
+  (*inv-cdf dist x log? 1-p?) ; Dist Real Boolean Boolean -> Value (or errors)
+  (*sample dist)              ; Dist -> Value
+  (*type dist)                ; Dist -> Symbol
+  (*has-mass? dist)           ; Dist -> Boolean
+  (*params dist)              ; Dist -> Nat
   (*enum dist)
   (*support dist)
   (*mean dist)
@@ -22,7 +27,8 @@
   (*variance dist)
   (*conj dist obs-dist data)
   (*Denergy dist x . d/dts)
-  (*drift dist value scale-factor)
+  (*drift1 dist value scale-factor)     ; Dist Value PosReal -> (U Dist #f)
+  (*drift-dist dist value scale-factor) ; Dist Value PosReal -> (U (cons Value Real) #f)
   #:fallbacks
   [(define (*enum d) #f)
    (define (*has-mass? d) (and (dist-enum d) #t))
@@ -34,7 +40,9 @@
    (define (*conj d data-d data) #f)
    (define (*Denergy d x . d/dts)
      (error 'dist-Denergy "not implemented"))
-   (define (*drift d value scale-factor)
+   (define (*drift1 d value scale-factor)
+     #f)
+   (define (*drift-dist d value scale-factor)
      #f)])
 
 (define (dist-pdf d x [log? #f])
@@ -49,8 +57,10 @@
   (*enum d))
 (define (dist-has-mass? d)
   (*has-mass? d))
-(define (dist-drift d v scale-factor)
-  (*drift d v scale-factor))
+(define (dist-drift1 d v scale-factor)
+  (*drift1 d v scale-factor))
+(define (dist-drift-dist d v scale-factor)
+  (*drift-dist d v scale-factor))
 
 (define (dist-energy d x)
   ;; -log(pdf(d,x))
