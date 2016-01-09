@@ -10,6 +10,7 @@
          mem
          observe-sample
          fail
+         trycatch
          verbose?
          with-verbose>
          vprintf
@@ -100,6 +101,11 @@
     run     ;; (-> A) -> (U (cons 'okay A) (cons 'fail Any))
     ))
 
+(define stochastic-ctx/trycatch<%>
+  (interface (stochastic-ctx<%>)
+    trycatch ;; (-> A) (-> A) -> A
+    ))
+
 (define plain-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
     (super-new)
@@ -172,6 +178,9 @@
              (observe-sample dist value scale)
              value]
             [else (sample* dist)]))))
+
+(define (trycatch p1 p2)
+  (send (current-stochastic-ctx) trycatch p1 p2))
 
 ;; ============================================================
 ;; Zones

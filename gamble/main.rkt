@@ -48,7 +48,8 @@
           [mem (-> procedure? procedure?)]
           [sample (-> dist? any)]
           [observe-sample (-> dist? any/c any)]
-          [fail (->* [] [any/c] any)]))
+          [fail (->* [] [any/c] any)]
+          [trycatch (-> procedure? procedure? any)]))
 
 (require "private/prob-util.rkt")
 (provide (contract-out

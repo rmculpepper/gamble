@@ -8,6 +8,7 @@
                      syntax/parse/experimental/template
                      unstable/syntax
                      syntax/name)
+         (rename-in racket/match [match-define defmatch])
          racket/class
          "dist.rkt"
          "context.rkt"
@@ -72,7 +73,7 @@
 
 (define rejection-stochastic-ctx%
   (class plain-stochastic-ctx/run%
-    (inherit fail)
+    (inherit fail run)
     (super-new)
     (define/override (observe-sample dist val scale)
       (cond [(or (finite-dist? dist) (integer-dist? dist))
@@ -85,6 +86,13 @@
                      "observation on distribution not supported by rejection sampler"
                      "\n  distribution: ~e")
                     dist)]))
+
+    (define/public (trycatch p1 p2)
+      (match (run p1)
+        [(cons 'okay value)
+         value]
+        [(cons 'fail _)
+         (p2)]))
     ))
 
 ;; ----
@@ -148,7 +156,7 @@
   (class rejection-stochastic-ctx%
     (field [weight 1]
            [dens-dim 0])
-    (inherit fail)
+    (inherit fail run)
     (super-new)
     (define/override (observe-sample dist val scale)
       (define l (dist-pdf dist val))
@@ -156,6 +164,17 @@
       (if (positive? l)
           (set! weight (* weight l scale))
           (fail 'observation)))
+
+    (define/override (trycatch p1 p2)
+      (define saved-weight weight)
+      (define saved-dens-dim dens-dim)
+      (match (run p1)
+        [(cons 'okay value)
+         value]
+        [(cons 'fail _)
+         (set! weight saved-weight)
+         (set! dens-dim saved-dens-dim)
+         (p2)]))
     ))
 
 ;; ----
