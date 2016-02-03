@@ -124,7 +124,7 @@
       [(set! var e)
        (recur-nt #'e)]
       [(quote d) (void)]
-      [(quote-syntax s) (void)]
+      [(quote-syntax . _) (void)]
       [(with-continuation-mark e1 e2 e3)
        (recur-nt* #'(e1 e2))
        (recur #'e3)]

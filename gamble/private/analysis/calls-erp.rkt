@@ -84,7 +84,7 @@
       [(set! var e)
        (recur #'e)]
       [(quote d) #f]
-      [(quote-syntax s) #f]
+      [(quote-syntax . _) #f]
       [(with-continuation-mark e1 e2 e3)
        (recur* #'(e1 e2 e3))]
       ;; #%plain-app -- see above

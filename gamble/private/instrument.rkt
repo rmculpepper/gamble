@@ -209,7 +209,7 @@
           ;; (eprintf "** set! in expanded code: ~e" (syntax->datum stx))
           #'(set! var (instrument e #:nt))]
          [(quote d) stx]
-         [(quote-syntax s) stx]
+         [(quote-syntax . _) stx]
          [(with-continuation-mark e1 e2 e3)
           #'(with-continuation-mark (instrument e1 #:nt) (instrument e2 #:nt)
               (instrument e3 m))]

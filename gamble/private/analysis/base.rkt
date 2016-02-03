@@ -154,7 +154,7 @@
       [(set! var e)
        (T (set! var (recur e)))]
       [(quote d) stx]
-      [(quote-syntax s) stx]
+      [(quote-syntax . _) stx]
       [(with-continuation-mark e1 e2 e3)
        (T (with-continuation-mark (recur e1) (recur e2) (recur e3)))]
       [(#%plain-app f:id e ...)
@@ -253,7 +253,7 @@
     [(set! var e)
      (recur #'e)]
     [(quote d) #f]
-    [(quote-syntax s) #f]
+    [(quote-syntax . _) #f]
     [(with-continuation-mark e1 e2 e3)
      (recur* #'(e1 e2 e3))]
     [(#%plain-app e ...)
