@@ -7,7 +7,7 @@
          racket/performance-hint
          racket/match
          racket/stxparam
-         unstable/markparam)
+         markparam)
 (provide (all-defined-out))
 
 ;; This module defines parameters and functions used for

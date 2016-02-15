@@ -10,7 +10,7 @@ Installing `gamble` also builds its documentation on your system, and it is avai
 
 ## Prerequisites
 
-Racket version 6.0 or later is required.
+Racket version 6.3 or later is required.
 
   * Get Racket here: http://racket-lang.org
 
@@ -20,8 +20,8 @@ Racket version 6.0 or later is required.
 The following instructions assume you want to write programs using the latest version of `gamble` but not develop `gamble` itself. The install and update commands automatically fetch the latest version of `gamble` from github.
 
 1. Install this repository as a Racket package.
-  * command line: `raco pkg install github://github.com/rmculpepper/gamble/master/`
-  * or DrRacket: File menu, Install Package, and enter `github://github.com/rmculpepper/gamble/master/`.
+  * command line: `raco pkg install git://github.com/rmculpepper/gamble`
+  * or DrRacket: File menu, Install Package, and enter `git://github.com/rmculpepper/gamble`.
 2. Periodically update to the most recent version of the package.
   * command line: `raco pkg update gamble`
   * or DrRacket: File menu, Package Mangager, Currently Installed, Update.

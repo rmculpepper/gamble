@@ -6,7 +6,7 @@
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/parse/experimental/template
-                     unstable/syntax
+                     racket/syntax
                      syntax/name)
          (rename-in racket/match [match-define defmatch])
          racket/class

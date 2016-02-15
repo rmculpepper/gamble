@@ -7,7 +7,7 @@
                      racket/syntax
                      syntax/parse)
          racket/match
-         unstable/custom-write
+         racket/struct
          "interfaces.rkt")
 (provide (all-defined-out))
 

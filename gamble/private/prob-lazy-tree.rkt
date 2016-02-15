@@ -5,7 +5,7 @@
 #lang racket/base
 (require (rename-in racket/match [match-define defmatch])
          racket/class
-         unstable/markparam
+         markparam
          "interfaces.rkt"
          (only-in "context.rkt" OBS-mark)
          "dist.rkt")

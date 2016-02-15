@@ -8,7 +8,7 @@
 ;; - no polymorphic function instantiation problems from untyped Racket
 
 #lang typed/racket/base
-(require (for-syntax racket/base racket/syntax syntax/parse unstable/list)
+(require (for-syntax racket/base racket/syntax syntax/parse racket/list)
          racket/math
          (prefix-in t: math/array)
          (prefix-in t: math/matrix)
@@ -85,7 +85,7 @@
     [(Wrap* fun:id : c ...)
      #:declare c (typeclause (format-id #'fun "t:~a" #'fun))
      (let ([code+arity-list (map cons (syntax->list #'(c ...)) (attribute c.arity))])
-       (cond [(check-duplicate code+arity-list #:key cdr)
+       (cond [(check-duplicates code+arity-list #:key cdr)
               => (lambda (code+arity)
                    (raise-syntax-error #f "multiple cases with same arity" stx (car code+arity)))]))
      (syntax/loc stx

@@ -5,7 +5,7 @@
 #lang racket/base
 (require racket/class
          racket/gui/base
-         unstable/gui/notify
+         framework/notify
          data/gvector
          pict)
 (provide multi-viz<%>
@@ -52,8 +52,8 @@
 
     ;; == Window elements ==
 
-    (define-notify zoom-label (new notify-box% (value DEFAULT-ZOOM)))
-    (define-notify zoom (new notify-box% (value #f)))
+    (notify:define-notify zoom-label (new notify:notify-box% (value DEFAULT-ZOOM)))
+    (notify:define-notify zoom (new notify:notify-box% (value #f)))
     (listen-zoom-label (lambda (zl) (set-zoom (cadr (assoc zl ZOOM-LEVELS)))))
     (listen-zoom (lambda _ (update-view)))
 
@@ -83,10 +83,7 @@
            (stretchable-height #f)
            (stretchable-width #t)))
     (define zoom-choice
-      (choice/notify-box bottom-bar
-                         "Zoom: "
-                         (map car ZOOM-LEVELS)
-                         zoom-label))
+      (notify:choice/notify-box bottom-bar "Zoom: " (map car ZOOM-LEVELS) zoom-label))
     (define coords
       (new message%
            (parent top-bar)
@@ -145,8 +142,8 @@
     (define contents (make-gvector))
 
     ;; index, contents-length : (NotifyBoxOf Nat)
-    (define-notify index (new notify-box% (value 0)))
-    (define-notify contents-length (new notify-box% (value 0)))
+    (notify:define-notify index (new notify:notify-box% (value 0)))
+    (notify:define-notify contents-length (new notify:notify-box% (value 0)))
 
     (let ([on-index-change
            (lambda _
@@ -164,7 +161,7 @@
 
     ;; == Pict State ==
 
-    (define-notify current-pict (new notify-box% (value #f)))
+    (notify:define-notify current-pict (new notify:notify-box% (value #f)))
     (listen-current-pict (lambda _ (update-view)))
 
     (define/public (add-pict p)

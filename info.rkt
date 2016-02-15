@@ -6,7 +6,7 @@
 
 (define collection 'multi)
 
-(define deps '("base"
+(define deps '(["base" #:version "6.3"]
                "data-lib"
                "math-lib"
                "gui-lib"
@@ -14,6 +14,7 @@
                "plot-gui-lib"
                "pict-lib"
                "rackunit-lib"
+               "markparam-lib"
                "typed-racket-lib"))
 (define build-deps '("racket-doc"
                      "scribble-lib"
