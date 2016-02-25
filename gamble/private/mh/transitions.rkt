@@ -188,7 +188,6 @@
 
     (define/public (run thunk last-trace)
       (define r (send (get-transition) run thunk last-trace))
-      (update-transition (and (car r) #t))
       r)
 
     (define/public (info i)
@@ -200,8 +199,6 @@
       (dist-sample tx-dist))
     (define/public (get-transitions)
       (discrete-dist-values tx-dist))
-    (define/public (update-transition success?) (void))
-    (define/public (feedback success?) (void))
     ))
 
 ;; ============================================================

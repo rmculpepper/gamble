@@ -67,7 +67,7 @@
 ;; ll+dim->ll : Real Int -> Real
 ;; Takes a log likelihood and a density dimension difference (current - last)
 ;; and converts them into a single extended real.
-;; A positive density dimension change meand infinitely less likely.
+;; A positive density dimension change means infinitely less likely.
 ;; A negative density dimension change means infintely more likely.
 (define (ll+dim->ll ll dens-dim-diff)
   (cond [(zero? dens-dim-diff)

@@ -47,8 +47,6 @@
              (key-to-change key-to-change)
              (last-entry (hash-ref last-db key-to-change))))
       (send slice perturb/slice))
-
-    (define/public (feedback success?) (void))
     ))
 
 (define slice%

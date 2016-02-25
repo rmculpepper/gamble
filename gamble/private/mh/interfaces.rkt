@@ -12,7 +12,6 @@
   (interface ()
     run  ;; (-> A) Trace -> (cons (U Trace #f) TxInfo)
     info ;; Nat -> Void
-    feedback ;; Boolean -> Void
     ))
 
 ;; A TxInfo
