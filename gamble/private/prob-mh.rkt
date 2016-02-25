@@ -15,8 +15,6 @@
 (provide mh-sampler*
          mh-sampler%
          mh-transition?
-         cycle
-         sequence
          mixture
          rerun
          single-site
@@ -26,17 +24,9 @@
          proposal?
          proposal:resample
          proposal:drift
-         default-proposal
-         select:one
-         select:round-robin)
+         default-proposal)
 
 (define (mh-transition? x) (is-a? x mh-transition<%>))
-
-(define (sequence . txs)
-  (new sequence-mh-transition% (transitions txs)))
-
-(define (cycle . txs)
-  (new cycle-mh-transition% (transitions txs)))
 
 (define (mixture transitions [weights #f])
   (define transitions* (if (list? transitions) (list->vector transitions) transitions))
@@ -47,12 +37,10 @@
   (new mixture-mh-transition% [transitions transitions*] [weights weights*]))
 
 (define (single-site [proposal (default-proposal)]
-                     #:zone [zone #f]
-                     #:selector [selector (select:one)])
+                     #:zone [zone #f])
   (new single-site-mh-transition%
        [proposal (->proposal proposal)]
-       [zone zone]
-       [selector selector]))
+       [zone zone]))
 
 (define (multi-site [proposal (default-proposal)]
                     #:zone [zone #f])
@@ -70,11 +58,6 @@
   the-rerun-mh-transition)
 
 (define the-rerun-mh-transition (new rerun-mh-transition%))
-
-(define (select:one)
-  (new select:one-random%))
-(define (select:round-robin)
-  (new select:one-round-robin%))
 
 ;; ============================================================
 

@@ -180,13 +180,9 @@
          (contract-out
           [default-proposal
            (parameter/c proposal/c)]
-          [cycle
-           (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
-          [sequence
-           (->* [] [] #:rest (listof mh-transition?) mh-transition?)]
           [single-site
            (->* []
-                [proposal/c #:zone any/c #:selector any/c]
+                [proposal/c #:zone any/c]
                 mh-transition?)]
           [multi-site
            (->* [] [proposal/c #:zone any/c] mh-transition?)]
@@ -202,9 +198,7 @@
           [mixture
            (->* [(vectorof mh-transition?)] [(vectorof (>=/c 0))] mh-transition?)]
           [rerun
-           (-> mh-transition?)])
-         select:one
-         select:round-robin)
+           (-> mh-transition?)]))
 
 (require "private/serializable-lambda.rkt")
 (provide lambda/s

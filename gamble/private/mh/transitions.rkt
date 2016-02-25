@@ -78,7 +78,6 @@
 (define single-site-mh-transition%
   (class perturb-mh-transition-base%
     (init-field zone
-                selector
                 proposal)
     (inherit-field last-delta-db)
     (field [proposed 0]
@@ -90,13 +89,13 @@
       (super info i)
       (iprintf i "Proposal perturbs: ~s\n" proposed)
       (iprintf i "Fall-through perturbs: ~s\n" resampled)
-      (send proposal info i)
-      (send selector info i))
+      (send proposal info i))
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
       (define last-db (trace-db last-trace))
-      (define key-to-change (send selector select-one last-trace zone))
+      (define key-to-change
+        (db-pick-a-key (trace-db last-trace) zone))
       (vprintf "key to change = ~s\n" key-to-change)
       (define-values (delta-db ll-R/F)
         (cond [key-to-change
@@ -180,85 +179,29 @@
 
 ;; ============================================================
 
-(define abstract-multi-tx-transition%
+(define mixture-mh-transition%
   (class* object% (mh-transition<%>)
+    (init transitions weights)
     (super-new)
 
-    (define/public (info i)
-      (for ([tx (get-transitions)])
-        (send tx info (+ i 2))))
+    (define tx-dist (make-discrete-dist* transitions weights #:normalize #f))
 
     (define/public (run thunk last-trace)
       (define r (send (get-transition) run thunk last-trace))
       (update-transition (and (car r) #t))
       r)
 
-    (define/public (feedback success?) (void))
-
-    (abstract get-transition)
-    (abstract get-transitions)
-    (abstract update-transition)
-    ))
-
-(define cycle-mh-transition%
-  (class abstract-multi-tx-transition%
-    (init transitions)
-    (super-new)
-
-    (define transitions* (list->vector transitions))
-    (define current 0)
-
-    (define/override (info i)
-      (iprintf i "== Transition (cycle ...)\n")
-      (super info i))
-
-    (define/override (get-transition)
-      (vector-ref transitions* current))
-    (define/override (get-transitions)
-      transitions*)
-    (define/override (update-transition success?)
-      (when success?
-        (set! current (modulo (add1 current) (vector-length transitions*)))))
-    ))
-
-(define sequence-mh-transition%
-  (class abstract-multi-tx-transition%
-    (init transitions)
-    (super-new)
-
-    (define transitions* (list->vector transitions))
-    (define current 0)
-
-    (define/override (info i)
-      (iprintf i "== Transition (sequence ...)\n")
-      (super info i))
-
-    (define/override (get-transition)
-      (vector-ref transitions* current))
-    (define/override (get-transitions)
-      transitions*)
-    (define/override (update-transition success?)
-      (when (and success?
-                 (< current (sub1 (vector-length transitions*))))
-        (set! current (add1 current))))
-    ))
-
-(define mixture-mh-transition%
-  (class abstract-multi-tx-transition%
-    (init transitions weights)
-    (super-new)
-
-    (define tx-dist (make-discrete-dist* transitions weights #:normalize #f))
-
-    (define/override (info i)
+    (define/public (info i)
       (iprintf i "== Transition (mixture ...)\n")
-      (super info i))
+      (for ([tx (get-transitions)])
+        (send tx info (+ i 2))))
 
-    (define/override (get-transition)
+    (define/public (get-transition)
       (dist-sample tx-dist))
-    (define/override (get-transitions)
+    (define/public (get-transitions)
       (discrete-dist-values tx-dist))
-    (define/override (update-transition success?) (void))
+    (define/public (update-transition success?) (void))
+    (define/public (feedback success?) (void))
     ))
 
 ;; ============================================================

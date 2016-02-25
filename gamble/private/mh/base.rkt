@@ -77,68 +77,6 @@
         [(negative? dens-dim-diff)
          +inf.0]))
 
-;; ============================================================
-
-(define single-selector<%>
-  (interface ()
-    select-one ;; Trace -> Addr
-    info       ;; Nat -> Void
-    ))
-
-(define select:one-random%
-  (class* object% (single-selector<%>)
-    (super-new)
-
-    (define/public (info i)
-      (iprintf i "-- Random selector\n"))
-
-    (define/public (select-one last-trace zone)
-      (defmatch (trace _ last-db _ _ _) last-trace)
-      (db-pick-a-key last-db zone))
-    ))
-
-;; Note: approximates "round-robin" by selecting least key greater
-;; than last key each time.
-(define select:one-round-robin%
-  (class* object% (single-selector<%>)
-    (field [last-key #f]
-           [rounds 0])
-    (super-new)
-
-    (define/public (info i)
-      (iprintf i "-- Round-robin selector\n")
-      (iprintf i "Rounds started: ~s\n" rounds))
-
-    (define/public (select-one last-trace zone)
-      (vprintf "last-key = ~s\n" last-key)
-      (defmatch (trace _ last-db _ _ _) last-trace)
-      ;; Take first key > last-key; or failing that, take first key.
-      (define-values (first-key next-key)
-        (for/fold ([first-key #f] [next-key #f])
-                  ([(key entry) (in-hash last-db)]
-                   #:when (entry-in-zone? entry zone))
-          (values (cond [(not first-key) key]
-                        [(address<? key first-key) key]
-                        [else first-key])
-                  (cond [(not last-key) #f]
-                        [(and (not next-key)
-                              (address<? last-key key))
-                         key]
-                        [(and (address<? last-key key)
-                              (address<? key next-key))
-                         key]
-                        [else next-key]))))
-      (cond [next-key
-             (vprintf "using next-key\n")
-             (set! last-key next-key)
-             next-key]
-            [else
-             (vprintf "using first-key\n")
-             (set! last-key first-key)
-             (set! rounds (add1 rounds))
-             first-key]))
-    ))
-
 ;; FIXME: comparison can probably be made faster by writing custom
 ;; loop, if it matters
 

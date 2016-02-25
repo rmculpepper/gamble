@@ -284,13 +284,6 @@ Note: unlike traditional Gibbs sampling, this transition picks a
 choice at random rather than perturbing all choices round-robin.
 }
 
-@defproc[(cycle [tx mh-transition?] ...+)
-         mh-transition?]{
-
-Returns a transition that uses an endless cycle of the @racket[tx]s to
-produce samples.
-}
-
 @defproc[(mixture [txs (listof mh-transition?)]
                   [weights (listof (>/c 0)) (map (lambda (tx) 1) txs)])
          mh-transition?]{
