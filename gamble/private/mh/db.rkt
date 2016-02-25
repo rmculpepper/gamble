@@ -24,6 +24,12 @@
 ;; trace-ll : Trace -> Real
 (define (trace-ll t) (+ (trace-ll-free t) (trace-ll-obs t)))
 
+;; trace<? : Trace Trace -> Boolean
+(define (trace<? t1 t2)
+  (or (> (trace-dens-dim t1) (trace-dens-dim t2))
+      (< (trace-ll t1) (trace-ll t2))))
+(define (trace>? t1 t2) (trace<? t2 t1))
+
 ;; trace-nchoices : Trace -> Nat
 (define (trace-nchoices t) (db-count (trace-db t)))
 

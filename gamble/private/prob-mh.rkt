@@ -101,9 +101,7 @@
       (define best-trace
         (for/fold ([best-trace last-trace]) ([n (in-range iters)])
           (void (sample))
-          (if (> (get-trace-ll last-trace) (get-trace-ll best-trace))
-              last-trace
-              best-trace)))
+          (if (trace>? last-trace best-trace) last-trace best-trace)))
       (trace-value best-trace))
 
     (define/override (sample)
