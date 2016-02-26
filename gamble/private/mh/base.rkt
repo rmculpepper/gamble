@@ -23,15 +23,12 @@
            [cond-rejects 0])
     (super-new)
 
-    (define/public (info i)
+    (define/public (accinfo)
       (define total (+ accepts cond-rejects mh-rejects))
-      (iprintf i "Total runs: ~s\n" total)
-      (iprintf i "Accepted traces: ~s, ~a%\n"
-               accepts (%age accepts total))
-      (iprintf i "Traces rejected by condition: ~s, ~a%\n"
-               cond-rejects (%age cond-rejects total))
-      (iprintf i "Traces rejected by MH threshold: ~s, ~a%\n"
-               mh-rejects (%age mh-rejects total)))
+      (Info ["Total runs" total]
+            [% "Accepted traces" accepts total]
+            [% "Traces rejected by condition" cond-rejects total]
+            [% "Traces rejected by MH threshold" mh-rejects total]))
 
     ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk last-trace)

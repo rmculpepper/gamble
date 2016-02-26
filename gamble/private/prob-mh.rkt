@@ -134,12 +134,14 @@
       (sample! transition 0))
 
     (define/override (info)
-      (printf "== MH sampler\n")
-      (send transition info 0)
-      (when (pair? transition-stack)
-        (printf "\n== Pushed transitions\n")
-        (for ([tx (in-list transition-stack)])
-          (send tx info 2))))
+      (print-accinfo (accinfo) 0))
+
+    (define/public (accinfo)
+      (Info "== MH sampler"
+            [nested "Transition"
+                    (send transition accinfo)]
+            [nested "Pushed transitions"
+                    (for/list ([tx transition-stack]) (send tx accinfo))]))
     ))
 
 (define (->proposal x)

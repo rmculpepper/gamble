@@ -3,15 +3,17 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/class)
-(provide (all-defined-out))
+(require racket/class
+         "../interfaces.rkt")
+(provide (all-defined-out)
+         Info)
 
 ;; ============================================================
 
 (define mh-transition<%>
   (interface ()
     run  ;; (-> A) Trace -> (cons (U Trace #f) TxInfo)
-    info ;; Nat -> Void
+    accinfo ;; -> AccInfo
     ))
 
 ;; A TxInfo
@@ -25,7 +27,7 @@
   (interface ()
     propose1 ;; Key Zones Dist Value -> (U (cons Value Real) #f)
     propose2 ;; Key Zones Dist Dist Value -> (U (list* Value Real Real) #f)
-    info     ;; Nat -> Void
+    accinfo  ;; -> AccInfo
     feedback ;; Key Boolean -> Void
     ))
 

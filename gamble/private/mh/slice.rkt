@@ -25,11 +25,14 @@
            [in-slice-counter 0])
     (super-new)
 
-    (define/public (info i)
-      (iprintf i "== Transition (slice ... #:zone ~e)\n" zone)
-      (iprintf i "Total runs: ~s\n" run-counter)
-      (iprintf i "Evals to find slice: ~s\n" find-slice-counter)
-      (iprintf i "Evals in slice: ~s\n" in-slice-counter))
+    (define/public (accinfo)
+      (define total-evals (+ find-slice-counter in-slice-counter))
+      (Info "== slice transition"
+            ["Zone" zone]
+            ["Total runs" run-counter]
+            ["Total evals" total-evals]
+            [% "Evals to find slice" find-slice-counter total-evals]
+            [% "Evals in slice" in-slice-counter total-evals]))
 
     ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk last-trace)

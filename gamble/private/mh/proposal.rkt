@@ -28,8 +28,8 @@
   (class* object% (proposal<%>)
     (super-new)
     (field [counter 0])
-    (define/public (info i)
-      (iprintf i "Count: ~s\n" counter))
+    (define/public (accinfo)
+      (Info ["Count" counter]))
     (define/public (propose1 key zones dist value)
       (set! counter (add1 counter))
       (propose1* key zones dist value))
@@ -45,9 +45,9 @@
   (class proposal-base%
     (inherit-field counter)
     (super-new)
-    (define/override (info i)
-      (iprintf i "-- Proposal (resample)\n")
-      (super info i))
+    (define/override (accinfo)
+      (Info "-- resample proposal"
+            [include (super accinfo)]))
     (define/override (propose1* key zones dist value)
       (propose:resample dist value))
     (define/override (propose2* key zones old-dist new-dist old-value)
@@ -59,9 +59,9 @@
     (init-field scale-factor)
     (inherit-field counter)
     (super-new)
-    (define/override (info i)
-      (iprintf i "-- Proposal (drift)\n")
-      (super info i))
+    (define/override (accinfo)
+      (Info "-- static drift proposal"
+            [include (super accinfo)]))
     (define/override (propose1* key zones dist value)
       (define r (*drift1 dist value scale-factor))
       (vprintf "DRIFTED from ~e to ~e\n" value (car r))
@@ -107,18 +107,12 @@
     (define warned-out-of-range? #f) ;; suppresses multiple warnings
     (super-new)
 
-    (define/override (info i)
-      (iprintf i "-- Proposal (adaptive-drift)\n")
-      (super info i)
-      (iprintf i "Scale increased: ~s\n" incr-count)
-      (iprintf i "Scale decreased: ~s\n" decr-count)
-      (iprintf i "Scale maintained: ~s\n" stay-count)
-      (when (verbose?)
-        (for ([(key a) (in-hash table)])
-          (iprintf i "- Key ~a: success rate = ~s, scale = ~s\n"
-                   (~s key #:max-width 20)
-                   (%age (adapt-all-successes a) (adapt-all-trials a))
-                   (adapt-scale a)))))
+    (define/override (accinfo)
+      (Info "-- adaptive drift proposal"
+            [include (super accinfo)]
+            ["Scale increased" incr-count]
+            ["Scale decreased" decr-count]
+            ["Scale maintained" stay-count]))
 
     (define/override (propose1* key zones dist value)
       (define a (hash-ref! table key (lambda () (adapt ADAPT-INIT 0 0 0 0))))

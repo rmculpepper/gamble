@@ -84,12 +84,13 @@
            [resampled 0])
     (super-new)
 
-    (define/override (info i)
-      (iprintf i "== Transition (single-site #:zone ~e)\n" zone)
-      (super info i)
-      (iprintf i "Proposal perturbs: ~s\n" proposed)
-      (iprintf i "Fall-through perturbs: ~s\n" resampled)
-      (send proposal info i))
+    (define/override (accinfo)
+      (Info "== single-site transition"
+            ["Zone" zone]
+            [include (super accinfo)]
+            ["Proposal perturbs" proposed]
+            ["Fall-through perturbs" resampled]
+            [nested "Proposal" (send proposal accinfo)]))
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
@@ -152,9 +153,11 @@
     (inherit-field last-delta-db)
     (super-new)
 
-    (define/override (info i)
-      (iprintf i "== Transition (multi-site #:zone ~e)\n" zone)
-      (super info i))
+    (define/override (accinfo)
+      (Info "== multi-site transition"
+            ["Zone" zone]
+            [include (super accinfo)]
+            [nested "Proposal" (send proposal accinfo)]))
 
     ;; perturb : Trace -> (cons DB Real)
     (define/override (perturb last-trace)
@@ -190,10 +193,11 @@
       (define r (send (dist-sample tx-dist) run thunk last-trace))
       r)
 
-    (define/public (info i)
-      (iprintf i "== Transition (mixture ...)\n")
-      (for ([tx (discrete-dist-values tx-dist)])
-        (send tx info (+ i 2))))
+    (define/public (accinfo)
+      (Info "== mixture transition"
+            [nested "Alternatives"
+                    (for/list ([tx (discrete-dist-values tx-dist)])
+                      (send tx accinfo))]))
     ))
 
 ;; ============================================================
@@ -201,9 +205,9 @@
 (define rerun-mh-transition%
   (class perturb-mh-transition-base%
     (super-new)
-    (define/override (info i)
-      (iprintf "== Transition (rerun)\n")
-      (super info i))
+    (define/override (accinfo)
+      (Info "== rerun transition"
+            [include (super accinfo)]))
     (define/override (perturb last-trace)
       (cons '#hash() +inf.0))
     (define/override (accept-threshold . _args)

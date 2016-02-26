@@ -21,10 +21,11 @@
            [eval-counter 0])
     (super-new)
 
-    (define/public (info i)
-      (iprintf "== Transition (enumerative-gibbs #:zone ~e)\n" zone)
-      (iprintf "Total runs: ~s\n" run-counter)
-      (iprintf "Total evals: ~s\n" eval-counter))
+    (define/public (accinfo)
+      (Info "== enumerative-gibbs transition"
+            ["Zone" zone]
+            ["Total runs" run-counter]
+            ["Total evals" eval-counter]))
 
     ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk last-trace)
