@@ -187,18 +187,13 @@
     (define tx-dist (make-discrete-dist* transitions weights #:normalize #f))
 
     (define/public (run thunk last-trace)
-      (define r (send (get-transition) run thunk last-trace))
+      (define r (send (dist-sample tx-dist) run thunk last-trace))
       r)
 
     (define/public (info i)
       (iprintf i "== Transition (mixture ...)\n")
-      (for ([tx (get-transitions)])
+      (for ([tx (discrete-dist-values tx-dist)])
         (send tx info (+ i 2))))
-
-    (define/public (get-transition)
-      (dist-sample tx-dist))
-    (define/public (get-transitions)
-      (discrete-dist-values tx-dist))
     ))
 
 ;; ============================================================

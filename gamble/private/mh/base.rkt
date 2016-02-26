@@ -77,32 +77,6 @@
         [(negative? dens-dim-diff)
          +inf.0]))
 
-;; FIXME: comparison can probably be made faster by writing custom
-;; loop, if it matters
-
-(define (address<? a b) (eq? (address-cmp a b) '<))
-
-(define (address-cmp a b)
-  (define lena (length a))
-  (define lenb (length b))
-  (define len (min lena lenb))
-  (case (address-cmp* (take-right a len) (take-right b len))
-    [(<) '<]
-    [(>) '>]
-    [(=) (cond [(< lena lenb) '<]
-               [(> lena lenb) '>]
-               [else '=])]))
-
-(define (address-cmp* a b) ;; equal lengths
-  (cond [(and (pair? a) (pair? b))
-         (case (address-cmp* (cdr a) (cdr b))
-           [(<) '<]
-           [(>) '>]
-           [(=) (cond [(< (car a) (car b)) '<]
-                      [(> (car a) (car b)) '>]
-                      [else '=])])]
-        [else '=]))
-
 ;; ============================================================
 
 (define (error-no-key who zone)
