@@ -148,13 +148,3 @@ CC ::=                   -- Observation rep:
                            (* 0.001 (max (abs expected) (abs actual)))))
              (bad))]
           [else (unless (equal? actual expected) (bad))])))
-
-#|
-[(eq? frame 'unknown)
- (error 'observe "expression is not conditionable;\n ~a"
-        "`sample' context contains unknown unconditionable frame")]
-[else
- (error 'observe "expression is not conditionable;\n ~a\n  bad frame: ~e"
-        "`sample' context contains unconditionable frame"
-        frame)]))
-|#
