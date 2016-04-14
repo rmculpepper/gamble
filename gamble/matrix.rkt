@@ -12,12 +12,12 @@
          racket/math
          (prefix-in t: math/array)
          (prefix-in t: math/matrix)
-         (prefix-in t: "private/matrix-util.rkt")
+         (prefix-in t: "private/matrix/matrix-util.rkt")
          "private/instrument-data.rkt"
-         "private/matrix-base.rkt"
-         "private/matrix-syntax.rkt")
-(provide (all-from-out "private/matrix-base.rkt")
-         (all-from-out "private/matrix-syntax.rkt"))
+         "private/matrix/matrix-base.rkt"
+         "private/matrix/matrix-syntax.rkt")
+(provide (all-from-out "private/matrix/matrix-base.rkt")
+         (all-from-out "private/matrix/matrix-syntax.rkt"))
 
 ;; FIXME/TODO:
 ;; - use FLArray?

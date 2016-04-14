@@ -239,7 +239,7 @@
           [in-particles
            (-> particles? sequence?)]))
 
-(require "private/serializable-lambda.rkt")
+(require "private/syntax/serializable-lambda.rkt")
 (provide lambda/s
          define/s)
 |#

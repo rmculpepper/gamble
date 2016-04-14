@@ -138,7 +138,7 @@
 
 (require racket/vector
          "place-util.rkt"
-         "serializable-lambda.rkt")
+         "syntax/serializable-lambda.rkt")
 (provide make-parallel-particles)
 
 ;; Parallel Particle Sets are implemented by a list of

@@ -8,7 +8,7 @@
                      syntax/parse)
          racket/match
          racket/struct
-         "interfaces.rkt")
+         "../interfaces.rkt")
 (provide (all-defined-out))
 
 (define-syntax (lazy-struct stx)

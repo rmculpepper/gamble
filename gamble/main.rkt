@@ -23,12 +23,12 @@
 
 ;; ------------------------------------------------------------
 
-(require "private/model.rkt")
+(require "private/syntax/model.rkt")
 (provide defmodel
          defmodel+
          open-model)
 
-(require "private/lazy-struct.rkt")
+(require "private/syntax/lazy-struct.rkt")
 (provide lazy-struct)
 
 (require "dist.rkt")
@@ -200,6 +200,6 @@
           [rerun
            (-> mh-transition?)]))
 
-(require "private/serializable-lambda.rkt")
+(require "private/syntax/serializable-lambda.rkt")
 (provide lambda/s
          define/s)
