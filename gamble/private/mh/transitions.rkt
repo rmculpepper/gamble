@@ -8,6 +8,7 @@
          "db.rkt"
          "../interfaces.rkt"
          "../dist.rkt"
+         "../util/prob.rkt"
          "../../dist/discrete.rkt"
          "base.rkt"
          "proposal.rkt")
@@ -120,7 +121,7 @@
       (vprintf "PROPOSED from ~e to ~e\n" value value*)
       (vprintf "  R/F = ~s\n" (exp R-F))
       (define ll* (dist-pdf dist value* #t))
-      (unless (ll-possible? ll*)
+      (unless (logspace-nonzero? ll*)
         (eprintf "proposal produced impossible value\n  dist: ~e\n  value: ~e\n"
                  dist value*))
       (cons (entry zones dist value* ll*) R-F))

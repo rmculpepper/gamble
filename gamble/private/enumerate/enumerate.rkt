@@ -7,6 +7,7 @@
          racket/class
          "../interfaces.rkt"
          "../dist.rkt"
+         "../util/prob.rkt"
          "../../dist/discrete.rkt"
          "lazy-tree.rkt"
          "pairingheap.rkt")
@@ -44,31 +45,6 @@
   (make-discrete-dist table #:normalize? normalize?))
 
 ;; ----------------------------------------
-
-;; https://hips.seas.harvard.edu/blog/2013/01/09/computing-log-sum-exp/
-
-;; logspace+ : Real Real -> Real
-;; Given (log A) and (log B), return (log (+ A B)).
-(define logspace+*
-  (case-lambda
-    [() -inf.0]
-    [(a) a]
-    [(a b)
-     (define m (max a b))
-     (if (= m -inf.0)
-         -inf.0
-         (+ m (log (+ (exp (- a m)) (exp (- b m))))))]
-    [as
-     (define m (apply max as))
-     (if (= m -inf.0)
-         -inf.0
-         (+ m (log (for/sum ([a (in-list as)]) (exp (- a m))))))]))
-
-(define (logspace+ a b)
-  (define r (logspace+* a b))
-  (when (eqv? r +nan.0)
-    (error 'logspace+ "~s + ~s => ~s" a b r))
-  r)
 
 (define (logspace-compl a)
   (log (- 1.0 (exp a))))

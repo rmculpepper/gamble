@@ -90,10 +90,10 @@
   (unless (and (vector? weights)
                (for/and ([w (in-vector weights)])
                  (and (rational? w) (>= w 0))))
-    (raise-argument-error 'categorical-dist "(vectorof (>=/c 0))" weights))
+    (raise-argument-error who "(vectorof (>=/c 0))" weights))
   (define weight-sum (for/sum ([w (in-vector weights)]) w))
   (unless (> weight-sum 0)
-    (error 'categorical-dist "weights sum to zero\n  weights: ~e" weights))
+    (error who "weights sum to zero\n  weights: ~e" weights))
   (if (= weight-sum 1)
       (vector->immutable-vector weights)
       (vector-map (lambda (w) (/ w weight-sum)) weights)))
@@ -120,15 +120,6 @@
   (reverse best))
 
 (define (vector-sum v) (for/sum ([x (in-vector v)]) x))
-
-;; http://hips.seas.harvard.edu/blog/2013/01/09/computing-log-sum-exp/
-;; http://machineintelligence.tumblr.com/post/4998477107/the-log-sum-exp-trick
-(define (logspace+ x y)
-  (let ([M (max x y)])
-    (+ M (log (+ (exp (- x M)) (exp (- y M)))))))
-(define (logspace-sum xs)
-  (let ([M (apply max xs)])
-    (+ M (log (for/sum ([x (in-list xs)]) (exp (- x M)))))))
 
 ;; use in pdf functions instead of raising type (or other) error
 (define (impossible log? who reason)

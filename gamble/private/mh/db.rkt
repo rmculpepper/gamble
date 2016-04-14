@@ -10,6 +10,7 @@
          data/order
          "../context.rkt"
          "../interfaces.rkt"
+         "../util/prob.rkt"
          "interfaces.rkt"
          "../dist.rkt")
 (provide (all-defined-out))
@@ -54,11 +55,6 @@
 ;; entry-in-zone? : Entry ZonePattern -> Boolean
 (define (entry-in-zone? e zp)
   (or (not zp) (some-zone-matches? (entry-zones e) zp)))
-
-;; ll-possible? : Real -> Boolean
-;; Returns #t if (exp ll) is positive (ie, non-zero).
-(define (ll-possible? ll)
-  (> ll -inf.0))
 
 ;; print-db : DB -> Void
 (define (print-db db)
@@ -226,7 +222,7 @@
              (entry-value e)]
             [(dists-same-type? (entry-dist e) dist)
              (let ([new-ll (dist-pdf dist (entry-value e) #t)])
-               (cond [(ll-possible? new-ll)
+               (cond [(logspace-nonzero? new-ll)
                       (define value (entry-value e))
                       (define new-e (entry (entry-zones e) dist value new-ll))
                       (vprintf "RESCORE ~e: ~s = ~e\n" dist context value)
@@ -253,7 +249,7 @@
              (define ll (+ lscale (dist-pdf dist val #t)))
              (unless (dist-has-mass? dist)
                (set! dens-dim (add1 dens-dim)))
-             (cond [(ll-possible? ll)
+             (cond [(logspace-nonzero? ll)
                     (set! ll-obs (+ ll-obs ll))]
                    [else (fail 'observation)])]))
 

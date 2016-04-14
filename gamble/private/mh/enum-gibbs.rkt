@@ -7,6 +7,7 @@
          (rename-in racket/match [match-define defmatch])
          "db.rkt"
          "../interfaces.rkt"
+         "../util/prob.rkt"
          "../dist.rkt"
          "../../dist/discrete.rkt"
          "base.rkt")
@@ -49,7 +50,7 @@
       (define alternatives
         (for*/list ([value* (dist-enum dist)]
                     [ll* (in-value (dist-pdf dist value* #t))]
-                    #:when (ll-possible? ll*))
+                    #:when (logspace-nonzero? ll*))
           (cond [(equal? value* value)
                  (vprintf "considering value* = ~e (last value)\n" value*)
                  (cons (trace-dens-dim last-trace) last-trace)]
