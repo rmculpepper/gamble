@@ -43,6 +43,7 @@
   (require "private/prob-mh.rkt")
   (require "private/prob-syntax.rkt")
   (require "private/context.rkt")
+  (require "private/syntax/mem.rkt")
   (provide observe
            rejection-sampler
            importance-sampler

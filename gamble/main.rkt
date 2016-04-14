@@ -120,8 +120,10 @@
          importance-sampler
          mh-sampler
          enumerate
-         with-zone
-         ppromise?
+         with-zone)
+
+(require "private/syntax/mem.rkt")
+(provide ppromise?
          pdelay
          (contract-out
           [pforce (-> ppromise? any)])
