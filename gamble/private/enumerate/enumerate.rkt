@@ -5,10 +5,11 @@
 #lang racket/base
 (require (rename-in racket/match [match-define defmatch])
          racket/class
+         "../interfaces.rkt"
          "../dist.rkt"
-         "prob-lazy-tree.rkt"
-         "pairingheap.rkt"
-         "interfaces.rkt")
+         "../../dist/discrete.rkt"
+         "lazy-tree.rkt"
+         "pairingheap.rkt")
 (provide enumerate*)
 
 ;; == Overview ==

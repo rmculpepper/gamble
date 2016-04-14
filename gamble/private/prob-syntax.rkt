@@ -14,7 +14,7 @@
          "context.rkt"
          "prob-util.rkt"
          "prob-mh.rkt"
-         "prob-enum.rkt"
+         "enumerate/enumerate.rkt"
          "interfaces.rkt")
 (provide (except-out (all-defined-out) table table*)
          (rename-out [table* table]))

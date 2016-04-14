@@ -6,9 +6,9 @@
 (require (rename-in racket/match [match-define defmatch])
          racket/class
          markparam
-         "interfaces.rkt"
-         (only-in "context.rkt" OBS-mark)
-         "dist.rkt")
+         "../interfaces.rkt"
+         (only-in "../context.rkt" OBS-mark)
+         "../dist.rkt")
 (provide (struct-out only)
          (struct-out split)
          (struct-out failed)

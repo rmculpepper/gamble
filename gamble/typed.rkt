@@ -52,7 +52,7 @@
            deflazy
            defmem
            table)
-  (require "private/prob-enum.rkt")
+  (require "private/enumerate/enumerate.rkt")
 
   ;; ------------------------------------------------------------
   ;; Replacements and simplifications for difficult-to-type functions
