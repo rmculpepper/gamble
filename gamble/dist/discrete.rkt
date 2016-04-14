@@ -14,7 +14,7 @@
          "../private/interfaces.rkt"
          "../private/dist-define.rkt"
          "../private/dist-impl.rkt"
-         "../private/sort.rkt")
+         "../private/util/sort.rkt")
 (provide discrete-dist
          discrete-dist?
          in-dist
