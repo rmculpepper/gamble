@@ -233,11 +233,6 @@
 
 ;; ----
 
-(define-syntax-rule (label l e)
-  (parameterize ((current-label l)) e))
-
-;; ----
-
 (define-syntax-rule (with-zone z e ...)
   (parameterize ((current-zones (cons z (current-zones)))) e ...))
 

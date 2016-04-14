@@ -26,7 +26,6 @@
          current-zones
          zone-matches?
          some-zone-matches?
-         current-label
          (all-from-out "util/debug.rkt"))
 
 ;; Defines interfaces, base classes, and parameters.
@@ -173,8 +172,3 @@
 
 (define (some-zone-matches? zs zp)
   (or (not zp) (for/or ([z (in-list zs)]) (equal? z zp))))
-
-;; ============================================================
-;; Labels
-
-(define current-label (make-parameter #f))

@@ -99,12 +99,12 @@
 
 ;; A (EnumTree A) is one of
 ;; - (only A)
-;; - (split Any (Dist B) (-> B (EnumTree A)) Nat/#f)
+;; - (split (Dist B) (-> B (EnumTree A)) Nat/#f)
 ;;     where Nat represents continuing enumeration of infinite int-dist
 ;; - (failed Any)
 ;; - (weight PositiveReal (-> (EnumTree A)))
 (struct only (answer))
-(struct split (label dist k start))
+(struct split (dist k start))
 (struct failed (reason))
 (struct weight (dist val scale k))
 
@@ -139,13 +139,12 @@
       (define ctag (activation-prompt act))
       (define memo-key (activation-memo-table-key act))
       (define memo-table (unbox (memo-key)))
-      (define label (current-label))
       (call-with-composable-continuation
        (lambda (k)
          (abort-current-continuation
           ctag
           (lambda ()
-            (split label dist
+            (split dist
                    (lambda (v)
                      (call-with-enum-context act memo-table
                        (lambda () (k v))))
@@ -157,7 +156,6 @@
       (define ctag (activation-prompt act))
       (define memo-key (activation-memo-table-key act))
       (define memo-table (unbox (memo-key)))
-      (define label (current-label))
       (call-with-composable-continuation
        (lambda (k)
          (abort-current-continuation
@@ -206,7 +204,7 @@
 
 ;; split->subtrees : split Boolean -> (Listof (List Prob (-> (EnumTree A))))
 (define (split->subtrees s logspace?)
-  (defmatch (split _label dist k start) s)
+  (defmatch (split dist k start) s)
   (define enum (dist-enum dist))
   (define result
   (cond [(eq? enum #f)

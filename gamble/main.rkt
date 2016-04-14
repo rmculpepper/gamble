@@ -120,7 +120,6 @@
          importance-sampler
          mh-sampler
          enumerate
-         label
          with-zone
          ppromise?
          pdelay
