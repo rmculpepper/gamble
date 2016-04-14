@@ -1,5 +1,10 @@
 Tentative plans for the near future:
 
+- reorganize!
+
+- weighted samplers: keep logspace weight too, only use realspace weight if exact
+  - sample/weight -> generate-weighted-samples method
+
 - types
 
 - check: importance sampler uses probs, not log-probs?
