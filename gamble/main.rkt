@@ -135,7 +135,7 @@
 (require "private/ho-functions.rkt")
 (provide (all-from-out "private/ho-functions.rkt"))
 
-(require "private/particle-filter.rkt")
+(require "private/particles/particle-filter.rkt")
 (provide particles?
          (contract-out
           [make-particles

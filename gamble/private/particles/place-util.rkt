@@ -8,7 +8,7 @@
          racket/place
          racket/future
          racket/serialize
-         "syntax/serializable-lambda.rkt")
+         "../syntax/serializable-lambda.rkt")
 (provide (all-defined-out))
 
 ;; FIXME/TODO:

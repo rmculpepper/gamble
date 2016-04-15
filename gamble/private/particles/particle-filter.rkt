@@ -7,8 +7,8 @@
          racket/match
          racket/math
          racket/vector
-         (only-in "prob-util.rkt" [resample u:resample])
-         "prob-syntax.rkt")
+         (only-in "../prob-util.rkt" [resample u:resample])
+         "../prob-syntax.rkt")
 (provide (all-defined-out))
 
 (define (make-particles count [initial-state #f])
@@ -138,7 +138,7 @@
 
 (require racket/vector
          "place-util.rkt"
-         "syntax/serializable-lambda.rkt")
+         "../syntax/serializable-lambda.rkt")
 (provide make-parallel-particles)
 
 ;; Parallel Particle Sets are implemented by a list of
