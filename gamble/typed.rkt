@@ -38,6 +38,7 @@
   (require "private/interfaces.rkt")
   (require (rename-in "private/prob-util.rkt"
                       [sampler->discrete-dist sampler->discrete-dist*]))
+  (require "private/util/samples.rkt")
   (require (rename-in "private/stat.rkt"
                       [sampler->mean sampler->mean*]))
   (require "private/prob-mh.rkt")

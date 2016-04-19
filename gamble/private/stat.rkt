@@ -4,7 +4,7 @@
          (rename-in racket/match [match-define defmatch])
          "interfaces.rkt"
          "../matrix.rkt"
-         "prob-util.rkt"
+         "util/samples.rkt"
          "dist.rkt")
 (provide (struct-out statistics)
          statistics-scalar-mean

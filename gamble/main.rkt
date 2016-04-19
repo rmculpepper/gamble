@@ -66,7 +66,11 @@
           ;; ----
           [discrete-dist-error
            (-> discrete-dist? discrete-dist?
-               (>=/c 0))]
+               (>=/c 0))])
+         probability?)
+
+(require "private/util/samples.rkt")
+(provide (contract-out
           [generate-samples
            (->* [weighted-sampler? exact-nonnegative-integer?]
                 [#:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
@@ -78,8 +82,7 @@
           [resample
            (->* [vector? vector?] 
                 [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
-                vector?)])
-         probability?)
+                vector?)]))
 
 (require "private/stat.rkt")
 (provide (contract-out

@@ -7,7 +7,7 @@
          racket/match
          racket/math
          racket/vector
-         (only-in "../prob-util.rkt" [resample u:resample])
+         (only-in "../util/samples.rkt" [resample u:resample])
          "../prob-syntax.rkt")
 (provide (all-defined-out))
 
