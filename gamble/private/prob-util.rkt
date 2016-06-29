@@ -100,7 +100,7 @@
 
 ;; Resampling
 
-(define (resample vs ws count #:alg [alg 'multinomial])
+(define (resample vs ws [count (vector-length vs)] #:alg [alg 'multinomial])
   (case alg
     [(multinomial #f) (resample-multinomial vs ws count)]
     [(residual) (resample-residual vs ws count)]
