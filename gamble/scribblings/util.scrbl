@@ -488,7 +488,7 @@ of values accepted by the predicate @racket[pred], respectively.
 
 @defproc[(resample [samples vector?]
                    [weights (vectorof (>=/c 0))]
-                   [n exact-nonnegative-integer? (vector-length samples)]
+                   [n exact-nonnegative-integer?]
                    [#:alg algorithm (or/c 'multinomial 'residual #f)
                    'multinomial])
          vector?]{

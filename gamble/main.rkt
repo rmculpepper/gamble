@@ -80,8 +80,8 @@
                 [#:burn exact-nonnegative-integer? #:thin exact-nonnegative-integer?]
                 any)]
           [resample
-           (->* [vector? vector?] 
-                [exact-nonnegative-integer? #:alg (or/c #f 'multinomial 'residual)]
+           (->* [vector? vector? exact-nonnegative-integer?]
+                [#:alg (or/c #f 'multinomial 'residual)]
                 vector?)]))
 
 (require "private/stat.rkt")
