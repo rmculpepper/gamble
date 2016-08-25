@@ -15,9 +15,12 @@
                "pict-lib"
                "rackunit-lib"
                "markparam-lib"
+               "compatibility-lib"
+               "slideshow-lib"
                "typed-racket-lib"))
 (define build-deps '("racket-doc"
                      "scribble-lib"
                      "pict-doc"
                      "plot-doc"
+                     "typed-racket-doc"
                      "math-doc"))
