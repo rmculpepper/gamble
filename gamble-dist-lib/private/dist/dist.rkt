@@ -3,10 +3,19 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/generic)
+(require racket/generic
+         (submod racket/performance-hint begin-encourage-inline))
 (provide (all-defined-out))
 
 ;; LogReal = Real, probability/score in logspace.
+
+(begin-encourage-inline
+  (define (convert-p p log? 1-p?)
+    (define p* (if 1-p? (- 1 p) p))
+    (if log? (log (exact->inexact p*)) p*))
+  (define (unconvert-p p log? 1-p?)
+    (define p* (if log? (exp p) p))
+    (if 1-p? (- 1 p*) p*)))
 
 ;; ------------------------------------------------------------
 
@@ -19,8 +28,6 @@
 
 (define (dist-sample d)
   (*sample d))
-
-;; ------------------------------------------------------------
 
 ;; ------------------------------------------------------------
 

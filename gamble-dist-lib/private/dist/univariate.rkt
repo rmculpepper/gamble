@@ -647,14 +647,6 @@
       (vector->immutable-vector weights)
       (vector-map (lambda (w) (/ w weight-sum)) weights)))
 
-(define (unconvert-p p log? 1-p?)
-  (define p* (if log? (exp p) p))
-  (if 1-p? (- 1 p*) p*))
-
-(define (convert-p p log? 1-p?)
-  (define p* (if 1-p? (- 1 p) p))
-  (if log? (log (exact->inexact p*)) p*))
-
 (define (filter-modes f ms)
   (define-values (best best-p)
     (for/fold ([best null] [best-p -inf.0])
