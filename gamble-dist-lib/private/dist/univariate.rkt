@@ -20,27 +20,7 @@
   (let ([av a]) (if (zero? av) 0 (* av b ...))))
 
 ;; ============================================================
-
-(define-dist-type bernoulli-dist
-  ([p (real-in 0 1)])
-  #:counting
-  #:pdf bernoulli-pdf
-  #:cdf bernoulli-cdf
-  #:inv-cdf bernoulli-inv-cdf
-  #:sample bernoulli-sample
-  #:enum 2
-  #:support '#s(integer-range 0 1)
-  #:mean p
-  #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
-  #:modes (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)])
-  #:variance (* p (- 1 p))
-  #:drift-dist (lambda (value scale-factor)
-                 (define (squash x) (/ x (+ 1 x))) ;; R+ -> [0,1]
-                 ;; FIXME: is this a good thing to do???
-                 (define driftiness (squash scale-factor))
-                 (bernoulli-dist (cond [(= value 1) (- 1 driftiness)]
-                                       [(= value 0) driftiness])))
-  #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0)))
+;; Continuous real distributions from math library
 
 (define-fl-dist-type binomial-dist
   ([n exact-nonnegative-integer?]
@@ -56,10 +36,6 @@
                  (discrete-normal-dist value (* scale-factor (sqrt (* n p (- 1 p))))))
   #:drift1 (lambda (value scale-factor)
              (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n)))
-
-#;
-(define (discrete-normal-dist mean stddev a b)
-  (discretize-distx (clip-distx (normal mean stddev) (- a 0.5) (+ b 0.5))))
 
 (define-fl-dist-type geometric-dist
   ([p (real-in 0 1)])
@@ -159,16 +135,6 @@
   #:drift1 (lambda (value scale-factor)
              (drift:mult-exp-normal value (* mean scale-factor))))
 
-#;
-(define (mult-exp-normal-dist x scale)
-  ;; Want to multiply by factor log-normally distributed, with stddev proportional
-  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
-  ;; Let's approximate as exp[2s^2] - 1. So we want
-  ;; exp[2s^2] - 1 ~= scale^2, so
-  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
-  (define s (sqrt (log (+ 1 (* scale scale)))))
-  (affine-distx (exp-distx (normal-dist 0 (sqrt (log (+ 1 (* scale scale)))))) x 0))
-
 (define-fl-dist-type gamma-dist
   ([shape (>/c 0)]
    [scale (>/c 0)])
@@ -227,28 +193,6 @@
   #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
   #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
 
-(define-fl-dist-type pareto-dist
-  ([scale (>/c 0)]  ;; x_m
-   [shape (>/c 0)]) ;; alpha
-  #:real
-  #:support (real-range scale +inf.0) ;; [scale,inf)
-  #:mean (if (<= shape 1)
-             +inf.0
-             (/ (* scale shape) (sub1 shape)))
-  #:modes (list scale)
-  #:variance (if (<= shape 2)
-                 +inf.0
-                 (/ (* scale scale shape)
-                    (* (- shape 1) (- shape 1) (- shape 2))))
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(uniform-dist 0 _)
-                   (pareto-dist
-                    (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
-                    (+ shape (vector-length data)))]
-                  [_ #f])))
-;; DRIFT: FIXME
-
 (define-fl-dist-type normal-dist
   ([mean real?]
    [stddev (>/c 0)])
@@ -304,6 +248,56 @@
                  (define equiv-dist (affine-distx (beta-dist 1 1) min (- max min)))
                  (dist-drift-dist equiv-dist scale-factor)))
 
+
+;; ============================================================
+;; Additional continuous real distributions
+
+(define-fl-dist-type pareto-dist
+  ([scale (>/c 0)]  ;; x_m
+   [shape (>/c 0)]) ;; alpha
+  #:real
+  #:support (real-range scale +inf.0) ;; [scale,inf)
+  #:mean (if (<= shape 1)
+             +inf.0
+             (/ (* scale shape) (sub1 shape)))
+  #:modes (list scale)
+  #:variance (if (<= shape 2)
+                 +inf.0
+                 (/ (* scale scale shape)
+                    (* (- shape 1) (- shape 1) (- shape 2))))
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(uniform-dist 0 _)
+                   (pareto-dist
+                    (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
+                    (+ shape (vector-length data)))]
+                  [_ #f])))
+;; DRIFT: FIXME
+
+(define (m:flpareto-pdf scale shape x log?)
+  (define lp
+    (if (>= x scale)
+        (- (+ (log shape) (* shape (log scale)))
+           (* (add1 shape) (log x)))
+        -inf.0))
+  (if log? lp (exp lp)))
+(define (m:flpareto-cdf scale shape x log? 1-p?)
+  (define p
+    (if (> x scale)
+        (- 1.0 (expt (/ scale x) shape))
+        0.0))
+  (convert-p p log? 1-p?))
+(define (m:flpareto-inv-cdf scale shape p log? 1-p?)
+  (define p* (unconvert-p p log? 1-p?))
+  (* scale (expt p* (- (/ shape)))))
+(define (m:flpareto-sample scale shape n)
+  (define flv (make-flvector n))
+  (for ([i (in-range n)])
+    (flvector-set! flv i (m:flpareto-inv-cdf scale shape (random) #f #f)))
+  flv)
+
+;; ------------------------------------------------------------
+
 (define-fl-dist-type t-dist
   ([degrees (>/c 0)]
    [mean rational?]
@@ -315,193 +309,6 @@
   #:variance #f
   #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
   #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor))))
-
-;; ----------------------------------------
-
-(define-dist-type categorical-dist
-  ([weights (vectorof (>=/c 0))])
-  #:counting
-  #:pdf categorical-pdf
-  #:cdf categorical-cdf
-  #:inv-cdf categorical-inv-cdf
-  #:sample categorical-sample
-  #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights))
-  #:enum (vector-length weights)
-  #:support (integer-range 0 (sub1 (vector-length weights)))
-  #:mean (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w))
-  #:modes (let-values ([(best best-w)
-                        (for/fold ([best null] [best-w -inf.0])
-                                  ([i (in-naturals)] [w (in-vector weights)])
-                          (cond [(> w best-w)
-                                 (values (list i) w)]
-                                [(= w best-w)
-                                 (values (cons i best) best-w)]
-                                [else (values best best-w)]))])
-            (reverse best)))
-
-(define-dist-type multinomial-dist
-  ([n exact-nonnegative-integer?]
-   [weights (vectorof (>=/c 0))])
-  #:counting
-  #:pdf multinomial-dist
-  #:sample multinomial-sample
-  #:guard (lambda (n weights _name)
-            (values n (validate/normalize-weights 'multinomial-dist weights)))
-  ;; FIXME: drift by computing new multinomial-dist ??
-  ;;  eg, scale-weighted average of prior weights and derived from current value?
-  #:drift1 (lambda (value scale-factor) (multinomial-drift n weights value scale-factor)))
-
-;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
-;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
-(define-dist-type dirichlet-dist
-  ([alpha (vectorof (>/c 0))])
-  #:lebesgue
-  #:pdf dirichlet-pdf
-  #:sample dirichlet-sample
-  #:guard (lambda (alpha _name)
-            (vector->immutable-vector (vector-map exact->inexact alpha)))
-  ;; #:support ;; [0,1]^n
-  ;; (product (make-vector (vector-length concentrations) '#s(real-range 0 1)))
-  #:mean (let ([alphasum (vector-sum alpha)])
-           (for/vector ([ai (in-vector alpha)]) (/ ai alphasum)))
-  #:modes (if (for/and ([ai (in-vector alpha)]) (> ai 1))
-              (let ([denom (for/sum ([ai (in-vector alpha)]) (sub1 ai))])
-                (list (for/vector ([ai (in-vector alpha)]) (/ (sub1 ai) denom))))
-              null)
-  #:variance (let* ([a0 (vector-sum alpha)]
-                    [denom (* a0 a0 (add1 a0))])
-               (for/vector ([ai (in-vector alpha)])
-                 (/ (* ai (- a0 ai)) denom)))
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(categorical-dist _)
-                   (define n (vector-length alpha))
-                   (define countv (make-vector n 0))
-                   (for ([x (in-vector data)] [i (in-range n)])
-                     (vector-set! countv i (add1 (vector-ref countv i))))
-                   (dirichlet-dist (vector-map + alpha countv))]
-                  [_ #f])))
-;; DRIFT: (1 - eps) * value + eps * Dir(alpha)
-;; ie, weighted avg of current value and new Dirichlet draw
-;; Q: for alpha, should use either same parameters, OR could use uniform (1 ...)???
-;; ** OR **: take current value, multiply by f(scale-factor), use that as Dirichlet param, draw
-;; NOTE: not symmetric!
-
-;; ============================================================
-;; Univariate dist functions
-
-;; ------------------------------------------------------------
-;; Bernoulli dist functions
-;; -- math/dist version converts exact->inexact
-
-(define (bernoulli-pdf prob v log?)
-  (define p
-    (cond [(eqv? v 0) (- 1 prob)]
-          [(eqv? v 1) prob]
-          [else 0]))
-  (convert-p p log? #f))
-(define (bernoulli-cdf prob v log? 1-p?)
-  (define p
-    (cond [(< v 0) 0]
-          [(< v 1) (- 1 prob)]
-          [else 1]))
-  (convert-p p log? 1-p?))
-(define (bernoulli-inv-cdf prob p0 log? 1-p?)
-  (define p (unconvert-p p0 log? 1-p?))
-  (cond [(<= p (- 1 prob)) 0]
-        [else 1]))
-(define (bernoulli-sample prob)
-  (if (<= (random) prob) 1 0))
-
-
-;; ------------------------------------------------------------
-;; Categorical weighted dist functions
-;; -- Assume weights are nonnegative, normalized.
-
-(define (categorical-pdf probs k log?)
-  (cond [(not (< k (vector-length probs)))
-         (impossible log? 'categorical "index out of bounds")]
-        [else
-         (define l (vector-ref probs k))
-         (if log? (log l) l)]))
-(define (categorical-cdf probs k log? 1-p?)
-  (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
-  (convert-p p log? 1-p?))
-(define (categorical-inv-cdf probs p0 log? 1-p?)
-  (define p (unconvert-p p0 log? 1-p?))
-  (let loop ([i 0] [p p])
-    (cond [(>= i (vector-length probs))
-           (error 'categorical-dist:inv-cdf "out of values")]
-          [(< p (vector-ref probs i))
-           i]
-          [else
-           (loop (add1 i) (- p (vector-ref probs i)))])))
-(define (categorical-sample probs)
-  (categorical-inv-cdf probs (random) #f #f))
-
-
-;; ------------------------------------------------------------
-;; Multinomial weighted dist functions
-;; -- Assume weights are nonnegative, normalized.
-
-;; sampling and pdf as repeated binomial
-
-(define (multinomial-pdf n0 probs v log?)
-  (cond [(and (vector? v) (= (vector-length v) (vector-length probs)))
-         (define n (exact->inexact n0))
-         (define ll
-           (for/sum ([vi (in-vector v)]
-                     [prob (in-vector (multinomial->binomial-weights probs))])
-             (m:flbinomial-pdf n prob (exact->inexact vi) #t)))
-         (if log? ll (exp ll))]
-        [else
-         (impossible log? 'multinomial "not a vector of correct size")]))
-
-(define (multinomial-sample n probs)
-  (define v (make-vector (vector-length probs)))
-  (for ([i (in-range (vector-length probs))]
-        [prob (in-vector (multinomial->binomial-weights probs))])
-    (define k
-      (inexact->exact
-       (flvector-ref (m:flbinomial-sample (exact->inexact n) prob 1) 0)))
-    (vector-set! v i k))
-  v)
-
-;; Do some number of moves based on scale-factor. Symmetric.
-(define (multinomial-drift n _probs old scale-factor)
-  (cond [(or (zero? n) (<= (vector-length old) 1))
-         (cons old 0)]
-        [else
-         (define v (vector-copy old))
-         (define (pick-nonempty-index)
-           (define i (random (vector-length v)))
-           (if (zero? (vector-ref v i))
-               (pick-nonempty-index)
-               i))
-         (define (pick-other-index i)
-           (define j (random (sub1 (vector-length v))))
-           (if (>= j i) (add1 j) j))
-         (for ([_a (in-range (inexact->exact (ceiling (* n scale-factor))))])
-           (define i (pick-nonempty-index))
-           (define j (pick-other-index i))
-           (vector-set! v i (sub1 (vector-ref v i)))
-           (vector-set! v j (add1 (vector-ref v j))))
-         (cons v 0)]))
-
-;; Given (vector pi ...) where pi = prob(X = i), produce
-;; (vector qi ...) where qi = prob(X = i | X >= i).
-(define (multinomial->binomial-weights probs)
-  (define v (make-vector (vector-length probs)))
-  (for/fold ([prest 1.0])
-            ([probi (in-vector probs)] [i (in-naturals)])
-    (vector-set! v i (/ probi prest))
-    (* prest (- 1.0 probi)))
-  (vector-set! v (sub1 (vector-length probs)) 1.0)
-  v)
-
-
-;; ------------------------------------------------------------
-;; Student t distribution
 
 (define (m:flt-pdf degrees mean scale x log?)
   (define sx (/ (- x mean) scale))
@@ -567,34 +374,206 @@
              x-abs
              (- x-abs))]))
 
-;; ------------------------------------------------------------
-;; Pareto distribution
 
-(define (m:flpareto-pdf scale shape x log?)
-  (define lp
-    (if (>= x scale)
-        (- (+ (log shape) (* shape (log scale)))
-           (* (add1 shape) (log x)))
-        -inf.0))
-  (if log? lp (exp lp)))
-(define (m:flpareto-cdf scale shape x log? 1-p?)
+;; ============================================================
+;; Discrete distributions
+
+(define-dist-type bernoulli-dist
+  ([p (real-in 0 1)])
+  #:counting
+  #:pdf bernoulli-pdf
+  #:cdf bernoulli-cdf
+  #:inv-cdf bernoulli-inv-cdf
+  #:sample bernoulli-sample
+  #:enum 2
+  #:support '#s(integer-range 0 1)
+  #:mean p
+  #:median (cond [(> p 1/2) 1] [(= p 1/2) 1/2] [else 0])
+  #:modes (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)])
+  #:variance (* p (- 1 p))
+  #:drift-dist (lambda (value scale-factor)
+                 (define (squash x) (/ x (+ 1 x))) ;; R+ -> [0,1]
+                 ;; FIXME: is this a good thing to do???
+                 (define driftiness (squash scale-factor))
+                 (bernoulli-dist (cond [(= value 1) (- 1 driftiness)]
+                                       [(= value 0) driftiness])))
+  #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0)))
+
+(define (bernoulli-pdf prob v log?)
   (define p
-    (if (> x scale)
-        (- 1.0 (expt (/ scale x) shape))
-        0.0))
+    (cond [(eqv? v 0) (- 1 prob)]
+          [(eqv? v 1) prob]
+          [else 0]))
+  (convert-p p log? #f))
+(define (bernoulli-cdf prob v log? 1-p?)
+  (define p
+    (cond [(< v 0) 0]
+          [(< v 1) (- 1 prob)]
+          [else 1]))
   (convert-p p log? 1-p?))
-(define (m:flpareto-inv-cdf scale shape p log? 1-p?)
-  (define p* (unconvert-p p log? 1-p?))
-  (* scale (expt p* (- (/ shape)))))
-(define (m:flpareto-sample scale shape n)
-  (define flv (make-flvector n))
-  (for ([i (in-range n)])
-    (flvector-set! flv i (m:flpareto-inv-cdf scale shape (random) #f #f)))
-  flv)
-
+(define (bernoulli-inv-cdf prob p0 log? 1-p?)
+  (define p (unconvert-p p0 log? 1-p?))
+  (cond [(<= p (- 1 prob)) 0]
+        [else 1]))
+(define (bernoulli-sample prob)
+  (if (<= (random) prob) 1 0))
 
 ;; ------------------------------------------------------------
-;; Dirichlet distribution
+
+(define-dist-type categorical-dist
+  ([weights (vectorof (>=/c 0))])
+  #:counting
+  #:pdf categorical-pdf
+  #:cdf categorical-cdf
+  #:inv-cdf categorical-inv-cdf
+  #:sample categorical-sample
+  #:guard (lambda (weights _name) (validate/normalize-weights 'categorical-dist weights))
+  #:enum (vector-length weights)
+  #:support (integer-range 0 (sub1 (vector-length weights)))
+  #:mean (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w))
+  #:modes (let-values ([(best best-w)
+                        (for/fold ([best null] [best-w -inf.0])
+                                  ([i (in-naturals)] [w (in-vector weights)])
+                          (cond [(> w best-w)
+                                 (values (list i) w)]
+                                [(= w best-w)
+                                 (values (cons i best) best-w)]
+                                [else (values best best-w)]))])
+            (reverse best)))
+
+;; -- Assume weights are nonnegative, normalized.
+
+(define (categorical-pdf probs k log?)
+  (cond [(not (< k (vector-length probs)))
+         (impossible log? 'categorical "index out of bounds")]
+        [else
+         (define l (vector-ref probs k))
+         (if log? (log l) l)]))
+(define (categorical-cdf probs k log? 1-p?)
+  (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
+  (convert-p p log? 1-p?))
+(define (categorical-inv-cdf probs p0 log? 1-p?)
+  (define p (unconvert-p p0 log? 1-p?))
+  (let loop ([i 0] [p p])
+    (cond [(>= i (vector-length probs))
+           (error 'categorical-dist:inv-cdf "out of values")]
+          [(< p (vector-ref probs i))
+           i]
+          [else
+           (loop (add1 i) (- p (vector-ref probs i)))])))
+(define (categorical-sample probs)
+  (categorical-inv-cdf probs (random) #f #f))
+
+;; ------------------------------------------------------------
+
+(define-dist-type multinomial-dist
+  ([n exact-nonnegative-integer?]
+   [weights (vectorof (>=/c 0))])
+  #:counting
+  #:pdf multinomial-dist
+  #:sample multinomial-sample
+  #:guard (lambda (n weights _name)
+            (values n (validate/normalize-weights 'multinomial-dist weights)))
+  ;; FIXME: drift by computing new multinomial-dist ??
+  ;;  eg, scale-weighted average of prior weights and derived from current value?
+  #:drift1 (lambda (value scale-factor) (multinomial-drift n weights value scale-factor)))
+
+;; -- Assume weights are nonnegative, normalized.
+
+;; sampling and pdf as repeated binomial
+
+(define (multinomial-pdf n0 probs v log?)
+  (cond [(and (vector? v) (= (vector-length v) (vector-length probs)))
+         (define n (exact->inexact n0))
+         (define ll
+           (for/sum ([vi (in-vector v)]
+                     [prob (in-vector (multinomial->binomial-weights probs))])
+             (m:flbinomial-pdf n prob (exact->inexact vi) #t)))
+         (if log? ll (exp ll))]
+        [else
+         (impossible log? 'multinomial "not a vector of correct size")]))
+
+(define (multinomial-sample n probs)
+  (define v (make-vector (vector-length probs)))
+  (for ([i (in-range (vector-length probs))]
+        [prob (in-vector (multinomial->binomial-weights probs))])
+    (define k
+      (inexact->exact
+       (flvector-ref (m:flbinomial-sample (exact->inexact n) prob 1) 0)))
+    (vector-set! v i k))
+  v)
+
+;; Do some number of moves based on scale-factor. Symmetric.
+(define (multinomial-drift n _probs old scale-factor)
+  (cond [(or (zero? n) (<= (vector-length old) 1))
+         (cons old 0)]
+        [else
+         (define v (vector-copy old))
+         (define (pick-nonempty-index)
+           (define i (random (vector-length v)))
+           (if (zero? (vector-ref v i))
+               (pick-nonempty-index)
+               i))
+         (define (pick-other-index i)
+           (define j (random (sub1 (vector-length v))))
+           (if (>= j i) (add1 j) j))
+         (for ([_a (in-range (inexact->exact (ceiling (* n scale-factor))))])
+           (define i (pick-nonempty-index))
+           (define j (pick-other-index i))
+           (vector-set! v i (sub1 (vector-ref v i)))
+           (vector-set! v j (add1 (vector-ref v j))))
+         (cons v 0)]))
+
+;; Given (vector pi ...) where pi = prob(X = i), produce
+;; (vector qi ...) where qi = prob(X = i | X >= i).
+(define (multinomial->binomial-weights probs)
+  (define v (make-vector (vector-length probs)))
+  (for/fold ([prest 1.0])
+            ([probi (in-vector probs)] [i (in-naturals)])
+    (vector-set! v i (/ probi prest))
+    (* prest (- 1.0 probi)))
+  (vector-set! v (sub1 (vector-length probs)) 1.0)
+  v)
+
+
+;; ============================================================
+;; Other distributions
+
+;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
+;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
+(define-dist-type dirichlet-dist
+  ([alpha (vectorof (>/c 0))])
+  #:lebesgue
+  #:pdf dirichlet-pdf
+  #:sample dirichlet-sample
+  #:guard (lambda (alpha _name)
+            (vector->immutable-vector (vector-map exact->inexact alpha)))
+  ;; #:support ;; [0,1]^n
+  ;; (product (make-vector (vector-length concentrations) '#s(real-range 0 1)))
+  #:mean (let ([alphasum (vector-sum alpha)])
+           (for/vector ([ai (in-vector alpha)]) (/ ai alphasum)))
+  #:modes (if (for/and ([ai (in-vector alpha)]) (> ai 1))
+              (let ([denom (for/sum ([ai (in-vector alpha)]) (sub1 ai))])
+                (list (for/vector ([ai (in-vector alpha)]) (/ (sub1 ai) denom))))
+              null)
+  #:variance (let* ([a0 (vector-sum alpha)]
+                    [denom (* a0 a0 (add1 a0))])
+               (for/vector ([ai (in-vector alpha)])
+                 (/ (* ai (- a0 ai)) denom)))
+  #:conjugate (lambda (data-d data)
+                (match data-d
+                  [`(categorical-dist _)
+                   (define n (vector-length alpha))
+                   (define countv (make-vector n 0))
+                   (for ([x (in-vector data)] [i (in-range n)])
+                     (vector-set! countv i (add1 (vector-ref countv i))))
+                   (dirichlet-dist (vector-map + alpha countv))]
+                  [_ #f])))
+;; DRIFT: (1 - eps) * value + eps * Dir(alpha)
+;; ie, weighted avg of current value and new Dirichlet draw
+;; Q: for alpha, should use either same parameters, OR could use uniform (1 ...)???
+;; ** OR **: take current value, multiply by f(scale-factor), use that as Dirichlet param, draw
+;; NOTE: not symmetric!
 
 (define-syntax-rule (define-memoize1 (fun arg) . body)
   (begin (define memo-table (make-weak-hash))
@@ -620,6 +599,7 @@
            (- (for/sum ([xi (in-vector x)] [ai (in-vector alpha)]) (* (sub1 ai) (log xi)))
               (log-multinomial-beta alpha)))
          (if log? lp (exp lp))]))
+
 (define (dirichlet-sample alpha)
   ;; TODO: batch gamma sampling when all alphas same?
   (define n (vector-length alpha))
@@ -630,6 +610,24 @@
   (for ([i (in-range n)])
     (vector-set! x i (/ (vector-ref x i) gsum)))
   x)
+
+
+;; ============================================================
+;; Attic
+
+#;
+(define (discrete-normal-dist mean stddev a b)
+  (discretize-distx (clip-distx (normal mean stddev) (- a 0.5) (+ b 0.5))))
+
+#;
+(define (mult-exp-normal-dist x scale)
+  ;; Want to multiply by factor log-normally distributed, with stddev proportional
+  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
+  ;; Let's approximate as exp[2s^2] - 1. So we want
+  ;; exp[2s^2] - 1 ~= scale^2, so
+  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
+  (define s (sqrt (log (+ 1 (* scale scale)))))
+  (affine-distx (exp-distx (normal-dist 0 (sqrt (log (+ 1 (* scale scale)))))) x 0))
 
 
 ;; ============================================================
