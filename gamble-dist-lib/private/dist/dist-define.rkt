@@ -28,12 +28,14 @@
 
   (define-syntax-class base-measure
     (pattern #:counting #:with ddim #''0)
-    (pattern #:lebesgue #:with ddim #''1))
+    (pattern #:lebesgue #:with ddim #''1)
+    (pattern #:mixture  #:attr ddim #f))
 
   (define-eh-alternative-set prob-options
     (pattern
      (~or (~once (~seq #:sample sample-fun:expr))
-          (~once (~seq #:pdf pdf-fun:expr))
+          (~optional (~seq #:density density-fun:expr))
+          (~optional (~seq #:pdf pdf-fun:expr))
           (~optional (~seq #:cdf cdf-fun:expr))
           (~optional (~seq #:inv-cdf inv-cdf-fun:expr)))))
 
@@ -80,9 +82,11 @@
              #:methods gen:dist
              [(define (*type d) 'name-dist)
               (define (*params d) (vector (get-param d) ...))
-              (define (*pdf d x log?)
-                (f.pdf-fun (get-param d) ... x log?))
-              (define (*ddim d) base.ddim)
+              (define (*density d x log?)
+                (~? (f.density-fun (get-param d) ... x log?)
+                    (values (*pdf d x log?) base.ddim)))
+              (~? (define (*pdf d x log?)
+                    (f.pdf-fun (get-param d) ... x log?)))
               (~? (define (*cdf d x log? 1-p?)
                     (f.cdf-fun (get-param d) ... x log? 1-p?)))
               (~? (define (*inv-cdf d x log? 1-p?)

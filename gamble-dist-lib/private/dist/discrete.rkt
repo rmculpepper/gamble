@@ -9,13 +9,15 @@
          racket/sequence
          racket/match
          racket/pretty
+         racket/struct
          racket/vector
          "dist.rkt"
          "dist-define.rkt"
          "sort.rkt")
 (provide discrete-dist
          discrete-dist?
-         in-dist
+         discrete-dist-of
+         in-discrete-dist
          (contract-out
           [alist->discrete-dist
            (->* [list?] [#:normalize? any/c] any)]
@@ -194,6 +196,20 @@
 
 ;; ------------------------------------------------------------
 
+(struct discrete-dist-of (pred)
+  #:property prop:custom-write
+  (make-constructor-style-printer (lambda (self) 'discrete-dist-of)
+                                  (lambda (self) (list (discrete-dist-of-pred self))))
+  #:property prop:procedure
+  (lambda (self d)
+    (match-define (discrete-dist-of pred) self)
+    (match d
+      [(*discrete-dist vs _ _)
+       (for/and ([v (in-vector vs)]) (pred v))]
+      [_ #f])))
+
+;; ------------------------------------------------------------
+
 (begin-for-syntax
   (define (in-dist-transformer stx normalize?)
     (syntax-case stx ()
@@ -216,12 +232,12 @@
                ((add1 i)))]))]
       [_ #f])))
 
-(define-sequence-syntax in-dist
-  (lambda () #'in-dist*)
+(define-sequence-syntax in-discrete-dist
+  (lambda () #'in-discrete-dist*)
   (lambda (stx) (in-dist-transformer stx #f)))
 
-(define (in-dist* d)
-  (define-values (get-v get-w len) (in-dist:extract 'in-dist d #f))
+(define (in-discrete-dist* d)
+  (define-values (get-v get-w len) (in-dist:extract 'in-discrete-dist d #f))
   (in-parallel (sequence-map get-v (in-range len))
                (sequence-map get-w (in-range len))))
 

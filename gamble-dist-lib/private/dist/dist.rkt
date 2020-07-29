@@ -4,10 +4,13 @@
 
 #lang racket/base
 (require racket/generic
-         (submod racket/performance-hint begin-encourage-inline))
+         (submod racket/performance-hint begin-encourage-inline)
+         "util.rkt")
 (provide (all-defined-out))
 
-;; LogReal = Real, probability/score in logspace.
+;; NNReal = nonnegative real
+
+;; LogReal = (inexact) Real, probability/score in logspace (may be +/-inf.0)
 
 (begin-encourage-inline
   (define (convert-p p log? 1-p?)
@@ -17,14 +20,32 @@
     (define p* (if log? (exp p) p))
     (if 1-p? (- 1 p*) p*)))
 
+;; Density    = (values Real    Nat)
+;; LogDensity = (values LogReal Nat)
+;; where the second value is 0 for counting, 1 for lebesgue, etc ...
+
+(define (density+ d1 ddim1 d2 ddim2)
+  (cond [(= ddim1 ddim2) (values (+ d1 d2) ddim1)]
+        [(zero? d1)      (values d2 ddim2)]
+        [(zero? d2)      (values d1 ddim1)]
+        [(< ddim1 ddim2) (values d1 ddim1)]
+        [else            (values d2 ddim2)]))
+
+(define (logdensity+ d1 ddim1 d2 ddim2)
+  (cond [(= ddim1 ddim2) (values (logspace+ d1 d2) ddim1)]
+        [(logspace-zero? d1) (values d2 ddim2)]
+        [(logspace-zero? d2) (values d1 ddim1)]
+        [(< ddim1 ddim2) (values d1 ddim1)]
+        [else            (values d2 ddim2)]))
+
 ;; ------------------------------------------------------------
 
 (define-generics sampler
   ;; type X
   (*sample sampler) ;; Dist -> X
-  (*wsample sampler) ;; Dist -> (values X LogReal)
+  (*wsample sampler) ;; Dist -> (values X NNReal/#f LogReal)
   #:fallbacks
-  [(define (*wsample self) (values (dist-sample self) 0.0))])
+  [(define (*wsample self) (values (dist-sample self) 1 0.0))])
 
 (define (dist-sample d)
   (*sample d))
@@ -39,12 +60,12 @@
   (*params dist)              ; Dist -> (vector Param ...)
 
   ;; Density/mass
-  ;; pdf accepts any value, gives 0/-inf.0 if not in support
+  ;; density/pdf accepts any value, gives 0/-inf.0 if not in support
   ;; cdf, inv-cdf may raise error if not in support
-  (*pdf dist x log?)          ; Dist X Boolean -> Real
+  (*density dist x log?)      ; Dist X Boolean -> Density
+  (*pdf dist x log?)          ; Dist X Boolean -> Real -- beware, omits ddim!
   (*cdf dist x log? 1-p?)     ; Dist X Boolean Boolean -> Real (or error)
   (*inv-cdf dist x log? 1-p?) ; Dist Real Boolean Boolean -> X (or error)
-  (*ddim dist)                ; Dist -> Nat  -- 0 for discrete measure, 1 for Lebesgue
   (*total-mass dist)          ; Dist -> NNReal or #f if unknown
   (*support dist)             ; Dist -> DistSupport
   (*Denergy dist x . d/dts)   ; Dist X Param ... -> Real
@@ -58,6 +79,8 @@
 
   #:fallbacks
   [;; Density/mass
+   (define (*pdf d x log?)
+     (let-values ([(d ddim) (dist-density d x log?)]) d))
    (define (*cdf d x log? 1-p?)
      (error 'dist-cdf "not defined for distribution\n  given: ~e" d))
    (define (*inv-cdf d x log? 1-p?)
@@ -76,6 +99,8 @@
 (define (dists-same-type? da db)
   (equal? (*type da) (*type db)))
 
+(define (dist-density d x [log? #f])
+  (*density d x log?))
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))
 (define (dist-cdf d x [log? #f] [1-p? #f])
@@ -89,9 +114,6 @@
   ;; derivative of energy(d,x) wrt t, treating x and params(d) as functions of t
   ;; d/dts = dx/dt (default 1), dparam1/dt (default 0), ...
   (apply *Denergy d x d/dts))
-
-(define (dist-has-mass? d)
-  (zero? (*ddim d)))
 
 (define (dist-support d)
   (*support d))

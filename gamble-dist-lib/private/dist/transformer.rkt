@@ -12,7 +12,8 @@
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "dist.rkt"
-         "dist-define.rkt")
+         "dist-define.rkt"
+         "discrete.rkt")
 (provide #| implicit in define-dist-type |#)
 
 ;; ============================================================
@@ -121,3 +122,25 @@
 
 (define (discretize-distx-sample d)
   (inexact->exact (round (dist-sample d))))
+
+;; ============================================================
+
+(define-dist-type mixture-dist
+  ([mix (discrete-dist-of dist?)])
+  #:mixture
+  #:density mixture-density
+  #:sample mixture-sample)
+
+(define (make-mixture-dist ds [ws (make-vector (vector-length ds) 1)])
+  (mixture-dist (make-discrete-dist ds ws)))
+
+(define (mixture-density mix x log?)
+  (for/fold ([accw 0] [accddim +inf.0])
+            ([(subdist w) (in-discrete-dist mix)])
+    (define-values (d ddim) (dist-density subdist x log?))
+    (cond [log? (logdensity+ accw accddim (* w d) ddim)]
+          [else (density+    accw accddim (* w d) ddim)])))
+
+(define (mixture-sample mix)
+  (define d (dist-sample mix))
+  (dist-sample d))
