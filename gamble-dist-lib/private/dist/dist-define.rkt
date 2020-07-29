@@ -137,9 +137,9 @@
              (cond [(not (real? x)) (if log? -inf.0 0)]
                    [else (fl-pdf p.ref ... (exact->inexact x) log?)]))
            (define (cdf p.param ... x log? 1-p?)
-             (fl-cdf p.ref ... (inexact->exact x) log? 1-p?))
+             (fl-cdf p.ref ... (exact->inexact x) log? 1-p?))
            (define (inv-cdf p.param ... x log? 1-p?)
-             (kind.convert (fl-inv-cdf p.ref ... x log? 1-p?)))
+             (kind.convert (fl-inv-cdf p.ref ... (exact->inexact x) log? 1-p?)))
            (define (sample p.param ...)
              (kind.convert (flvector-ref (fl-sample p.ref ... 1) 0)))
            (define-dist-type name-dist (p ...)
