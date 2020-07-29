@@ -1,4 +1,4 @@
-;; Copyright (c) 2014-2015 Ryan Culpepper
+;; Copyright 2014-2020 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
