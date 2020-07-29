@@ -14,7 +14,7 @@
          "dist.rkt"
          "dist-define.rkt"
          "discrete.rkt")
-(provide #| implicit in define-dist-type |#)
+(provide (all-defined-out))
 
 ;; ============================================================
 
