@@ -51,7 +51,8 @@
           (~optional (~seq #:conjugate conj-fun:expr))
           (~optional (~seq #:Denergy Denergy-fun:expr))
           (~optional (~seq #:drift1 drift1-fun:expr))
-          (~optional (~seq #:drift-dist drift-dist-fun:expr))))))
+          (~optional (~seq #:drift-dist drift-dist-fun:expr))
+          (~optional (~seq #:provide provide-clause:expr))))))
 
 (define-syntax (define-dist-type stx)
   (syntax-parse stx
@@ -60,7 +61,6 @@
             (~eh-var f prob-options)
             (~once base:base-measure)
             (~optional (~seq #:guard guard-fun:expr))
-            (~optional (~seq #:provide provide-clause:expr))
             (~optional (~seq #:extra [extra-clause ...])))
        ...)
      (unless (regexp-match? #rx"-distx?$" (symbol->string (syntax-e #'name-dist)))
@@ -69,6 +69,7 @@
                     (for/list ([param (in-list (syntax->list #'(p.param ...)))])
                       (format-id #'name-dist "~a-~a" #'name-dist param))])
        #'(begin
+           (~? o.provide-clause (provide (struct-out name-dist)))
            (struct name-dist (p.param ...)
              #:guard (lambda (p.param ... _name)
                        (define (bad fname)
@@ -148,6 +149,7 @@
              (kind.convert (flvector-ref (fl-sample p.ref ... 1) 0)))
            (define-dist-type name-dist (p ...)
              kind.measure #:pdf pdf #:cdf cdf #:inv-cdf inv-cdf #:sample sample
+             #:total-mass (~? o.total-mass 1)
              #:guard (lambda (p.param ... _name)
                        (let-values ((~? [(p.param ...) (guard-fun p.param ... _name)]))
                          (values (p.mkconv p.param) ...)))

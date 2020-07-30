@@ -3,8 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base
-                     syntax/parse)
+(require (for-syntax racket/base syntax/parse syntax/transformer)
          racket/contract
          racket/sequence
          racket/match
@@ -14,23 +13,17 @@
          "dist.rkt"
          "dist-define.rkt"
          "sort.rkt")
-(provide discrete-dist
+(provide (rename-out [discrete-dist:m discrete-dist]
+                     [make-discrete-dist:m make-discrete-dist])
          discrete-dist?
+         discrete-dist-vs
+         discrete-dist-ws
          discrete-dist-of
          in-discrete-dist
          (contract-out
           [alist->discrete-dist
            (->* [list?] [#:normalize? any/c] any)]
-          [make-discrete-dist
-           (->* [vector?]
-                [(vectorof (>=/c 0))
-                 #:normalize? any/c #:sort? any/c]
-                any)]
           [normalize-discrete-dist
-           (-> discrete-dist? any)]
-          [discrete-dist-values
-           (-> discrete-dist? any)]
-          [discrete-dist-weights
            (-> discrete-dist? any)]
           [discrete-dist->inexact
            (-> discrete-dist? any)]))
@@ -46,7 +39,7 @@
 ;; Not necessarily normalized.
 ;; Uses equal? to distinguish elements of support.
 
-(define-dist-type *discrete-dist
+(define-dist-type discrete-dist
   ([vs vector?]
    [ws vector?]
    [wsum real?])
@@ -57,23 +50,18 @@
   #:support 'finite
   #:provide (begin)
   #:extra
-  [#:reflection-name 'discrete-dist
-   #:property prop:custom-write
+  [#:property prop:custom-write
    (lambda (obj port mode)
-     (match-define (*discrete-dist vs ws _) obj)
+     (match-define (discrete-dist vs ws _) obj)
      (print-discrete-dist 'discrete-dist vs ws port mode))])
-
-(define (discrete-dist? x) (*discrete-dist? x))
-(define (discrete-dist-values d) (*discrete-dist-vs d))
-(define (discrete-dist-weights d) (*discrete-dist-ws d))
 
 (define (discrete-dist->inexact d)
   (match d
-    [(*discrete-dist vs ws wsum)
+    [(discrete-dist vs ws wsum)
      (define ws* (vector-map exact->inexact ws))
      (make-discrete-dist vs ws* #:normalize? #f)]))
 
-(define-syntax (discrete-dist stx)
+(define-syntax (discrete-dist:m stx)
   (define-splicing-syntax-class maybe-normalize
     (pattern (~seq #:normalize? normalize?:expr))
     (pattern (~seq) #:with normalize? #'#f))
@@ -84,7 +72,6 @@
   (syntax-parse stx
     [(discrete-dist :maybe-normalize p:vwpair ...)
      #'(make-discrete-dist #:normalize? normalize?
-                           #:sort? SORT?
                            (vector p.value ...) (vector p.weight ...))]))
 
 (define (alist->discrete-dist alist #:normalize? [normalize? #f])
@@ -97,19 +84,18 @@
       (raise-argument-error 'alist->discrete-dist "(listof (cons/c any/c (>=/c 0))" alist))
     (vector-set! vs i (car v+w))
     (vector-set! ws i (cdr v+w)))
-  (make-discrete-dist vs ws #:normalize? normalize? #:sort? SORT?))
+  (make-discrete-dist vs ws #:normalize? normalize?))
 
 (define (make-discrete-dist vs
                             [ws (let ([len (vector-length vs)])
                                   (make-vector len (/ len)))]
-                            #:normalize? [normalize? #f]
-                            #:sort? [sort? SORT?])
+                            #:normalize? [normalize? #f])
   (unless (= (vector-length vs) (vector-length ws))
     (error 'make-discrete-dist
            "values and weights vectors have different lengths\n  values: ~e\n  weights: ~e"
            vs ws))
   (define-values (vs1 ws1)
-    (if sort?
+    (if SORT?
         (combine-duplicates vs ws)
         (values vs ws)))
   (define vs* (vector->immutable-vector vs1))
@@ -124,15 +110,24 @@
                   1)
           (values (vector->immutable-vector ws1)
                   wsum))))
-  (*discrete-dist vs* ws* wsum*))
+  (discrete-dist vs* ws* wsum*))
+
+(define-module-boundary-contract make-discrete-dist:c make-discrete-dist
+  (->* [vector?] [(vectorof (>= 0)) #:normalize? boolean?] any))
+
+(define-match-expander make-discrete-dist:m
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ vs:expr ws:expr) (syntax/loc stx (discrete-dist vs ws _))]))
+  (make-variable-like-transformer #'make-discrete-dist:c))
 
 (define (normalize-discrete-dist d)
-  (cond [(= (*discrete-dist-wsum d) 1)
+  (cond [(= (discrete-dist-wsum d) 1)
          d]
-        [(zero? (*discrete-dist-wsum d))
+        [(zero? (discrete-dist-wsum d))
          (error 'normalize-discrete-dist "cannot normalize empty measure")]
         [else
-         (make-discrete-dist (*discrete-dist-vs d) (*discrete-dist-ws d) #:normalize? #t)]))
+         (make-discrete-dist (discrete-dist-vs d) (discrete-dist-ws d) #:normalize? #t)]))
 
 (define (print-discrete-dist name vs ws port mode)
   (define (recur x p)
@@ -204,7 +199,7 @@
   (lambda (self d)
     (match-define (discrete-dist-of pred) self)
     (match d
-      [(*discrete-dist vs _ _)
+      [(discrete-dist vs _ _)
        (for/and ([v (in-vector vs)]) (pred v))]
       [_ #f])))
 
@@ -243,7 +238,7 @@
 
 (define (in-dist:extract who d normalize?)
   (cond [(discrete-dist? d)
-         (match-define (*discrete-dist vs ws wsum) d)
+         (match-define (discrete-dist vs ws wsum) d)
          (values (lambda (i) (vector-ref vs i))
                  (if normalize?
                      (lambda (i) (/ (vector-ref ws i) wsum))
@@ -268,10 +263,16 @@
 
 (define (discrete-pdf vs ws wsum x log?)
   (define p
-    (or (for/or ([v (in-vector vs)]
-                 [w (in-vector ws)])
-          (and (equal? x v) (/ w wsum)))
-        0))
+    (cond [SORT?
+           (or (for/or ([v (in-vector vs)]
+                        [w (in-vector ws)])
+                 (and (equal? x v) (/ w wsum)))
+               0)]
+          [else
+           (/ (for/sum ([v (in-vector vs)]
+                        [w (in-vector ws)])
+                (if (equal? x v) w 0))
+              wsum)]))
   (convert-p p log? #f))
 
 (define (discrete-sample vs ws wsum)
