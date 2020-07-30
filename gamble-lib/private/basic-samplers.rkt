@@ -92,8 +92,8 @@
     (init-field thunk)
     (field [successes 0]
            [rejections 0]
-           [dens-dim-rejections 0]
-           [min-dens-dim +inf.0]
+           [ddim-rejections 0]
+           [min-ddim +inf.0]
            [bad-samples 0])
     (super-new)
 
@@ -101,9 +101,9 @@
       (printf "== Importance sampler\n")
       (printf "Samples produced: ~s\n" successes)
       (printf "Rejections: ~s\n" rejections)
-      (printf "Density dimension: ~s\n" min-dens-dim)
-      (unless (zero? dens-dim-rejections)
-        (printf "Density dimension rejections: ~s\n" dens-dim-rejections))
+      (printf "Density dimension: ~s\n" min-ddim)
+      (unless (zero? ddim-rejections)
+        (printf "Density dimension rejections: ~s\n" ddim-rejections))
       (unless (zero? bad-samples)
         (printf "Bad samples emitted (wrong density dimension): ~s" bad-samples)))
 
@@ -112,19 +112,19 @@
       (define v (send ctx run thunk))
       (case (car v)
         [(okay)
-         (define dens-dim (get-field dens-dim ctx))
-         (when (< dens-dim min-dens-dim)
+         (define ddim (get-field obs-ddim ctx))
+         (when (< ddim min-ddim)
            (unless (zero? successes)
              (eprintf "WARNING: previous ~s samples are meaningless; wrong density dimension\n"
                       successes))
-           (vprintf "Lower density dimension seen: ~s\n" dens-dim)
+           (vprintf "Lower density dimension seen: ~s\n" ddim)
            (set! bad-samples successes)
-           (set! min-dens-dim dens-dim))
-         (cond [(<= dens-dim min-dens-dim)
+           (set! min-ddim ddim))
+         (cond [(<= ddim min-ddim)
                 (set! successes (add1 successes))
                 (cons (cdr v) (get-field weight ctx))]
                [else
-                (set! dens-dim-rejections (add1 dens-dim-rejections))
+                (set! ddim-rejections (add1 ddim-rejections))
                 (set! rejections (add1 rejections))
                 (sample/weight)])]
         [(fail)

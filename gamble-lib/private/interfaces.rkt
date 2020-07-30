@@ -81,7 +81,7 @@
   (class* object% (stochastic-ctx<%>)
     (super-new)
 
-    (define/public (sample dist)
+    (define/public (sample dist _id)
       (dist-sample dist))
 
     ;; No ambient weight to affect; just check likelihood is non-zero.
