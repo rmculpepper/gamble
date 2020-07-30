@@ -4,18 +4,17 @@
 
 #lang racket/base
 (require racket/contract/base
-         racket/match
          racket/math
-         racket/generic
          racket/flonum
          racket/vector
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "dist.rkt"
          "dist-define.rkt")
-(provide (all-defined-out))
+(provide #| implicit from define-dist-type |#)
 
 ;; Multiply, but short-circuit if first arg evals to 0.
+;; FIXME: preserve (in)exactness?
 (define-syntax-rule (lazy* a b ...)
   (let ([av a]) (if (zero? av) 0 (* av b ...))))
 

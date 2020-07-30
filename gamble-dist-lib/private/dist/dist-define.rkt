@@ -7,7 +7,6 @@
                      syntax/parse
                      syntax/parse/experimental/eh
                      racket/syntax)
-         racket/contract
          racket/flonum
          "dist.rkt")
 (provide define-dist-type

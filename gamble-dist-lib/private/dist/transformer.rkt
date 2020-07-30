@@ -3,18 +3,10 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/contract
-         (rename-in racket/match [match-define defmatch])
-         racket/math
-         racket/generic
-         racket/flonum
-         racket/vector
-         (prefix-in m: math/distributions)
-         (prefix-in m: math/special-functions)
-         "dist.rkt"
+(require "dist.rkt"
          "dist-define.rkt"
          "discrete.rkt")
-(provide (all-defined-out))
+(provide #| implicit from define-dist-type |#)
 
 ;; ============================================================
 

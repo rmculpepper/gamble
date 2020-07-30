@@ -87,8 +87,7 @@
      (error 'dist-inv-cdf "not defined for distribution\n  given: ~e" d))
    (define (*total-mass d) #f)
    (define (*support d) #f)
-   (define (*Denergy d x . d/dts)
-     (error 'dist-Denergy "not implemented"))   
+   (define (*Denergy d x . d/dts) #f)
    (define (*enum d) #f)
    ;; Real dists
    (define (*mean d) #f)
@@ -107,6 +106,9 @@
   (*cdf d x log? 1-p?))
 (define (dist-inv-cdf d x [log? #f] [1-p? #f])
   (*inv-cdf d x log? 1-p?))
+
+(define (dist-total-mass d)
+  (*total-mass d))
 
 (define (dist-energy d x) ;; Energy = -log(pdf(d,x))
   (- (dist-pdf d x #t)))

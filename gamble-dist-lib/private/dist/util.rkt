@@ -3,8 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/generic
-         (submod racket/performance-hint begin-encourage-inline))
+(require (submod racket/performance-hint begin-encourage-inline))
 (provide (all-defined-out))
 
 ;; ============================================================

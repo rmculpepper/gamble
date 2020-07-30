@@ -44,6 +44,7 @@
   #:counting
   #:pdf discrete-pdf
   #:sample discrete-sample
+  #:total-mass wsum
   #:enum vs
   #:support 'finite
   #:provide (begin)
