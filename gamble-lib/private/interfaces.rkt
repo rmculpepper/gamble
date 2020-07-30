@@ -59,23 +59,18 @@
 
 (define stochastic-ctx<%>
   (interface ()
-    sample  ;; (Dist A) Address -> A
-    lscore  ;; LogReal -> Void
-    nscore  ;; NNReal -> Void
-    fail    ;; Any -> (escapes)
-    mem     ;; Function -> Function
+    sample      ;; (Dist A) Address -> A
+    lscore      ;; LogReal -> Void
+    nscore      ;; NNReal -> Void
+    fail        ;; Any -> (escapes)
+    mem         ;; Function -> Function
+    trycatch    ;; (-> A) (-> A) -> A
     ))
 
 (define stochastic-ctx/run<%>
   (interface (stochastic-ctx<%>)
     run     ;; (-> A) -> (U (cons 'okay A) (cons 'fail Any))
     ))
-#|
-(define stochastic-ctx/trycatch<%>
-  (interface (stochastic-ctx<%>)
-    trycatch ;; (-> A) (-> A) -> A
-    ))
-|#
 
 (define plain-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
@@ -102,6 +97,9 @@
       (if reason
           (error 'fail "failed\n  reason: ~e" reason)
           (error 'fail "failed")))
+
+    (define/public (trycatch p1 p2)
+      (error 'trycatch "not supported"))
     ))
 
 (define plain-stochastic-ctx/run%

@@ -67,7 +67,7 @@
                (fail 'observation))]
             [else (not-supported 'observe (format "\n  distribution: ~e" dist))]))
 
-    (define/public (trycatch p1 p2)
+    (define/override (trycatch p1 p2)
       (match (run p1)
         [(cons 'okay value)
          value]
