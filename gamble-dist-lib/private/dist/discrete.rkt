@@ -28,8 +28,6 @@
           [discrete-dist->inexact
            (-> discrete-dist? any)]))
 
-(define SORT? #t)
-
 ;; ============================================================
 ;; Discrete distribution
 
@@ -95,9 +93,7 @@
            "values and weights vectors have different lengths\n  values: ~e\n  weights: ~e"
            vs ws))
   (define-values (vs1 ws1)
-    (if SORT?
-        (combine-duplicates vs ws)
-        (values vs ws)))
+    (combine-duplicates vs ws))
   (define vs* (vector->immutable-vector vs1))
   (define-values (ws* wsum*)
     (let ([wsum (for/sum ([w (in-vector ws1)]) w)])
@@ -263,16 +259,10 @@
 
 (define (discrete-pdf vs ws wsum x log?)
   (define p
-    (cond [SORT?
-           (or (for/or ([v (in-vector vs)]
-                        [w (in-vector ws)])
-                 (and (equal? x v) (/ w wsum)))
-               0)]
-          [else
-           (/ (for/sum ([v (in-vector vs)]
-                        [w (in-vector ws)])
-                (if (equal? x v) w 0))
-              wsum)]))
+    (or (for/or ([v (in-vector vs)]
+                 [w (in-vector ws)])
+          (and (equal? x v) (/ w wsum)))
+        0))
   (convert-p p log? #f))
 
 (define (discrete-sample vs ws wsum)
