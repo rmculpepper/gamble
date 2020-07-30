@@ -3,7 +3,7 @@
 ;; ============================================================
 (require "private/dist/base.rkt")
 
-(provide sampler?
+(provide dist/sample?
          dist-sample
          dist?
          dists-same-type?

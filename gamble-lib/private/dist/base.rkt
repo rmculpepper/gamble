@@ -40,10 +40,10 @@
 
 ;; ------------------------------------------------------------
 
-(define-generics sampler
+(define-generics dist/sample
   ;; type X
-  (*sample sampler) ;; Dist -> X
-  (*wsample sampler) ;; Dist -> (values X NNReal/#f LogReal)
+  (*sample dist/sample) ;; Dist -> X
+  (*wsample dist/sample) ;; Dist -> (values X NNReal/#f LogReal)
   #:fallbacks
   [(define (*wsample self) (values (dist-sample self) 1 0.0))])
 

@@ -76,7 +76,7 @@
                        (unless (p.pred p.param) (bad 'p.param)) ...
                        (~? (guard-fun p.param ... _name)
                            (values p.param ...)))
-             #:methods gen:sampler
+             #:methods gen:dist/sample
              [(define (*sample d)
                 (f.sample-fun (get-param d) ...))]
              #:methods gen:dist
