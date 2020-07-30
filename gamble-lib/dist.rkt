@@ -1,7 +1,7 @@
 #lang racket/base
 
 ;; ============================================================
-(require "private/dist/dist.rkt")
+(require "private/dist/base.rkt")
 
 (provide sampler?
          dist-sample

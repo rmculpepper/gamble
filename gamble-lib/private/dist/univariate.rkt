@@ -9,8 +9,8 @@
          racket/vector
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
-         "dist.rkt"
-         "dist-define.rkt")
+         "base.rkt"
+         "define.rkt")
 (provide #| implicit from define-dist-type |#)
 
 ;; Multiply, but short-circuit if first arg evals to 0.

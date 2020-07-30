@@ -3,8 +3,8 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require "dist.rkt"
-         "dist-define.rkt"
+(require "base.rkt"
+         "define.rkt"
          "discrete.rkt")
 (provide #| implicit from define-dist-type |#)
 

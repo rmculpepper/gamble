@@ -10,8 +10,8 @@
          racket/pretty
          racket/struct
          racket/vector
-         "dist.rkt"
-         "dist-define.rkt"
+         "base.rkt"
+         "define.rkt"
          "sort.rkt")
 (provide (rename-out [discrete-dist:m discrete-dist]
                      [make-discrete-dist:m make-discrete-dist])

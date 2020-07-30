@@ -5,7 +5,7 @@
 #lang racket/base
 (require racket/generic
          (submod racket/performance-hint begin-encourage-inline)
-         "util.rkt")
+         "../util/real.rkt")
 (provide (all-defined-out))
 
 ;; NNReal = nonnegative real

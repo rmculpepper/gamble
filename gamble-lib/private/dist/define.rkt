@@ -8,7 +8,7 @@
                      syntax/parse/experimental/eh
                      racket/syntax)
          racket/flonum
-         "dist.rkt")
+         "base.rkt")
 (provide define-dist-type
          define-fl-dist-type)
 
