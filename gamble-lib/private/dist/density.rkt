@@ -71,3 +71,13 @@
          (density (* el1 el2) (and ll1 ll2 (+ ll1 ll2)) (+ ddim1 ddim2))]
         [else
          (density #f (+ (or ll1 (log el1)) (or ll2 (log el2))) (+ ddim1 ddim2))]))
+
+(define (density-product ds)
+  (for/fold ([accn 1] [accl 0.0] [accddim 0]
+             #:result (make-density accn accl accddim))
+            ([d ds])
+    (match-define (density nl ll ddim) d)
+    (cond [(and accn nl)
+           (values (* accn nl) (and accl ll (+ accl ll)) (+ accddim ddim))]
+          [else
+           (values #f (+ (or accl (log accn)) (or ll (log nl))) (+ accddim ddim))])))

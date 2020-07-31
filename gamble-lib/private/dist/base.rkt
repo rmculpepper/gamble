@@ -86,6 +86,8 @@
 
 (define (dist-density d x [full? #t])
   (*density d x full?))
+(define (dist-density* d xs [full? #t])
+  (density-product (for/list ([x xs]) (dist-density d x full?))))
 (define (dist-pdf d x [log? #f])
   (*pdf d x log?))
 (define (dist-cdf d x [log? #f] [1-p? #f])
@@ -131,6 +133,7 @@
            (> (integer-range-min support) -inf.0)
            (< (integer-range-max support) +inf.0))))
 
+;; FIXME: also compute normalizing constant (as density)
 (define (dist-conjugate d data-d data)
   (or (*conjugate d data-d data)
       (error 'dist-conjugate "combination not supported\n  dist: ~e\n  kernel: ~e\n  data: ~e"
