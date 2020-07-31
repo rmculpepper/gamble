@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/contract/base
+         racket/match
          racket/math
          racket/flonum
          racket/vector

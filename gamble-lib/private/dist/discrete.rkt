@@ -13,20 +13,7 @@
          "base.rkt"
          "define.rkt"
          "sort.rkt")
-(provide (rename-out [discrete-dist:m discrete-dist]
-                     [make-discrete-dist:m make-discrete-dist])
-         discrete-dist?
-         discrete-dist-vs
-         discrete-dist-ws
-         discrete-dist-of
-         in-discrete-dist
-         (contract-out
-          [alist->discrete-dist
-           (->* [list?] [#:normalize? any/c] any)]
-          [normalize-discrete-dist
-           (-> discrete-dist? any)]
-          [discrete-dist->inexact
-           (-> discrete-dist? any)]))
+(provide (all-defined-out))
 
 ;; ============================================================
 ;; Discrete distribution
@@ -224,12 +211,12 @@
                ((add1 i)))]))]
       [_ #f])))
 
-(define-sequence-syntax in-discrete-dist
-  (lambda () #'in-discrete-dist*)
+(define-sequence-syntax in-dist
+  (lambda () #'in-dist*)
   (lambda (stx) (in-dist-transformer stx #f)))
 
-(define (in-discrete-dist* d)
-  (define-values (get-v get-w len) (in-dist:extract 'in-discrete-dist d #f))
+(define (in-dist* d)
+  (define-values (get-v get-w len) (in-dist:extract 'in-dist d #f))
   (in-parallel (sequence-map get-v (in-range len))
                (sequence-map get-w (in-range len))))
 
@@ -275,54 +262,3 @@
            (vector-ref vs i)]
           [else
            (loop (add1 i) (- p (vector-ref ws i)))])))
-
-#|
-;; ============================================================
-;; Monad
-(provide
- (contract-out
-  [dist-unit (-> any/c any)]
-  [dist-fmap (-> finite-dist? (-> any/c any/c) any)]
-  [dist-bind (-> finite-dist? (-> any/c finite-dist?) any)]
-  [dist-bindx (-> finite-dist? (-> any/c finite-dist?) any)]
-  [dist-filter (-> finite-dist? (-> any/c boolean?) any)]
-  [dist-join (-> finite-dist? finite-dist?)]))
-
-(define (dist-unit v)
-  (discrete-dist [v 1]))
-
-(define (dist-fmap d f)
-  (alist->discrete-dist
-   (for/list ([(v w) (in-dist d)])
-     (cons (f v) w))
-   #:normalize? #f))
-
-(define (dist-bind d f)
-  (alist->discrete-dist
-   (for*/list ([(v w) (in-dist d)]
-               [(v* w*) (in-dist (f v))])
-     (cons v* (* w w*)))
-   #:normalize? #f))
-
-(define (dist-bindx d f)
-  (alist->discrete-dist
-   (for*/list ([(v w) (in-dist d)]
-               [(v* w*) (in-dist (f v))])
-     (cons (list v v*) (* w w*)))
-   #:normalize? #f))
-
-(define (dist-filter d pred)
-  (alist->discrete-dist
-   (for*/list ([(v w) (in-dist d)]
-               #:when (pred v))
-     (cons v w))
-   #:normalize? #f))
-
-(define (dist-join d)
-  (for ([(v w) (in-dist d)])
-    (unless (finite-dist? v)
-      (error 'dist-join
-             "expected finite distribution over finite distributions\n  given: ~e"
-             d)))
-  (dist-bind d values))
-|#

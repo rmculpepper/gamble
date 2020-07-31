@@ -53,6 +53,7 @@
   (*support dist)             ; Dist -> DistSupport
   (*Denergy dist x . d/dts)   ; Dist X Param ... -> Real
   (*enum dist)                ; Dist -> #f or ??
+  (*conjugate dist ddist data); Dist KernelSexpr Any -> Dist/#f
 
   ;; Real-valued dists (X = Real)
   (*mean dist)                ; Dist -> Real/#f/NaN
@@ -73,6 +74,7 @@
    (define (*support d) #f)
    (define (*Denergy d x . d/dts) #f)
    (define (*enum d) #f)
+   (define (*conjugate d data-d data) #f)
    ;; Real dists
    (define (*mean d) #f)
    (define (*median d) #f)
@@ -128,6 +130,11 @@
       (and (integer-range? support)
            (> (integer-range-min support) -inf.0)
            (< (integer-range-max support) +inf.0))))
+
+(define (dist-conjugate d data-d data)
+  (or (*conjugate d data-d data)
+      (error 'dist-conjugate "combination not supported\n  dist: ~e\n  kernel: ~e\n  data: ~e"
+             d data-d data)))
 
 ;; dist-{mean,median,variance} : Dist -> Real | #f | NaN
 ;; #f means unknown; NaN means known to be undefined
