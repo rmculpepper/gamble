@@ -8,7 +8,8 @@
                      syntax/parse/experimental/eh
                      racket/syntax)
          racket/flonum
-         "base.rkt")
+         "base.rkt"
+         "density.rkt")
 (provide define-dist-type
          define-fl-dist-type)
 
@@ -26,9 +27,9 @@
     (pattern [param:id pred:expr conv:expr]))
 
   (define-syntax-class base-measure
-    (pattern #:counting #:with ddim #''0)
-    (pattern #:lebesgue #:with ddim #''1)
-    (pattern #:mixture  #:attr ddim #f))
+    (pattern #:counting #:with ddim #''0 #:with ndensity #''#t #:with ldensity #''#f)
+    (pattern #:lebesgue #:with ddim #''1 #:with ndensity #''#f #:with ldensity #''#t)
+    (pattern #:mixture  #:attr ddim #f   #:attr ndensity #f    #:attr ldensity #f))
 
   (define-eh-alternative-set prob-options
     (pattern
@@ -82,9 +83,11 @@
              #:methods gen:dist
              [(define (*type d) 'name-dist)
               (define (*params d) (vector (get-param d) ...))
-              (define (*density d x log?)
-                (~? (f.density-fun (get-param d) ... x log?)
-                    (values (*pdf d x log?) base.ddim)))
+              (define (*density d x full?)
+                (~? (f.density-fun (get-param d) ... x full?)
+                    (make-density (and (or full? base.ndensity) (*pdf d x #f))
+                                  (and (or full? base.ldensity) (*pdf d x #t))
+                                  base.ddim)))
               (~? (define (*pdf d x log?)
                     (f.pdf-fun (get-param d) ... x log?)))
               (~? (define (*cdf d x log? 1-p?)

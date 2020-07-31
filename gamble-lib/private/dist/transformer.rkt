@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require "base.rkt"
+         "density.rkt"
          "define.rkt"
          "discrete.rkt")
 (provide #| implicit from define-dist-type |#)
@@ -126,12 +127,10 @@
 (define (make-mixture-dist ds [ws (make-vector (vector-length ds) 1)])
   (mixture-dist (make-discrete-dist ds ws)))
 
-(define (mixture-density mix x log?)
-  (for/fold ([accw 0] [accddim +inf.0])
-            ([(subdist w) (in-discrete-dist mix)])
-    (define-values (d ddim) (dist-density subdist x log?))
-    (cond [log? (logdensity+ accw accddim (* w d) ddim)]
-          [else (density+    accw accddim (* w d) ddim)])))
+(define (mixture-density mix x full?)
+  (density-sum (for/list ([subdist (in-vector (discrete-dist-vs mix))])
+                 (dist-density subdist x full?))
+               (discrete-dist-ws mix)))
 
 (define (mixture-sample mix)
   (define d (dist-sample mix))
