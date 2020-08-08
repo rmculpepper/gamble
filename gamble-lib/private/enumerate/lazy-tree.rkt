@@ -7,7 +7,8 @@
          racket/class
          markparam
          "../interfaces.rkt"
-         "../dist/base.rkt")
+         "../dist/base.rkt"
+         "../dist/density.rkt")
 (provide (struct-out only)
          (struct-out split)
          (struct-out failed)
@@ -151,14 +152,13 @@
        (lambda (k restore)
          (split dist (lambda (v) (restore (lambda () (k v)))) #f))))
 
-    (define/public (lscore ll) (error 'nope))
-    (define/public (nscore l) (error 'nope))
-
-    (define/public (observe dist val _scale)
+    (define/public (lscore ll) (dn-score (make-density #f ll 0) (void)))
+    (define/public (nscore l) (dn-score (make-density l #f 0) (void)))
+    (define/public (observe dist val _scale) (dn-score (dist-density dist val) val))
+    (define/private (dn-score dn val)
       (call/restore
        (lambda (k restore)
-         (weight (dist-density dist val)
-                 (lambda () (restore (lambda () (k val))))))))
+         (weight dn (lambda () (restore (lambda () (k val))))))))
 
     (define/public (fail reason)
       (abort-current-continuation (activation-prompt (current-activation))
