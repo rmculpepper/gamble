@@ -84,7 +84,7 @@
       (when (logspace-zero? ll) (fail 'lscore)))
     (define/public (nscore l)
       (unless (> l 0) (fail 'nscore)))
-    (define/public (observe d v scale)
+    (define/public (observe d v)
       (lscore (dist-pdf d v #t)))
 
     (define/public (mem f)
@@ -128,8 +128,7 @@
 (define (mem f) (send (current-stochastic-ctx) mem f))
 (define (lscore ll) (send (current-stochastic-ctx) lscore ll))
 (define (nscore l) (send (current-stochastic-ctx) nscore l))
-(define (observe dist val [scale 1])
-  (send (current-stochastic-ctx) observe dist val scale))
+(define (observe dist val) (send (current-stochastic-ctx) observe dist val))
 (define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 (define (sample dist [id #f]) (send (current-stochastic-ctx) sample dist id))
 (define (trycatch p1 p2)

@@ -154,7 +154,7 @@
 
     (define/public (lscore ll) (dn-score (make-density #f ll 0) (void)))
     (define/public (nscore l) (dn-score (make-density l #f 0) (void)))
-    (define/public (observe dist val _scale) (dn-score (dist-density dist val) val))
+    (define/public (observe dist val) (dn-score (dist-density dist val) val))
     (define/private (dn-score dn val)
       (call/restore
        (lambda (k restore)

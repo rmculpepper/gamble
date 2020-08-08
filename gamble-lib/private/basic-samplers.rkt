@@ -59,7 +59,7 @@
     (define/override (nscore l)
       (not-supported 'nscore))
 
-    (define/override (observe dist val scale)
+    (define/override (observe dist val)
       (define-values (d ddim) (dist-density dist val #t))
       (cond [(zero? ddim)
              ;; FIXME: assumes total weight is 1!
@@ -145,7 +145,7 @@
       (set! weight (* weight l))
       (unless (positive? l) (fail who)))
 
-    (define/override (observe dist val scale)
+    (define/override (observe dist val)
       (define-values (d ddim) (dist-density dist val))
       (unless (zero? ddim) (set! obs-ddim (add1 obs-ddim)))
       (nscore d 'observe))
