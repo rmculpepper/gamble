@@ -56,7 +56,7 @@
   (define initial-table (table (hash) +inf.0))
   ;; heap lib provides "min-heap", but want max prob, so use >= comparison
   (define initial-heap (heap entry->=?))
-  (explore/tree initial-heap initial-table tree (density 1 0 0)))
+  (explore/tree initial-heap initial-table tree one-density))
 
 ;; A Table[X] is (table Hash[X => Density] Nat), where ddim is the ddim
 ;; of all entries in the hash.

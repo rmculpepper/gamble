@@ -30,6 +30,7 @@
      (density (or el (exp ll)) (or ll (ilog el)) ddim)]))
 
 (define zero-density (density 0 -inf.0 +inf.0))
+(define one-density (density 1 0 0))
 
 (define (density-zero? d)
   (match-define (density el ll _) d)
