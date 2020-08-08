@@ -101,16 +101,16 @@
 ;; - (split (Dist B) (-> B (EnumTree A)) Nat/#f)
 ;;     where Nat represents continuing enumeration of infinite int-dist
 ;; - (failed Any)
-;; - (weight PositiveReal (-> (EnumTree A)))
+;; - (weight Density (-> (EnumTree A)))
 (struct only (answer))
 (struct split (dist k start))
 (struct failed (reason))
-(struct weight (dist val scale k))
+(struct weight (dn k))
 
 ;; ----------------------------------------
 
-;; reify-tree : (-> A) (Listof Condition) -> (EnumTree A)
-(define (reify-tree thunk)
+;; reify-tree : (-> A) -> (EnumTree A)
+(define (reify-tree thunk limit?)
   (define memo-key (mark-parameter))
   (define memo-table (hash))
   (define ctag (make-continuation-prompt-tag))
@@ -154,45 +154,11 @@
     (define/public (lscore ll) (error 'nope))
     (define/public (nscore l) (error 'nope))
 
-    (define/public (observe dist val scale)
+    (define/public (observe dist val _scale)
       (call/restore
        (lambda (k restore)
-         (weight dist val scale (lambda () (restore (lambda () (k val))))))))
-
-    #;
-    (define/public (sample dist _id)
-      (define act (current-activation))
-      (define ctag (activation-prompt act))
-      (define memo-key (activation-memo-table-key act))
-      (define memo-table (unbox (memo-key)))
-      (call-with-composable-continuation
-       (lambda (k)
-         (abort-current-continuation
-          ctag
-          (lambda ()
-            (split dist
-                   (lambda (v)
-                     (call-with-enum-context act memo-table
-                       (lambda () (k v))))
-                   #f))))
-       ctag))
-
-    #;
-    (define/public (observe dist val scale)
-      (define act (current-activation))
-      (define ctag (activation-prompt act))
-      (define memo-key (activation-memo-table-key act))
-      (define memo-table (unbox (memo-key)))
-      (call-with-composable-continuation
-       (lambda (k)
-         (abort-current-continuation
-          ctag
-          (lambda ()
-            (weight dist val scale
-                    (lambda ()
-                      (call-with-enum-context act memo-table
-                        (lambda () (k val))))))))
-       ctag))
+         (weight (dist-density dist val)
+                 (lambda () (restore (lambda () (k val))))))))
 
     (define/public (fail reason)
       (abort-current-continuation (activation-prompt (current-activation))
@@ -220,50 +186,27 @@
                  (set-box! b (hash-set (unbox b) key v))
                  v])))
       memoized-function)
+
+    (define/public (trycatch p1 p2)
+      (error 'trycatch "not implemented"))
     ))
 
 ;; ----
 
 ;; split->subtrees : split Boolean -> (Listof (List Prob (-> (EnumTree A))))
-(define (split->subtrees s logspace?)
+(define (split->subtrees s)
   (match-define (split dist k start) s)
   (define enum (dist-enum dist))
   (define result
-  (cond [(eq? enum #f)
-         (error 'enumerate "cannot enumerate distribution\n  distribution: ~e" dist)]
-        [(eq? enum 'lazy)
-         (split->subtrees*/lazy dist k (or start 0) logspace?)]
-        [(integer? enum)
+  (cond [(integer? enum)
          (for/list ([i (in-range enum)])
-           (cons (dist-pdf dist i logspace?) (lambda () (k i))))]
+           (cons (dist-density dist i) (lambda () (k i))))]
         [(vector? enum)
          (for/list ([v (in-vector enum)])
-           (cons (dist-pdf dist v logspace?) (lambda () (k v))))]
-        [else (error 'enumerate "internal error: bad enum value: ~e" enum)]))
+           (cons (dist-density dist v) (lambda () (k v))))]
+        ;; [(eq? enum 'lazy)
+        ;;  (split->subtrees*/lazy dist k (or start 0))]
+        [else ;;(eq? enum #f)
+         (error 'enumerate "cannot enumerate distribution\n  distribution: ~e" dist)]
+        #;[else (error 'enumerate "internal error: bad enum value: ~e" enum)]))
   result)
-
-;; split->subtrees*/lazy : Dist (-> Value (EnumTree A))
-;;                      -> (Listof (Cons Prob (-> (EnumTree A))))
-(define (split->subtrees*/lazy dist k start logspace?)
-  (define-values (vals probs tail-prob next)
-    (lazy-dist->vals+probs dist start logspace?))
-  (cons (cons tail-prob (lambda () (split dist k next)))
-        (for/list ([val (in-list vals)]
-                   [prob (in-list probs)])
-          (cons prob (lambda () (k val))))))
-
-(define TAKE 10)
-
-;; lazy-dist->vals+probs : Dist Nat Boolean -> (values (Listof A) (Listof Prob) Prob Nat)
-(define (lazy-dist->vals+probs dist start logspace?)
-  (define the-scale (dist-cdf dist (sub1 start) logspace? #t))
-  (define (scale a) (if logspace? (- a the-scale) (/ a the-scale)))
-  (define-values (vals probs)
-    (for/lists (vals probs) ([i (in-range start (+ start TAKE))])
-      (values i (scale (dist-pdf dist i logspace?)))))
-  (values vals
-          probs
-          (scale (dist-cdf dist (+ start TAKE -1) logspace? #t)) ;; FIXME: don't rely on cdf?
-          (+ start TAKE)))
-
-;; FIXME: this code assumes total-mass of any dist is 1, problem if limit also set
