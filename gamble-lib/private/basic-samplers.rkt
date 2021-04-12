@@ -54,18 +54,8 @@
     (define/private (not-supported who [more ""])
       (error who "not supported by rejection sampler~a" more))
 
-    (define/override (lscore ll)
-      (not-supported 'lscore))
-    (define/override (nscore l)
-      (not-supported 'nscore))
-
-    (define/override (observe dist val)
-      (define-values (d ddim) (dist-density dist val #t))
-      (cond [(zero? ddim)
-             ;; FIXME: assumes total weight is 1!
-             (unless (< (log (random)) d)
-               (fail 'observation))]
-            [else (not-supported 'observe (format "\n  distribution: ~e" dist))]))
+    (define/override (dscore dn who)
+      (not-supported who))
 
     (define/override (trycatch p1 p2)
       (match (run p1)
@@ -112,7 +102,9 @@
       (define v (send ctx run thunk))
       (case (car v)
         [(okay)
-         (define ddim (get-field obs-ddim ctx))
+         (define obs-dn (send ctx get-obs-dn))
+         (define ddim (density-ddim obs-dn))
+         (define weight (density-n obs-dn))
          (when (< ddim min-ddim)
            (unless (zero? successes)
              (eprintf "WARNING: previous ~s samples are meaningless; wrong density dimension\n"
@@ -122,7 +114,7 @@
            (set! min-ddim ddim))
          (cond [(<= ddim min-ddim)
                 (set! successes (add1 successes))
-                (cons (cdr v) (get-field weight ctx))]
+                (cons (cdr v) weight)]
                [else
                 (set! ddim-rejections (add1 ddim-rejections))
                 (set! rejections (add1 rejections))
@@ -134,30 +126,22 @@
 
 (define importance-stochastic-ctx%
   (class rejection-stochastic-ctx%
-    (field [weight 1]
-           [obs-ddim 0])
+    (field [obs-dn one-density])
     (inherit fail run)
     (super-new)
 
-    (define/override (lscore ll)
-      (nscore (exp ll) 'lscore))
-    (define/override (nscore l [who 'nscore])
-      (set! weight (* weight l))
-      (unless (positive? l) (fail who)))
+    (define/public (get-obs-dn) obs-dn)
 
-    (define/override (observe dist val)
-      (define-values (d ddim) (dist-density dist val))
-      (unless (zero? ddim) (set! obs-ddim (add1 obs-ddim)))
-      (nscore d 'observe))
+    (define/override (dscore dn who)
+      (when (density-zero? dn) (fail who))
+      (set! obs-dn (density* obs-dn dn)))
 
     (define/override (trycatch p1 p2)
-      (define saved-weight weight)
-      (define saved-obs-ddim obs-ddim)
+      (define saved-dn obs-dn)
       (match (run p1)
         [(cons 'okay value)
          value]
         [(cons 'fail _)
-         (set! weight saved-weight)
-         (set! obs-ddim saved-obs-ddim)
+         (set! obs-dn saved-dn)
          (p2)]))
     ))

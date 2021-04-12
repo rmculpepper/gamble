@@ -60,8 +60,10 @@
 (define stochastic-ctx<%>
   (interface ()
     sample      ;; (Dist A) Address -> A
+    dnscore     ;; Density -> Void
     lscore      ;; LogReal -> Void
     nscore      ;; NNReal -> Void
+    observe     ;; Dist[X] X -> Void
     fail        ;; Any -> (escapes)
     mem         ;; Function -> Function
     trycatch    ;; (-> A) (-> A) -> A
@@ -80,12 +82,14 @@
       (dist-sample dist))
 
     ;; No ambient weight to affect; just check likelihood is non-zero.
+    (define/public (dscore dn who)
+      (when (density-zero? dn) (fail who)))
     (define/public (lscore ll)
-      (when (logspace-zero? ll) (fail 'lscore)))
+      (dscore (density #f ll 0) 'lscore))
     (define/public (nscore l)
-      (unless (> l 0) (fail 'nscore)))
+      (dscore (density l #f 0) 'nscore))
     (define/public (observe d v)
-      (lscore (dist-pdf d v #t)))
+      (dscore (dist-density d v) 'observe))
 
     (define/public (mem f)
       (let ([memo-table (make-hash)])
@@ -126,6 +130,7 @@
 ;; Primitive operations
 
 (define (mem f) (send (current-stochastic-ctx) mem f))
+(define (dscore dn) (send (current-stochastic-ctx) dscore dn 'dscore))
 (define (lscore ll) (send (current-stochastic-ctx) lscore ll))
 (define (nscore l) (send (current-stochastic-ctx) nscore l))
 (define (observe dist val) (send (current-stochastic-ctx) observe dist val))
