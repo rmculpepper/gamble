@@ -11,6 +11,42 @@
 
 ;; ============================================================
 
+(define-dist-type affine-distx
+  ;; a != 0
+  ([d real-dist?] [a real?] [b real?])
+  #:lebesgue
+  #:pdf affine-distx-pdf
+  #:cdf affine-distx-cdf
+  #:inv-cdf affine-distx-inv-cdf
+  #:sample affine-distx-sample
+  ;; FIXME: support
+  #:support #f)
+
+(define (affine-forward a b x)
+  (+ b (* a x)))
+
+(define (affine-invert a b y)
+  (/ (- y b) a))
+
+(define (affine-distx-pdf d a b y log?)
+  (define x (affine-invert a b y))
+  (cond [(rational? x)
+         (define xpdf (dist-pdf d x log?))
+         (cond [log? (- xpdf (log a))]
+               [else (/ xpdf a)])]
+        [else (if log? -inf.0 0)]))
+
+(define (affine-distx-cdf d a b y log? 1-p?)
+  (dist-cdf d (affine-invert a b y) log? 1-p?))
+
+(define (affine-distx-inv-cdf d a b r log? 1-p?)
+  (affine-forward a b (dist-inv-cdf d r log? (if (< a 0) (not 1-p?) 1-p?))))
+
+(define (affine-distx-sample d a b)
+  (affine-forward a b (dist-sample d)))
+
+;; ============================================================
+
 (define-dist-type real-map-distx
   ;; f must be injective, continuous, differentiable, monotonic
   ;; invf returns NaN for out-of-range inputs

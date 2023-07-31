@@ -7,18 +7,32 @@
                      syntax/parse
                      syntax/parse/experimental/eh
                      racket/syntax)
+         racket/match
          racket/flonum
          "base.rkt"
          "density.rkt")
-(provide define-dist-type
-         define-fl-dist-type)
+(provide define-dist-struct
+         define-real-dist-struct)
+
+(define-syntax struct-fields (syntax-rules ()))
+(define-syntax struct-options (syntax-rules ()))
+
+(define-syntax define-struct/e
+  (syntax-parser
+    [(_ name:id e:expr ...)
+     _]))
+
+
+
+
 
 (begin-for-syntax
 
   (define-syntax-class name-dist-id
     #:attributes (name)
     (pattern nd:id
-             #:do [(define m (regexp-match #rx"^(.*)-dist$" (symbol->string (syntax-e #'nd))))]
+             #:do [(define nd-s (symbol->string (syntax-e #'nd)))
+                   (define m (regexp-match #rx"^(.*)-dist$" nd-s))]
              #:fail-unless m "expected identifier ending in `-dist`"
              #:with name (format-id #'nd "~a" (cadr m))))
 
@@ -26,11 +40,18 @@
     (pattern [param:id pred:expr] #:with conv #'begin)
     (pattern [param:id pred:expr conv:expr]))
 
+  (define-splicing-syntax-class maybe-guard
+    #:attributes (guard-fun)
+    (pattern (~seq #:guard guard-fun))
+    (pattern (~seq) #:attr guard-fun #f))
+
+  #;
   (define-syntax-class base-measure
     (pattern #:counting #:with ddim #''0 #:with ndensity #''#t #:with ldensity #''#f)
     (pattern #:lebesgue #:with ddim #''1 #:with ndensity #''#f #:with ldensity #''#t)
     (pattern #:mixture  #:attr ddim #f   #:attr ndensity #f    #:attr ldensity #f))
 
+  #;
   (define-eh-alternative-set prob-options
     (pattern
      (~or (~once (~seq #:sample sample-fun:expr))
@@ -39,6 +60,7 @@
           (~optional (~seq #:cdf cdf-fun:expr))
           (~optional (~seq #:inv-cdf inv-cdf-fun:expr)))))
 
+  #;
   (define-eh-alternative-set options
     (pattern
      (~or (~optional (~seq #:support support:expr))
@@ -54,6 +76,105 @@
           (~optional (~seq #:drift-dist drift-dist-fun:expr))
           (~optional (~seq #:provide provide-clause:expr))))))
 
+(define-syntax define-dist-struct
+  (syntax-parser
+    [(_ nd:name-dist-id (p:param-spec ...)
+        g:maybe-guard
+        more ...)
+     #'(begin
+         (struct nd (p.param ...)
+           #:transparent
+           #:guard (lambda (p.param ... _name)
+                     (define (bad who)
+                       (maker-error 'nd '(p.param ...) '(p.pred ...) who p.param ...))
+                     (unless (p.pred p.param) (bad 'p.param)) ...
+                     (~? (g.guard-fun p.param ... _name)
+                         (values p.param ...)))
+           more ...))]))
+
+
+
+
+(define-syntax (define-real-dist-struct stx)
+  (define-syntax-class flparam
+    (pattern [param:id pred:expr]
+             #:with mkconv #'exact->inexact
+             #:with ref #'param)
+    (pattern [param:id pred:expr #:exact]
+             #:with mkconv #'begin
+             #:with ref #'(exact->inexact param)))
+  (define-syntax-class kind-kw
+    (pattern #:real #:with convert #'begin #:with measure #'#:lebesgue)
+    (pattern #:nat  #:with convert #'inexact->exact #:with measure #'#:counting))
+  (define-splicing-syntax-class prefix-clause
+    (pattern (~seq #:prefix pfx:id))
+    (pattern (~seq) #:attr pfx #f))
+  (syntax-parse stx
+    [(define-fl-dist-type nd:name-dist-id (p:flparam ...)
+       kind:kind-kw
+       pc:prefix-clause
+       (~optional (~seq #:guard guard-expr:expr))
+       (~optional (~seq #:dist-methods [dist-method:expr ...]))
+       (~optional (~seq #:real-methods [real-method:expr ...]))
+       more ...)
+     (with-syntax ([(sample-def auto-real-defs)
+                    (cond [(attribute pc.pfx)
+                           (define prefix #'pc.pfx)
+                           (with-syntax ([fl-pdf
+                                          (format-id prefix "~a-pdf" prefix)]
+                                         [fl-cdf
+                                          (format-id prefix "~a-cdf" prefix)]
+                                         [fl-invcdf
+                                          (format-id prefix "~a-inv-cdf" prefix)]
+                                         [fl-sample
+                                          (format-id prefix "~a-sample" prefix)])
+                             #'((define (-sample self)
+                                  (match-define (nd p.param ...) self)
+                                  (kind.convert (flvector-ref (fl-sample p.ref ... 1) 0)))
+                                (begin
+                                  (define (-pdf self x log?)
+                                    (match-define (nd p.param ...) self)
+                                    (fl-pdf p.ref ... (exact->inexact x) log?))
+                                  (define (-cdf self x log? 1-p?)
+                                    (match-define (nd p.param ...) self)
+                                    (fl-cdf p.ref ... (exact->inexact x) log? 1-p?))
+                                  (define (-invcdf self x log? 1-p?)
+                                    (match-define (nd p.param ...) self)
+                                    (kind.convert
+                                     (fl-invcdf p.ref ... (exact->inexact x) log? 1-p?))))))]
+                          [else
+                           #'((begin) (begin))])]
+                   [(get-param ...)
+                    (for/list ([param (in-list (syntax->list #'(p.param ...)))])
+                      (format-id #'name-dist "~a-~a" #'name-dist param))])
+       #'(begin
+           (struct nd (p.param ...)
+             #:transparent
+             #:guard (lambda (p.param ... _name)
+                       (define (bad who)
+                         (maker-error 'nd '(p.param ...) '(p.pred ...) who p.param ...))
+                       (unless (p.pred p.param) (bad 'p.param)) ...
+                       (let-values ([(p.param ...)
+                                     (~? (guard-expr p.param ... _name)
+                                         (values p.param ...))])
+                         (values (p.mkconv p.param) ...)))
+             #:methods gen:dist
+             [(define (-density self x)
+                (cond [(not (rational? x)) 0]
+                      [else (-pdf self (exact->inexact x) #f)]))
+              (define (-total-measure self) 1)
+              sample-def
+              #;
+              (define (-measure self ms)
+                (match-define (nd p.param ...) self)
+                _)
+              (~? (begin dist-method ...))]
+             #:methods gen:real-dist
+             [auto-real-defs
+              (~? (begin real-method ...))]
+             more ...)))]))
+
+#;
 (define-syntax (define-dist-type stx)
   (syntax-parse stx
     [(define-dist-type name-dist:id (p:param-spec ...)
@@ -116,6 +237,7 @@
 
 ;; ------------------------------------------------------------
 
+#;
 (define-syntax (define-fl-dist-type stx)
   (define-syntax-class flparam
     (pattern [param:id pred:expr]

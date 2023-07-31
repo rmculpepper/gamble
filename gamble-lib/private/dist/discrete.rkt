@@ -12,8 +12,11 @@
          racket/vector
          "base.rkt"
          "define.rkt"
+         "measurable.rkt"
          "sort.rkt")
 (provide (all-defined-out))
+
+;; The empty dist is represented as a discrete dist with no elements.
 
 ;; ============================================================
 ;; Discrete distribution
@@ -24,21 +27,38 @@
 ;; Not necessarily normalized.
 ;; Uses equal? to distinguish elements of support.
 
-(define-dist-type discrete-dist
+(define-dist-struct discrete-dist
   ([h hash?] ;; Hash[X => PosReal]
    [wsum real?])
-  #:counting
-  #:pdf discrete-pdf
-  #:sample discrete-sample
-  #:total-mass wsum
-  #:enum (hash-keys h)
-  #:support 'finite
-  #:provide (begin)
-  #:extra
-  [#:property prop:custom-write
-   (lambda (obj port mode)
-     (match-define (discrete-dist h _) obj)
-     (print-discrete-dist 'discrete-dist h port mode))])
+  #:property prop:custom-write
+  (lambda (obj port mode)
+    (match-define (discrete-dist h _) obj)
+    (print-discrete-dist 'discrete-dist h port mode))
+  #:methods gen:dist
+  [(define (-sample self)
+     (match self [(discrete-dist h wsum) (discrete-sample h wsum)]))
+   (define (-density self x)
+     (match-define (discrete-dist h wsum) self)
+     (hash-ref h x 0))
+   (define (-measure self ms)
+     (match-define (discrete-dist h wsum) self)
+     (match ms
+       [(measurable atoms ivls)
+        (+ (for/sum ([v (in-hash-keys atoms)])
+             (hash-ref h v 0))
+           (if (null? ivls)
+               0
+               (for/sum ([(v w) (in-hash h)])
+                 (if (ivls-contains? ivls v) w 0))))]))
+   (define (-total-measure self)
+     (match self [(discrete-dist h wsum) wsum]))]
+  #:methods gen:enum-dist
+  [(define (-enum self)
+     (match self [(discrete-dist h wsum) (hash-keys h)]))
+   (define (-finite? self) #t)
+   (define (-infinite? self) #f)])
+
+;; ----------------------------------------
 
 ;; dhash[X] = Hash[X => PosReal]
 (define (dhash-add h v w)
@@ -55,21 +75,25 @@
                            #:result (discrete-dist dh wsum))
                           clauses
                           (let-values ([(v w) (let () . body)])
+                            (unless (and (rational? w) (>= w 0))
+                              (error 'for/discrete-dist
+                                     "expected (>=/c 0) for weight, got: ~e" w))
                             (values (dhash-add dh v w) (+ wsum w)))))]))
     (values (transformer #'for/fold/derived)
             (transformer #'for*/fold/derived))))
 
 (define (hash->discrete-dist h)
-  (cond [(and (immutable? h) (hash-equal? h))
-         (define wsum (for/sum ([(v w) (in-hash h)]) w))
-         (discrete-dist h wsum)]
+  (cond [(and (immutable? h) (hash-equal? h) (not (impersonator? h))
+              (for/fold ([s 0]) ([w (in-hash-values h)])
+                (and (rational? w) (> w 0) (+ s w))))
+         => (lambda (wsum) (discrete-dist h wsum))]
         [else
-         (hash->discrete-dist (immutable-hash h))]))
-
-(define (immutable-hash h)
-  ;; FIXME: preserve weak?
-  (for/fold ([dh (hash)]) ([(v w) (in-hash h)])
-    (dhash-add dh v w)))
+         (define-values (dh wsum)
+           (for/fold ([dh (hash)] [wsum 0]) ([(v w) (in-hash h)])
+             (unless (and (rational? w) (> w 0))
+               (raise-argument-error 'hash->discrete-dist "(hash/c any/c (>/c 0))" h))
+             (values (hash-set dh v (+ w (hash-ref dh v 0))) (+ wsum w))))
+         (discrete-dist dh wsum)]))
 
 (define (alist->discrete-dist alist)
   (for/discrete-dist ([v+w (in-list alist)])
@@ -135,17 +159,18 @@
       [else (write-string ">" p)]))
 
   (define (print-contents p leading-space)
-    (let ([lead (if leading-space (make-string (add1 leading-space) #\space) " ")])
-      (for ([e (sort (hash-map h cons) value< #:key car)])
-        (match-define (cons v w) e)
-        (when leading-space
-          (pretty-print-newline p (pretty-print-columns)))
-        (write-string lead p)
-        (write-string "[" p)
-        (recur v p)
-        (write-string " " p)
-        (recur w p)
-        (write-string "]" p))))
+    (define lead (if leading-space (make-string (add1 leading-space) #\space) " "))
+    (define vals (hash-keys h #t))
+    (for ([v (in-list vals)])
+      (define w (hash-ref h v))
+      (when leading-space
+        (pretty-print-newline p (pretty-print-columns)))
+      (write-string lead p)
+      (write-string "[" p)
+      (recur v p)
+      (write-string " " p)
+      (recur w p)
+      (write-string "]" p)))
 
   (define (print/one-line p)
     (print-prefix p)
@@ -193,47 +218,25 @@
 
 ;; ------------------------------------------------------------
 
-(begin-for-syntax
-  (define (in-dist-transformer stx)
+(define-sequence-syntax in-discrete-dist
+  (lambda () #'in-discrete-dist*)
+  (lambda (stx)
     (syntax-case stx ()
       [[(v w) (in-X d-expr)]
-       (let ()
-         (unless (identifier? #'v)
-           (raise-syntax-error #'in-X "expected identifier" stx #'v))
-         (unless (identifier? #'w)
-           (raise-syntax-error #'in-X "expected identifier" stx #'w))
-         #'[(v w) (in-hash (finite-dist->hash 'in-X d-expr))])]
+       #'[(v w) (in-hash (get-hash/in-discrete-dist 'in-X d-expr))]]
       [_ #f])))
 
-(define-sequence-syntax in-dist
-  (lambda () #'in-dist*)
-  (lambda (stx) (in-dist-transformer stx)))
+(define (in-discrete-dist* d)
+  (in-hash (get-hash/in-discrete-dist 'in-discrete-dist d)))
 
-(define (in-dist* d)
-  (in-hash (finite-dist->hash 'in-dist d)))
-
-(define (finite-dist->hash who d)
-  (cond [(discrete-dist? d)
-         (discrete-dist-h d)]
-        [(dist-enum d)
-         => (lambda (enum)
-              (cond [(integer? enum)
-                     (for/fold ([h (hash)]) ([i (in-range enum)])
-                       (hash-set h i (dist-pdf d i)))]
-                    [(vector? enum)
-                     (for/fold ([dh (hash)]) ([v (in-vector enum)])
-                       (dhash-add dh v (dist-pdf d v)))]
-                    [else
-                     (error who "internal error: non-enumerable finite dist\n  dist: ~e" d)]))]
-        [else (raise-argument-error who "finite-dist?" d)]))
+(define (get-hash/in-discrete-dist who d)
+  (if (discrete-dist? d)
+      (discrete-dist-h d)
+      (raise-argument-error who "discrete-dist?" d)))
 
 ;; ============================================================
 ;; Discrete dist support functions
 ;; -- Weights are not normalized
-
-(define (discrete-pdf h wsum x log?)
-  (define p (hash-ref h x 0))
-  (convert-p p log? #f))
 
 (define LINEAR-SAMPLE-LIMIT 10)
 (define hash=>sample-vector (make-weak-hasheq))
