@@ -8,21 +8,102 @@
                      syntax/parse/experimental/eh
                      racket/syntax)
          racket/match
+         racket/splicing
+         racket/stxparam
          racket/flonum
          "base.rkt"
          "density.rkt")
 (provide define-dist-struct
          define-real-dist-struct)
 
-(define-syntax struct-fields (syntax-rules ()))
-(define-syntax struct-options (syntax-rules ()))
+(define-syntax struct-option (syntax-rules ()))
+(define-syntax-parameter this-struct-ref (syntax-rules ()))
+
+(begin-for-syntax
+  (define-syntax-class field-spec
+    #:attributes (name pred convert [opt.k 1] [opt.e 1])
+    (pattern [name:id (~optional pred:expr)
+                      (~optional (~seq #:convert convert:expr))
+                      opt:field-option ...]))
+  (define-splicing-syntax-class field-option
+    (pattern (~seq k:keyword v:expr)))
+
+  (define (make-this-struct-ref-transformer name field-names)
+    (syntax-parser
+      [(_ inst:expr field:id)
+       (unless (memq (syntax-e #'field) field-names)
+         (raise-syntax-error #f "unknown field" this-syntax #'field))
+       (with-syntax ([accessor (format-id name "~a-~a" name #'field)])
+         #'(accessor inst))])))
 
 (define-syntax define-struct/e
   (syntax-parser
-    [(_ name:id e:expr ...)
-     _]))
+    [(_ name:id (f:field-spec ...) e:expr ...)
+     #'(syntax-parameterize ((this-struct-ref
+                              (make-this-struct-ref-transformer
+                               #'name (syntax->datum #'(f.name ...)))))
+         (define-struct/k name (f.name ...)
+           #:base-guard (lambda (f.name ... _name)
+                          (~? (unless (f.pred f.name)
+                                (raise-argument-error 'name (format "~s" (quote f.pred)) f.name)))
+                          ...
+                          (values (~? (f.convert f.name) f.name) ...))
+           e ...))]))
 
+(define-syntax define-struct/k
+  (syntax-parser
+    [(_ name:id (f:id ...)
+        #:base-guard base-guard:expr
+        e:expr ...)
+     (let loop ([es (syntax->list #'(e ...))] [guard #'base-guard] [opts null])
+       (cond [(null? es)
+              (with-syntax ([(opt ...) opts])
+                #'(struct name (f ...) #:guard base-guard opt ...))]
+             [else
+              (define ee0 (local-expand (car es) 'expression #f))
+              (syntax-parse ee0
+                #:literals (struct-options)
+                #:literal-sets (kernel-literals)
+                [(begin ~! e:expr ...)
+                 (loop (append (syntax->list #'(e ...)) (cdr es)) guard opts)]
+                [(struct-option #:guard ~! new-guard:expr)
+                 (define new-guard
+                   (with-syntax ([base-guard guard])
+                     #'(lambda (f ... _name)
+                         (call-with-values (lambda () (base-guard f ... _name))
+                                           (lambda (f ...) (new-guard f ... _name))))))
+                 (loop (cdr es) guard* opts)]
+                [(struct-option ~! kw:keyword optv ...)
+                 ;; FIXME: quadratic append!
+                 (loop (cdr es) guard (append opts (syntax->list #'(kw optv ...))))]
+                )]))]))
 
+#|
+(define-struct/e this-dist
+  ([x real? #:convert exact->inexact]
+   [y real?])
+  (struct-options
+   #:foo 
+   (heihew)))
+
+(field-ref x)
+(field-ref x #:??)
+
+(begin-for-syntax
+  (define this-dist-field-ref
+    (make-field-ref-transformer
+     #'([x #:convert exact->inexact]
+        [y ??]))))
+(syntax-parameterize ((field-ref (make-field-ref-transformer
+                                  #'([x #:convert exact->inexact]
+                                     [y ??]))))
+  (struct name (x y)
+    #:guard (lambda (x y _name)
+              (unless (real? x) ...)
+              (unless (real? y) ...)
+              (values (exact->inexact x) y))
+    __))
+|#
 
 
 
