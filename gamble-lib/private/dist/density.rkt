@@ -1,4 +1,4 @@
-;; Copyright 2020 Ryan Culpepper
+;; Copyright 2020-2025 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
@@ -7,100 +7,79 @@
          "../util/real.rkt")
 (provide (all-defined-out))
 
-;; Density = (density NNReal/#f LogReal/#f Nat)
-;; Either the realspace or logspace component must be present.
+;; Density = NNReal | (lebesgue-density NNReal Nat)
 
-(struct density (?n l ddim) #:transparent
-  #:guard (lambda (n l ddim _name)
-            (unless (or (and (rational? n) (>= n 0)) (eq? n #f))
-              (raise-argument-error 'density "(or/c (>=/c 0) #f)" 0 n l ddim))
-            (unless (or (real? l) (eq? l #f))
-              (raise-argument-error 'density "(or/c real? #f)" 1 n l ddim))
-            (unless (or (exact-nonnegative-integer? ddim) (eqv? ddim +inf.0))
-              (raise-argument-error 'density "(or/c exact-nonnegative-integer? +inf.0)" 2 n l ddim))
-            (cond [(or (and n (= n 0)) (and l (= l -inf.0)) (= ddim +inf.0))
-                   (values 0 -inf.0 +inf.0)]
-                  [else
-                   (values n (or l (ilog n)) ddim)])))
+(define (density? v)
+  (or (and (rational? v) (>= v 0))
+      (lebesgue-density? v)))
 
-(define (density-n d)
-  (or (density-?n d) (exp (density-l d))))
+(define (density p ddim)
+  (unless (and (rational? p) (>= p 0))
+    (raise-argument-error 'density "(>=/c 0)" p))
+  (unless (exact-positive-integer? ddim)
+    (raise-argument-error 'density "exact-positive-integer?" ddim))
+  (cond [(zero? ddim) p]
+        [(and (zero? p) (= ddim 1)) zero-lebesgue-density]
+        [else (lebesgue-density p ddim)]))
 
-(define (density-complete d)
-  (match d
-    [(density (? real?) (? real?) _) d]
-    [(density el ll ddim)
-     (density (or el (exp ll)) (or ll (ilog el)) ddim)]))
+(struct lebesgue-density (p ddim) #:transparent
+  #:guard (lambda (d ddim _name)
+            (unless (and (rational? d) (>= d 0))
+              (raise-argument-error 'lebesgue-density "(>=/c 0)" d))
+            (unless (exact-positive-integer? ddim)
+              (raise-argument-error 'lebesgue-density "exact-positive-integer?" ddim))
+            (values d ddim)))
 
-(define zero-density (density 0 -inf.0 +inf.0))
-(define one-density (density 1 0 0))
-
-(define (density-zero? d) (zero? (density-?n d)))
-
-(define (density<? d1 d2)
-  (match-define (density n1 l1 ddim1) d1)
-  (match-define (density n2 l2 ddim2) d2)
-  (or (> ddim1 ddim2)
-      (and (= ddim1 ddim2)
-           (cond [(and l1 l2) (< l1 l2)]
-                 [(and n1 n2) (< n1 n2)]
-                 [else (< (or l1 (ilog n1)) (or l2 (ilog n2)))]))))
-
-(define (density<=? d1 d2)
-  (match-define (density n1 l1 ddim1) d1)
-  (match-define (density n2 l2 ddim2) d2)
-  (or (> ddim1 ddim2)
-      (and (= ddim1 ddim2)
-           (cond [(and l1 l2) (<= l1 l2)]
-                 [(and n1 n2) (<= n1 n2)]
-                 [else (<= (or l1 (ilog n1)) (or l2 (ilog n2)))]))))
-
-(define (density+ d1 d2 #:exact? [ex? #f])
-  (match-define (density el1 ll1 ddim1) d1)
-  (match-define (density el2 ll2 ddim2) d2)
-  (cond [(= ddim1 ddim2)
-         (cond [(and el1 el2 (if ex? (and (exact? el1) (exact? el2)) #t))
-                (density (+ el1 el2) (and ll1 ll2 (logspace+ ll1 ll2)) ddim1)]
-               [else
-                (density #f (logspace+ (or ll1 (ilog el1)) (or ll2 (ilog el2))) ddim1)])]
-        [(< ddim1 ddim2) d1]
-        [else d2]))
-
-(define (density-sum ds [ws (in-cycle '(1))])
-  (for/fold ([accn 0] [accl -inf.0] [accddim +inf.0]
-             #:result (density accn accl accddim))
-            ([d ds] [w ws] #:when (not (density-zero? d)))
-    (match-define (density nl ll ddim) d)
-    (cond [(= ddim accddim)
-           (cond [(and accn nl)
-                  (define nl* (+ accn (* w nl)))
-                  (define ll* (and accl ll (logspace+ accl (+ ll (ilog w)))))
-                  (values nl* ll* ddim)]
-                 [else
-                  (define ll* (logspace+ (or accl (ilog accn)) (+ (or ll (ilog nl)) (ilog w))))
-                  (values #f ll* ddim)])]
-          [(< ddim accddim)
-           (values (and nl (* w nl)) (and ll (+ ll (ilog w))) ddim)]
-          [else
-           (values accn accl accddim)])))
+(define zero-mass-density 0)
+(define zero-lebesgue-density (lebesgue-density 0 1))
 
 (define (density* d1 d2)
-  (match-define (density el1 ll1 ddim1) d1)
-  (match-define (density el2 ll2 ddim2) d2)
-  (cond [(and el1 el2)
-         (density (* el1 el2) (and ll1 ll2 (+ ll1 ll2)) (+ ddim1 ddim2))]
-        [else
-         (density #f (+ (or ll1 (ilog el1)) (or ll2 (ilog el2))) (+ ddim1 ddim2))]))
+  (match* [d1 d2]
+    [[(? rational? p1) (? rational? p2)]
+     (* p1 p2)]
+    [[(? rational? p1) (lebesgue-density p2 ddim2)]
+     (lebesgue-density (* p1 p2) ddim2)]
+    [[(lebesgue-density p1 ddim1) (? rational? p2)]
+     (lebesgue-density (* p1 p2) ddim1)]
+    [[(lebesgue-density p1 ddim1) (lebesgue-density p2 ddim2)]
+     (lebesgue-density (* p1 p2) (+ ddim1 ddim2))]
+    [[_ _]
+     (unless (density? d1) (raise-argument-error 'density* "density?" d1))
+     (unless (density? d2) (raise-argument-error 'density* "density?" d2))]))
 
 (define (density-product ds)
-  (for/fold ([accn 1] [accl 0] [accddim 0]
-             #:result (density accn accl accddim))
-            ([d ds])
-    (match-define (density nl ll ddim) d)
-    (cond [(and accn nl)
-           (values (* accn nl) (and accl ll (+ accl ll)) (+ accddim ddim))]
-          [else
-           (values #f (+ (or accl (ilog accn)) (or ll (ilog nl))) (+ accddim ddim))])))
+  (unless (and (list? ds) (andmap density? ds))
+    (raise-argument-error 'density-product "(listof density?)" ds))
+  (foldl density* 1 ds))
+
+(define (density+ d1 d2)
+  (define (bad)
+    (error 'density+ "cannot add incompatible densities\n  given: ~e, ~e" d1 d2))
+  (match* [d1 d2]
+    [[(? rational? p1) (? rational? p2)]
+     (+ p1 p2)]
+    [[(lebesgue-density p1 ddim1) (lebesgue-density p2 ddim2)]
+     (unless (= ddim1 ddim2) (bad))
+     (lebesgue-density (+ p1 p2) ddim1)]
+    [[_ _]
+     (unless (density? d1) (raise-argument-error 'density* "density?" d1))
+     (unless (density? d2) (raise-argument-error 'density* "density?" d2))
+     (bad)]))
+
+(define (density-sum ds)
+  (unless (and (pair? ds) (list? ds) (andmap density? ds))
+    (raise-argument-error 'density-sum "(nonempty-listof density?)" ds))
+  (foldl density+ (car ds) (cdr ds)))
+
+#|
+(define (density-cmp d1 d2)
+  (match-define (density n1 ddim1) d1)
+  (match-define (density n2 ddim2) d2)
+  (cond [(= ddim1 ddim2)
+         (cond [(> n1 n2) '>]
+               [(< n1 n2) '<]
+               [else '=])]
+        [else #f]))
 
 ;; density-logratio : Density Density -> Real
 (define (density-logratio d1 d2)
@@ -111,3 +90,4 @@
         [else (- ll1 ll2)]))
 
 (define (ilog x) (log (exact->inexact x))) ;; avoid error on exact 0
+|#
