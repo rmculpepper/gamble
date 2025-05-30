@@ -4,8 +4,7 @@
 
 #lang racket/base
 (require "base.rkt"
-         "discrete.rkt"
-         "univariate.rkt")
+         "discrete.rkt")
 (provide (all-defined-out))
 
 #;
@@ -19,7 +18,6 @@
   [dist-join (-> finite-dist? finite-dist?)]))
 
 ;; dirac : X -> FDist[X]
-(define (dirac v [w 1]) (discrete-dist (hash v w) w))
 (define (dist-unit v) (dirac v))
 
 ;; dist-fmap : FDist[X] (X -> Y) -> FDist[Y]
@@ -39,8 +37,8 @@
                        [(vv ww) (in-dist (f v))])
     (values (list v vv) (* w ww))))
 
-;; dist-score : FDist[X] (X -> NNReal) -> FDist[X]
-(define (dist-score d score)
+;; dist-rescore : FDist[X] (X -> NNReal) -> FDist[X]
+(define (dist-rescore d score)
   #;(dist-bind d (lambda (v) (dirac v (score v))))
   (for/discrete-dist ([(v w) (in-dist d)])
     (values v (* w (score v)))))

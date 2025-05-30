@@ -58,6 +58,9 @@
 ;; ----------------------------------------
 ;; Constructors
 
+(define (dirac v [w 1])
+  (discrete-dist (hash v w) w #f))
+
 (define (hash->discrete-dist h)
   (define (bad) (raise-argument-error 'hash->discrete-dist "(hash/c any/c (>=/c 0))" h))
   (cond [(and (immutable? h) (hash-equal? h) (not (impersonator? h))
