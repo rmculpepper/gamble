@@ -510,15 +510,27 @@
 
 
 ;; ============================================================
-;; Discrete integer distributions from math library
+;; Discrete integer distributions from math library (infinite)
 
-#|
-(define-real-dist-struct binomial-dist
-  ([n exact-nonnegative-integer? #:exact]
-   [p (real-in 0 1)])
-  #:nat #:prefix m:flbinomial
-  #:real-methods
-  [(define (-support self)
+(define-dist-struct binomial-dist
+  ([n exact-nonnegative-integer?]
+   [p (real-in 0 1) inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (binomial-dist n p) self)
+     (exact (flvector-ref (m:flbinomial-sample (inexact n) p 1) 0)))]
+  #:methods gen:integer-dist
+  [(define (-pmf self x log?)
+     (match-define (binomial-dist n p) self)
+     (m:flbinomial-pdf (inexact n) p (inexact x) #f))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (binomial-dist n p) self)
+     (m:flbinomial-cdf (inexact n) p (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (binomial-dist n p) self)
+     (exact (m:flbinomial-inv-cdf (inexact n) p (inexact x) log? 1-p?)))
+   (define (-support self)
      (match-define (binomial-dist n _) self)
      (cons 0 n))
    (define (-mean self)
@@ -526,16 +538,16 @@
      (* n p))
    (define (-modes self)
      (match-define (binomial-dist n p) self)
-     (filter-modes (lambda (x) (m:flbinomial-pdf n p x #f))
-                   (let ([m (inexact->exact (floor (* (+ n 1) p)))])
+     (filter-modes (lambda (x) (m:flbinomial-pdf (inexact n) p x #f))
+                   (let ([m (exact (floor (* (+ n 1) p)))])
                      (list m (sub1 m)))))
    (define (-variance self)
      (match-define (binomial-dist n p) self)
      (* n p (- 1 p)))]
-  #:methods gen:enum-dist
-  [(define (-enum self)
+  #:methods gen:enumerable-dist
+  [(define (-sequence self)
      (match-define (binomial-dist n _) self)
-     (add1 n))]
+     (in-range 0 (add1 n)))]
   #|
   #:drift-dist (lambda (value scale-factor)
                  (discrete-normal-dist value (* scale-factor (sqrt (* n p (- 1 p))))))
@@ -543,11 +555,24 @@
              (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n))
   |#)
 
-(define-real-dist-struct geometric-dist
-  ([p (real-in 0 1)])
-  #:nat #:prefix m:flgeometric
-  #:real-methods
-  [(define (-support self)
+(define-dist-struct geometric-dist
+  ([p (real-in 0 1) inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (geometric-dist p) self)
+     (exact (flvector-ref (m:flgeometric-sample p 1) 0)))]
+  #:methods gen:integer-dist
+  [(define (-pmf self x log?)
+     (match-define (geometric-dist p) self)
+     (m:flgeometric-pdf p (inexact x) #f))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (geometric-dist p) self)
+     (m:flgeometric-cdf p (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (geometric-dist p) self)
+     (exact (m:flgeometric-inv-cdf p (inexact x) log? 1-p?)))
+   (define (-support self)
      '(0 . +inf.0))
    (define (-mean self)
      (match-define (geometric-dist p) self)
@@ -557,9 +582,9 @@
    (define (-variance self)
      (match-define (geometric-dist p) self)
      (/ (- 1 p) (* p p)))]
-  #:methods gen:enum-dist
-  [(define (-enum self)
-     'lazy)]
+  #:methods gen:enumerable-dist
+  [(define (-sequence self)
+     (in-naturals))]
   #|
   #:drift-dist (lambda (value scale-factor)
                  (discrete-normal-dist value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0))
@@ -567,11 +592,24 @@
              (drift:add-discrete-normal value (* scale-factor (sqrt (- 1 p)) (/ p)) 0 +inf.0))
   |#)
 
-(define-real-dist-struct poisson-dist
-  ([mean (>/c 0)])
-  #:nat #:prefix m:flpoisson
-  #:real-methods
-  [(define (-support self)
+(define-dist-struct poisson-dist
+  ([mean positive-rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (poisson-dist mean) self)
+     (exact (flvector-ref (m:flpoisson-sample mean 1) 0)))]
+  #:methods gen:integer-dist
+  [(define (-pmf self x log?)
+     (match-define (poisson-dist mean) self)
+     (m:flpoisson-pdf mean (inexact x) #f))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (poisson-dist mean) self)
+     (m:flpoisson-cdf mean (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (poisson-dist mean) self)
+     (exact (m:flpoisson-inv-cdf mean (inexact x) log? 1-p?)))
+   (define (-support self)
      '(0 . +inf.0))
    (define (-mean self)
      (match-define (poisson-dist mean) self)
@@ -583,8 +621,9 @@
          (list (floor mean))))
    (define (-variance self)
      (match self [(poisson-dist mean) mean]))]
-  #:methods gen:enum-dist
-  [(define (-enum self) 'lazy)]
+  #:methods gen:enumerable-dist
+  [(define (-enum self)
+     (in-naturals))]
   #|
   #:drift-dist (lambda (value scale-factor)
                  (discrete-normal-dist value (* scale-factor (sqrt mean)) 0 +inf.0))
@@ -592,7 +631,142 @@
              (drift:add-discrete-normal value (* scale-factor (sqrt mean)) 0 +inf.0)))
   |#)
 
-|#
+
+;; ============================================================
+;; Discrete integer distributions from math library (finite)
+
+(define-dist-struct bernoulli-dist
+  ([p (real-in 0 1) inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (bernoulli-dist p) self)
+     (if (<= (random) p) 1 0))]
+  #:methods gen:integer-dist
+  [(define (-pmf self x log?)
+     (match-define (bernoulli-dist p) self)
+     (define r
+       (cond [(= x 0) (- 1 p)]
+             [(= x 1) p]
+             [else 0]))
+     (convert-p r log? #f))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (bernoulli-dist p) self)
+     (define r
+       (cond [(< x 0) 0]
+             [(< x 1) (- 1 p)]
+             [else 1]))
+     (convert-p r log? 1-p?))
+   (define (-invcdf self r0 log? 1-p?)
+     (match-define (bernoulli-dist p) self)
+     (define r (unconvert-p r0 log? 1-p?))
+     (cond [(< r p) 1] [else 0]))
+   (define (-support self) '(0 . 1))
+   (define (-mean self) (bernoulli-dist-p self))
+   (define (-modes self)
+     (match-define (bernoulli-dist p) self)
+     (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)]))
+   (define (-variance self)
+     (match-define (bernoulli-dist p) self)
+     (* p (- 1 p)))]
+  #:methods gen:enumerable-dist
+  [(define (-sequence self)
+     (in-range 0 2))]
+  #|
+  #:drift-dist (lambda (value scale-factor)
+                 (define (squash x) (/ x (+ 1 x))) ;; R+ -> [0,1]
+                 ;; FIXME: is this a good thing to do???
+                 (define driftiness (squash scale-factor))
+                 (bernoulli-dist (cond [(= value 1) (- 1 driftiness)]
+                                       [(= value 0) driftiness])))
+  #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0))
+  |#)
+
+(define-dist-struct categorical-dist
+  ;; support is {1,...,k}
+  ([weights vector? -categorical-guard-weights])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (categorical-dist ws) self)
+     (-categorical-inv-cdf 'dist-sample:categorical-dist ws (random)))]
+  #:methods gen:integer-dist
+  [(define (-pmf self x0 log?)
+     (match-define (categorical-dist ws) self)
+     (define x (and (integer? x0) (inexact->exact x0)))
+     (cond [(and x (<= 1 x (vector-length ws)))
+            (convert-p (vector-ref ws (sub1 x)) log?)]
+           [else (if log? -inf.0 0)]))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (categorical-dist ws) self)
+     (cond [(rational? x)
+            ;; prob of k stored in ws[k-1], so sum for indexes [0,x)
+            (define p (for/sum ([i (in-range 0 x)] [w (in-vector ws)]) w))
+            (convert-p p log? 1-p?)]
+           [else (if log? -inf.0 0)]))
+   (define (-invcdf self p0 log? 1-p?)
+     (match-define (categorical-dist ws) self)
+     (define p (unconvert-p p0 log? 1-p?))
+     (-categorical-inv-cdf 'dist-inv-cdf:categorical-dist ws p))
+   (define (-support self)
+     (match-define (categorical-dist ws) self)
+     (cons 1 (vector-length ws)))
+   (define (-mean self)
+     (match-define (categorical-dist ws) self)
+     (for/sum ([i (in-naturals 1)] [w (in-vector ws)]) (* i w)))
+   (define (-modes self)
+     (match-define (categorical-dist ws) self)
+     (define weights (categorical-dist-weights self))
+     (let-values ([(best best-w)
+                   (for/fold ([best null] [best-w -inf.0])
+                             ([i (in-naturals 1)] [w (in-vector weights)])
+                     (cond [(> w best-w)
+                            (values (list i) w)]
+                           [(= w best-w)
+                            (values (cons i best) best-w)]
+                           [else (values best best-w)]))])
+       (reverse best)))]
+  #:methods gen:enumerable-dist
+  [(define (-sequence self)
+     (match-define (categorical-dist ws) self)
+     (in-range 1 (add1 (vector-length ws))))])
+
+;; categorical:intern-ws : WeakHash[ImmVector => #t]
+(define categorical:intern-ws (make-weak-hash))
+
+(define (-categorical-guard-weights in-ws)
+  (cond [(hash-ref-key categorical:intern-ws in-ws #f)
+         => values]
+        [else
+         (define ws (normalize-weights 'categorical-dist in-ws))
+         (hash-set! categorical:intern-ws ws #t)
+         ws]))
+
+(define (normalize-weights who in-ws)
+  (define ws (vector->immutable-vector in-ws))
+  (for ([w (in-vector ws)])
+    (unless (and (rational? w) (>= w 0))
+      (raise-argument-error who "(vectorof (>=/c 0))" ws)))
+  (define wsum (for/sum ([w (in-vector ws)]) w))
+  (unless (> wsum 0)
+    (error who "weights sum to zero\n  weights: ~e" ws))
+  (cond [(= wsum 1) ws]
+        [else (vector->immutable-vector (vector-map ws (lambda (w) (/ w wsum))))]))
+
+;; categorical:ws=>cws : WeakHasheq[ImmVector => ImmVector]
+(define categorical:ws=>cws (make-weak-hasheq))
+
+(define (make-cumulative-vector ws)
+  (define cws (make-vector (vector-length ws)))
+  (for/fold ([s 0]) ([w (in-vector ws)] [i (in-naturals)])
+    (let ([s (+ s w)]) (begin (vector-set! cws i s) s)))
+  (vector->immutable-vector cws))
+
+(define (-categorical-inv-cdf who ws p)
+  (define cws (hash-ref! categorical:ws=>cws ws (lambda () (make-cumulative-vector ws))))
+  (or (for/or ([i (in-naturals 1)] [cw (in-vector cws)])
+        (and (< p cw) i))
+      (error who "internal error: out of values")))
 
 ;; ------------------------------------------------------------
 
@@ -631,118 +805,6 @@
 
 ;; ============================================================
 ;; Discrete distributions
-
-#|
-(define-real-dist-struct bernoulli-dist
-  ([p (real-in 0 1)])
-  #:nat
-  #:dist-methods
-  [(define (-sample self)
-     (define prob (bernoulli-dist-p self))
-     (if (<= (random) prob) 1 0))]
-  #:real-methods
-  [(define (-pdf self v log?)
-     (define prob (bernoulli-dist-p self))
-     (define p
-       (cond [(= v 0) (- 1 prob)]
-             [(= v 1) prob]
-             [else 0]))
-     (convert-p p log? #f))
-   (define (-cdf self v log? 1-p?)
-     (define prob (bernoulli-dist-p self))
-     (define p
-       (cond [(< v 0) 0]
-             [(< v 1) (- 1 prob)]
-             [else 1]))
-     (convert-p p log? 1-p?))
-   (define (-invcdf self p0 log? 1-p?)
-     (define prob (bernoulli-dist-p self))
-     (define p (unconvert-p p0 log? 1-p?))
-     (cond [(< p prob) 1] [else 0]))
-   (define (-support self) '(0 . 1))
-   (define (-mean self) (bernoulli-dist-p self))
-   (define (-median self)
-     (match-define (bernoulli-dist p) self)
-     (cond [(> p 0.5) 1] [(= p 0.5) 1/2] [else 0]))
-   (define (-modes self)
-     (match-define (bernoulli-dist p) self)
-     (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)]))
-   (define (-variance self)
-     (match-define (bernoulli-dist p) self)
-     (* p (- 1 p)))]
-  #:methods gen:enum-dist
-  [(define (-enum self) 2)]
-  #|
-  #:drift-dist (lambda (value scale-factor)
-                 (define (squash x) (/ x (+ 1 x))) ;; R+ -> [0,1]
-                 ;; FIXME: is this a good thing to do???
-                 (define driftiness (squash scale-factor))
-                 (bernoulli-dist (cond [(= value 1) (- 1 driftiness)]
-                                       [(= value 0) driftiness])))
-  #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0))
-  |#)
-
-;; ------------------------------------------------------------
-
-(define-real-dist-struct categorical-dist
-  ([weights (vectorof (>=/c 0))])
-  #:nat
-  #:guard (lambda (weights _name)
-            (validate/normalize-weights 'categorical-dist weights))
-  #:dist-methods
-  [(define (-sample self)
-     (define weights (categorical-dist-weights self))
-     (categorical-inv-cdf weights (random)))]
-  #:real-methods
-  [(define (-pdf self x0 log?)
-     (define weights (categorical-dist-weights self))
-     (define x (and (integer? x0) (inexact->exact x0)))
-     (cond [(and (exact-nonnegative-integer? x)
-                 (< x (vector-ref weights)))
-            (vector-ref weights x)]
-           [else (if log? -inf.0 0)]))
-   (define (-cdf self k log? 1-p?)
-     (define probs (categorical-dist-weights self))
-     (define p (for/sum ([i (in-range (add1 k))] [prob (in-vector probs)]) prob))
-     (convert-p p log? 1-p?))
-   (define (-invcdf self p0 log? 1-p?)
-     (define probs (categorical-dist-weights self))
-     (define p (unconvert-p p0 log? 1-p?))
-     (categorical-inv-cdf probs p))
-   (define (-support self)
-     (define weights (categorical-dist-weights self))
-     ;; integer-range
-     (cons 0 (sub1 (vector-length weights))))
-   (define (-mean self)
-     (define weights (categorical-dist-weights self))
-     (for/sum ([i (in-naturals)] [w (in-vector weights)]) (* i w)))
-   (define (-modes self)
-     (define weights (categorical-dist-weights self))
-     (let-values ([(best best-w)
-                   (for/fold ([best null] [best-w -inf.0])
-                             ([i (in-naturals)] [w (in-vector weights)])
-                     (cond [(> w best-w)
-                            (values (list i) w)]
-                           [(= w best-w)
-                            (values (cons i best) best-w)]
-                           [else (values best best-w)]))])
-       (reverse best)))]
-  #:methods gen:enum-dist
-  [(define (-enum self)
-     (define weights (categorical-dist-weights self))
-     (vector-length weights))])
-
-;; -- Assume weights are nonnegative, normalized.
-
-(define (categorical-inv-cdf probs p)
-  (let loop ([i 0] [p p])
-    (cond [(>= i (vector-length probs))
-           (error 'categorical-dist:inv-cdf "out of values")]
-          [(< p (vector-ref probs i))
-           i]
-          [else
-           (loop (add1 i) (- p (vector-ref probs i)))])))
-|#
 
 
 ;; ------------------------------------------------------------
@@ -916,18 +978,6 @@
 
 ;; ============================================================
 ;; Utils
-
-(define (validate/normalize-weights who weights)
-  (unless (and (vector? weights)
-               (for/and ([w (in-vector weights)])
-                 (and (rational? w) (>= w 0))))
-    (raise-argument-error who "(vectorof (>=/c 0))" weights))
-  (define weight-sum (for/sum ([w (in-vector weights)]) w))
-  (unless (> weight-sum 0)
-    (error who "weights sum to zero\n  weights: ~e" weights))
-  (if (= weight-sum 1)
-      (vector->immutable-vector weights)
-      (vector-map (lambda (w) (/ w weight-sum)) weights)))
 
 (define (filter-modes f ms)
   (define-values (best best-p)

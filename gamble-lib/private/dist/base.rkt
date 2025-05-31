@@ -71,7 +71,11 @@
     (define (-total-measure self) 1)]
    [(lambda (v) (continuous-dist? v))
     (define (-density self x)
-      (density (-pdf self x #f) 1))]))
+      (density (if (rational? x) (-pdf self x #f) 0) 1))]
+   [(lambda (v) (integer-dist? v))
+    (define (-density self x)
+      (cond [(integer? x) (-pmf self x #f)]
+            [else 0]))]))
 
 (define (dist-sample d) (-sample d))
 (define (dist-density d x) (-density d x))
@@ -115,8 +119,8 @@
 
 (define-generics continuous-dist   ;; extends real-dist
   ;; Represents normalized, continuous real-valued distributions.
-  (-pdf continuous-dist x log?)    ;; Dist X Boolean -> NNReal
-  ;; (-denergy real-dist x . d/dts)   ;; Dist X Param ... -> Real
+  (-pdf continuous-dist x log?)    ;; Dist Real Boolean -> Real
+  ;; (-denergy real-dist x . d/dts)   ;; Dist Real Param ... -> Real
   #:fallbacks [])
 
 (define (dist-pdf d x [log? #f])
@@ -124,6 +128,7 @@
 
 (define-generics integer-dist      ;; extends real-dist, enumerable-dist
   ;; Represents discrete, normalized integer-valued distributions.
+  (-pmf integer-dist x log?)       ;; Dist Integer Boolean -> Real
   #:fallbacks [])
 
 ;; FIXME: real^2-dist
