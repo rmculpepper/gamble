@@ -58,7 +58,21 @@
       (error who "weights sum to zero\n  weights: ~e" ws))
     (cond [(= wsum 1) ws]
           [else (vector->immutable-vector
-                 (vector-map ws (lambda (w) (/ w wsum))))]))
+                 (vector-map (lambda (w) (/ w wsum)) ws))]))
+
+  ;; binary-search/least-geq : (Vectorof Real) Real -> Nat
+  ;; PRE: cws is sorted increasing, cws[last] >= x
+  ;; POST: returns least index k such that cws[k] >= x
+  ;; Note: want this variant for sampling from cumulative vector.
+  (define (binary-search/least-geq cws x)
+    (let loop ([a -1] [b (sub1 (vector-length cws))]) ;; a < b, a invalid, b valid
+      (cond [(= (+ a 1) b)
+             b]
+            [else
+             (define m (quotient (+ a b) 2))
+             (if (>= (vector-ref cws m) x)
+                 (loop a m)
+                 (loop m b))])))
 
   (begin))
 

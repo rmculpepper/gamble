@@ -749,9 +749,7 @@
 
 (define (-categorical-inv-cdf who ws p)
   (define cws (-categorical-cws ws))
-  (or (for/or ([i (in-naturals 1)] [cw (in-vector cws)])
-        (and (<= p cw) i))
-      (error who "internal error: out of values")))
+  (add1 (binary-search/least-geq cws p)))
 
 ;; ------------------------------------------------------------
 

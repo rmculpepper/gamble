@@ -140,7 +140,8 @@
          (-discrete-sample/linear h wsum)]
         [else
          (match-define (ddext vs ws cws) (-discrete-ext dist))
-         (-discrete-sample/vectors vs cws wsum)]))
+         (define p (* (random) wsum))
+         (vector-ref vs (binary-search/least-gt cws p))]))
 
 (define (-discrete-sample/linear h wsum)
   (define p (* (random) wsum))
@@ -149,16 +150,6 @@
     (define w (hash-iterate-value h iter))
     (cond [(> p w) (loop (- p w) (hash-iterate-next h iter))]
           [else (hash-iterate-key h iter)])))
-
-(define (-discrete-sample/vectors vs cws wsum)
-  (define p (* (random) wsum))
-  ;; looking for greatest index k st cws[k] <= p
-  (let loop ([a 0] [b (vector-length vs)]) ;; a < b, a valid, b invalid
-    (cond [(= (+ a 1) b)
-           (vector-ref vs a)]
-          [else
-           (define m (quotient (+ a b) 2))
-           (if (<= (vector-ref cws m) p) (loop m b) (loop a m))])))
 
 (define (-discrete-density dist x)
   (define h (discrete-dist-h dist))
