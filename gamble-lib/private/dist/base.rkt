@@ -6,45 +6,8 @@
 (require racket/match
          racket/generic
          "measurable.rkt"
-
-         ;; ----
-         (submod racket/performance-hint begin-encourage-inline)
-         "density.rkt"
-         "../util/real.rkt")
+         (submod "util.rkt" density))
 (provide (all-defined-out))
-
-;; NNReal = nonnegative real
-
-;; LogReal = (inexact) Real, probability/score in logspace (may be +/-inf.0)
-
-(begin-encourage-inline
-  (define (convert-p p log? 1-p?)
-    (define p* (if 1-p? (- 1 p) p))
-    (if log? (log (exact->inexact p*)) p*))
-  (define (unconvert-p p log? 1-p?)
-    (define p* (if log? (exp p) p))
-    (if 1-p? (- 1 p*) p*)))
-
-;; ------------------------------------------------------------
-;; Density dimension (ddim)
-
-;; Consider the following probabilistic "model":
-
-;;   X ~ Bernoulli(1/2)
-;;   Y ~ if X then Uniform(-1, 1) else Bernoulli(1/2)
-;;   observe Y = 0
-
-;; What is the posterior on X given the observation on Y?
-
-;; Naive analysis:
-;; If X = 1, then Y is drawn from Unif(-1,1), and the density at 0 is 1/2.
-;; If X = 0, then Y is drawn from Bern(1/2), and the density at 0 is 1/2.
-;; So the observation changes nothing; the posterior is the same as the prior,
-;; so Bernoulli(1/2).
-
-;; But that's absurd. Arguably, the entire model is absurd.
-
-;; ------------------------------------------------------------
 
 (define-generics dist
   ;; type X

@@ -12,7 +12,7 @@
          racket/vector
          scramble/struct
          "base.rkt"
-         "density.rkt"
+         (submod "util.rkt" density)
          "measurable.rkt")
 (provide (all-defined-out))
 
@@ -45,7 +45,7 @@
    (define (-density self x) (-discrete-density self x))
    (define (-measure self ms) (-discrete-measure self ms))
    (define (-total-measure self) (discrete-dist-wsum self))]
-  #:methods gen:enum-dist
+  #:methods gen:enumerable-dist
   [(define (-sequence self) (in-hash-keys (discrete-dist-h self)))])
 
 ;; DDExt is (ddext (Vectorof X) (Vectorof PosReal) (Vectorof PosReal))

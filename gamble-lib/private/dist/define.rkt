@@ -11,8 +11,7 @@
          racket/splicing
          racket/stxparam
          racket/flonum
-         "base.rkt"
-         "density.rkt")
+         "base.rkt")
 (provide define-dist-struct)
 
 #|

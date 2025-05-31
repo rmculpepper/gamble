@@ -10,18 +10,12 @@
          racket/vector
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
-         (only-in racket/base [exact->inexact inexact] [inexact->exact exact])
          "base.rkt"
-         "define.rkt")
+         "define.rkt"
+         (submod "util.rkt" math)
+         (submod "util.rkt" density)
+         (submod "util.rkt" weights))
 (provide (all-defined-out))
-
-;; Multiply, but short-circuit if first arg evals to 0.
-;; FIXME: preserve (in)exactness?
-(define-syntax-rule (lazy* a b ...)
-  (let ([av a]) (if (zero? av) 0 (* av b ...))))
-
-(define (nonnegative-rational? v) (and (rational? v) (>= v 0)))
-(define (positive-rational? v) (and (rational? v) (> v 0)))
 
 ;; ============================================================
 ;; Continuous real distributions from math library
@@ -699,10 +693,7 @@
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (categorical-dist ws) self)
-     (cond [(rational? x)
-            ;; prob of k stored in ws[k-1], so sum for indexes [0,x)
-            (define p (for/sum ([i (in-range 0 x)] [w (in-vector ws)]) w))
-            (convert-p p log? 1-p?)]
+     (cond [(rational? x) (convert-p (-categorical-cdf ws x) log? 1-p?)]
            [else (if log? -inf.0 0)]))
    (define (-invcdf self p0 log? 1-p?)
      (match-define (categorical-dist ws) self)
@@ -742,30 +733,24 @@
          (hash-set! categorical:intern-ws ws #t)
          ws]))
 
-(define (normalize-weights who in-ws)
-  (define ws (vector->immutable-vector in-ws))
-  (for ([w (in-vector ws)])
-    (unless (and (rational? w) (>= w 0))
-      (raise-argument-error who "(vectorof (>=/c 0))" ws)))
-  (define wsum (for/sum ([w (in-vector ws)]) w))
-  (unless (> wsum 0)
-    (error who "weights sum to zero\n  weights: ~e" ws))
-  (cond [(= wsum 1) ws]
-        [else (vector->immutable-vector (vector-map ws (lambda (w) (/ w wsum))))]))
-
 ;; categorical:ws=>cws : WeakHasheq[ImmVector => ImmVector]
 (define categorical:ws=>cws (make-weak-hasheq))
 
-(define (make-cumulative-vector ws)
-  (define cws (make-vector (vector-length ws)))
-  (for/fold ([s 0]) ([w (in-vector ws)] [i (in-naturals)])
-    (let ([s (+ s w)]) (begin (vector-set! cws i s) s)))
-  (vector->immutable-vector cws))
+(define (-categorical-cws ws)
+  (hash-ref! categorical:ws=>cws ws (lambda () (cumulative-vector ws))))
+
+(define (-categorical-cdf ws x)
+  (define k (exact (floor x)))
+  (cond [(<= 1 k (vector-length ws))
+         (define cws (-categorical-cws ws))
+         (vector-ref cws (sub1 k))]
+        [(< k 1) 0]
+        [else 1]))
 
 (define (-categorical-inv-cdf who ws p)
-  (define cws (hash-ref! categorical:ws=>cws ws (lambda () (make-cumulative-vector ws))))
+  (define cws (-categorical-cws ws))
   (or (for/or ([i (in-naturals 1)] [cw (in-vector cws)])
-        (and (< p cw) i))
+        (and (<= p cw) i))
       (error who "internal error: out of values")))
 
 ;; ------------------------------------------------------------
