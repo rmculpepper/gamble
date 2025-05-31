@@ -13,9 +13,9 @@
          racket/flonum
          "base.rkt"
          "density.rkt")
-(provide define-dist-struct
-         define-real-dist-struct)
+(provide define-dist-struct)
 
+#|
 (define-syntax struct-option (syntax-rules ()))
 (define-syntax-parameter this-struct-ref (syntax-rules ()))
 
@@ -77,6 +77,7 @@
                  ;; FIXME: quadratic append!
                  (loop (cdr es) guard (append opts (syntax->list #'(kw optv ...))))]
                 )]))]))
+|#
 
 #|
 (define-struct/e this-dist
@@ -162,20 +163,25 @@
     [(_ nd:name-dist-id (p:param-spec ...)
         g:maybe-guard
         more ...)
-     #'(begin
-         (struct nd (p.param ...)
-           #:transparent
-           #:guard (lambda (p.param ... _name)
-                     (define (bad who)
-                       (maker-error 'nd '(p.param ...) '(p.pred ...) who p.param ...))
-                     (unless (p.pred p.param) (bad 'p.param)) ...
-                     (~? (g.guard-fun p.param ... _name)
-                         (values p.param ...)))
-           more ...))]))
+     #'(struct nd (p.param ...)
+         #:transparent
+         #:guard (lambda (p.param ... _name)
+                   (define (bad who)
+                     (maker-error 'nd '(p.param ...) '(p.pred ...) who p.param ...))
+                   (unless (p.pred p.param) (bad 'p.param)) ...
+                   (let ([p.param (p.conv p.param)] ...)
+                     (~? (g.guard-fun p.param ...)
+                         (values p.param ...))))
+         more ...)]))
 
+(define (maker-error sname fnames fpreds bad-fname . fvalues)
+  (for ([fname (in-list fnames)] [fpred (in-list fpreds)] [index (in-naturals)])
+    (when (eq? fname bad-fname)
+      (apply raise-argument-error sname (format "~s" fpred) index fvalues))))
 
+;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-
+#;
 (define-syntax (define-real-dist-struct stx)
   (define-syntax-class flparam
     (pattern [param:id pred:expr]
@@ -310,11 +316,6 @@
               (~? (define (*variance d) (let ([p.param (get-param d)] ...) o.variance)))]
              (~? (~@ extra-clause ...))
              #:transparent)))]))
-
-(define (maker-error sname fnames fpreds bad-fname . fvalues)
-  (for ([fname (in-list fnames)] [fpred (in-list fpreds)] [index (in-naturals)])
-    (when (eq? fname bad-fname)
-      (apply raise-argument-error sname (format "~s" fpred) index fvalues))))
 
 ;; ------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-;; Copyright 2014-2020 Ryan Culpepper
+;; Copyright 2014-2025 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
@@ -10,6 +10,7 @@
          racket/vector
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
+         (only-in racket/base [exact->inexact inexact] [inexact->exact exact])
          "base.rkt"
          "define.rkt")
 (provide (all-defined-out))
@@ -19,9 +20,490 @@
 (define-syntax-rule (lazy* a b ...)
   (let ([av a]) (if (zero? av) 0 (* av b ...))))
 
+(define (nonnegative-rational? v) (and (rational? v) (>= v 0)))
+(define (positive-rational? v) (and (rational? v) (> v 0)))
+
 ;; ============================================================
 ;; Continuous real distributions from math library
 
+(define-dist-struct beta-dist
+  ([a nonnegative-rational? inexact]
+   [b nonnegative-rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (beta-dist a b) self)
+     (flvector-ref (m:flbeta-sample a b 1) 0))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (beta-dist a b) self)
+     (m:flbeta-pdf a b (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (beta-dist a b) self)
+     (m:flbeta-cdf a b (inexact x) log? 1-p?))
+   (define (-invcdf self p log? 1-p?)
+     (match-define (beta-dist a b) self)
+     (m:flbeta-cdf a b (inexact p) log? 1-p?))
+   (define (-real-support self) '(0 . 1))
+   (define (-mean self)
+     (match self [(beta-dist a b) (/ a (+ a b))]))
+   (define (-modes self)
+     (match-define (beta-dist a b) self)
+     (if (and (> a 1) (> b 1))
+         (list (/ (+ a -1) (+ a b -2)))
+         '()))
+   (define (-variance self)
+     (match-define (beta-dist a b) self)
+     (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
+   (define (-denergy self x [dx 1] [da 0] [db 0])
+     (match-define (beta-dist a b) self)
+     (+ (lazy* dx (+ (/ (- 1 a) x)
+                     (/ (- b 1) (- 1 x))))
+        (lazy* da (- (log x)))
+        (lazy* db (- (log (- 1 x))))
+        (lazy* da (digamma a))
+        (lazy* db (digamma b))
+        (lazy* (+ da db) (- (digamma (+ a b))))))
+   (define (-conjugate self data-d data)
+     (match-define (beta-dist a b) self)
+     (match data-d
+       [`(bernoulli-dist _)
+        (beta-dist (+ a (for/sum ([x data] #:when (= x 1)) 1))
+                   (+ b (for/sum ([x data] #:when (= x 0)) 0)))]
+       [`(binomial-dist ,n _)
+        (beta-dist (+ a (vector-sum data))
+                   (+ b (for/sum ([x (in-vector data)]) (- n x))))]
+       [`(geometric-dist _)
+        (beta-dist (+ a (vector-length data))
+                   (+ b (vector-sum data)))]
+       [_ #f]))
+   (define (-drift-dist self value scale-factor)
+     (match-define (beta-dist a b) self)
+     ;; mode = α / (α + β), peakedness = α + β = S (our choice)
+     ;; So if we want dist peaked at x:
+     ;;   α = S * x
+     ;;   β = S - α = S * (1 - x)
+     (define S 10) ;; "peakedness" parameter
+     (beta-dist (* S value) (* S (- 1 value))))])
+
+(define-dist-struct cauchy-dist
+  ([mode rational? inexact]
+   [scale positive-rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (cauchy-dist mode scale) self)
+     (flvector-ref (m:flcauchy-sample mode scale 1) 0))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (cauchy-dist mode scale) self)
+     (m:flcauchy-pdf mode scale (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (cauchy-dist mode scale) self)
+     (m:flcauchy-cdf mode scale (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (cauchy-dist mode scale) self)
+     (m:flcauchy-inv-cdf mode scale (inexact x) log? 1-p?))
+   (define (-real-support self) '(-inf.0 . +inf.0))
+   (define (-mean self) +nan.0)
+   (define (-modes self) (list (cauchy-dist-mode self)))
+   (define (-variance self) +nan.0)
+   (define (-denergy self x [dx 1] [dm 0] [ds 0])
+     (match-define (cauchy-dist mode scale) self)
+     (define x-m (- x mode))
+     (+ (lazy* ds (/ scale))
+        (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
+           (- (/ (- dx dm) scale)
+              (lazy* ds (/ x-m scale scale))))))
+   (define (-drift-dist self value scale-factor)
+     (match-define (cauchy-dist mode scale) self)
+     (normal-dist value (* scale scale-factor)))
+   #;
+   (define (-drift1 self value scale-factor)
+     (match-define (cauchy-dist mode scale) self)
+     (drift:add-normal value (* scale scale-factor)))])
+
+(define-dist-struct exponential-dist
+  ([mean positive-rational? inexact])
+  ;; λ = 1/mean
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (exponential-dist mean) self)
+     (flvector-ref (m:flexponential-sample mean 1) 0))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (exponential-dist mean) self)
+     (m:flexponential-pdf mean (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (exponential-dist mean) self)
+     (m:flexponential-cdf mean (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (exponential-dist mean) self)
+     (m:flexponential-inv-cdf mean (inexact x) log? 1-p?))
+   (define (-real-support self) '(0 . +inf.0))
+   (define (-mean self)
+     (match-define (exponential-dist mean) self)
+     mean)
+   (define (-modes self) '(0))
+   (define (-variance self)
+     (match-define (exponential-dist mean) self)
+     (expt mean 2))
+   (define (-denergy self x [dx 1] [dm 0])
+     (match-define (exponential-dist mean) self)
+     (define /mean (/ mean))
+     (+ (lazy* dm (- /mean (* x /mean /mean)))
+        (* dx /mean)))
+   #;
+   (define (-drift-dist self value scale-factor)
+     (mult-exp-normal-dist value (* mean scale-factor)))
+   #;
+   (define (-drift1 self value scale-factor)
+     (drift:mult-exp-normal value (* mean scale-factor)))])
+
+(define-dist-struct gamma-dist
+  ([shape positive-rational? inexact]
+   [scale positive-rational? inexact])
+  ;; k = shape, θ = scale
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (gamma-dist shape scale) self)
+     (flvector-ref (m:flgamma-sample shape scale 1) 0))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (gamma-dist shape scale) self)
+     (m:flgamma-pdf shape scale (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (gamma-dist shape scale) self)
+     (m:flgamma-cdf shape scale (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (gamma-dist shape scale) self)
+     (m:flgamma-inv-cdf shape scale (inexact x) log? 1-p?))
+   (define (-real-support self) '(0 . +inf.0)) ;; (0, inf)
+   (define (-mean self)
+     (match-define (gamma-dist shape scale) self)
+     (* shape scale))
+   (define (-modes self)
+     (match-define (gamma-dist shape scale) self)
+     (if (> shape 1) (list (* (- shape 1) scale)) null))
+   (define (-variance self)
+     (match-define (gamma-dist shape scale) self)
+     (* shape scale scale))
+   (define (-denergy self x [dx 1] [dk 0] [dθ 0])
+     (match-define (gamma-dist shape scale) self)
+     (define k shape)
+     (define θ scale)
+     (+ (lazy* dx (+ (/ (- 1 k) x) (/ θ)))
+        (lazy* dk (+ (digamma k) (log θ) (- (log x))))
+        (lazy* dθ (- (/ k θ) (/ x (* θ θ))))))
+   (define (-conjugate self data-d data)
+     (match-define (gamma-dist shape scale) self)
+     (match data-d
+       [`(poisson-dist _)
+        (gamma-dist (+ shape (vector-sum data))
+                    (/ scale (add1 (* (vector-length data) scale))))]
+       [`(exponential-dist _)
+        (gamma-dist (+ shape (vector-length data))
+                    (/ (+ (/ scale) (vector-sum data))))]
+       [`(gamma-dist ,data-shape _)
+        (gamma-dist (+ shape (* data-shape (vector-length data)))
+                    (/ (+ (/ scale) (vector-sum data))))]
+       [`(inverse-gamma-dist ,data-shape _)
+        (gamma-dist (+ shape (* (vector-length data) data-shape))
+                    (/ (+ (/ scale) (for/sum ([x (in-vector data)]) (/ x)))))]
+       [`(normal-dist ,data-mean _)
+        (gamma-dist (+ shape (/ (vector-length data) 2))
+                    (/ (+ (/ scale)
+                          (* 1/2 (for/sum ([x (in-vector data)])
+                                   (sqr (- x data-mean)))))))]
+       [_ #f]))
+   #;
+   (define (-drift-dist self value scale-factor)
+     (match-define (gamma-dist shape scale) self)
+     (mult-exp-normal-dist value (* scale (sqrt shape) scale-factor)))
+   #;
+   (define (-drift1 self value scale-factor)
+     (match-define (gamma-dist shape scale) self)
+     (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor)))])
+
+(define-dist-struct logistic-dist
+  ([mean rational? inexact]
+   [scale positive-rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (logistic-dist mean scale) self)
+     (flvector-ref (m:fllogistic-sample mean scale 1) 0))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (logistic-dist mean scale) self)
+     (m:fllogistic-pdf mean scale (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (logistic-dist mean scale) self)
+     (m:fllogistic-cdf mean scale (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (logistic-dist mean scale) self)
+     (m:fllogistic-inv-cdf mean scale (inexact x) log? 1-p?))
+   (define (-real-support self) '(-inf.0 . +inf.0))
+   (define (-mean self) (logistic-dist-mean self))
+   (define (-median self) (logistic-dist-mean self))
+   (define (-modes self) (list (logistic-dist-mean self)))
+   (define (-variance self)
+     (match-define (logistic-dist mean scale) self)
+     (* scale scale pi pi 1/3))
+   (define (-denergy self x [dx 1] [dm 0] [ds 0])
+     (match-define (logistic-dist mean scale) self)
+     (define s scale)
+     (define x-m (- x mean))
+     (define A (- (/ (- dx dm) s) (lazy* ds (/ x-m (* s s)))))
+     (define B (exp (- (/ x-m s))))
+     (+ A
+        (lazy* ds (/ s))
+        (* 2 (/ (+ 1 B)) B (- A))))
+   (define (-drift-dist self value scale-factor)
+     (match-define (logistic-dist mean scale) self)
+     (normal-dist value (* scale scale-factor)))
+   #;
+   (define (-drift1 self value scale-factor)
+     (match-define (logistic-dist mean scale) self)
+     (drift:add-normal value (* scale scale-factor)))])
+
+(define-dist-struct normal-dist
+  ([mean rational? inexact]
+   [scale positive-rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (normal-dist mean scale) self)
+     (flvector-ref (m:flnormal-sample mean scale 1) 0))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (normal-dist mean scale) self)
+     (m:flnormal-pdf mean scale (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (normal-dist mean scale) self)
+     (m:flnormal-cdf mean scale (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (normal-dist mean scale) self)
+     (m:flnormal-inv-cdf mean scale (inexact x) log? 1-p?))
+   (define (-support self) '(-inf.0 . +inf.0))
+   (define (-mean self) (normal-dist-mean self))
+   (define (-median self) (normal-dist-mean self))
+   (define (-modes self) (list (normal-dist-mean self)))
+   (define (-variance self)
+     (match-define (normal-dist mean scale) self)
+     (* scale scale))
+   (define (-denergy self x [dx 1] [dμ 0] [dσ 0])
+     (match-define (normal-dist μ σ) self)
+     (define x-μ (- x μ))
+     (+ (lazy* dσ (- (/ σ) (/ (* x-μ x-μ) (* σ σ σ))))
+        (lazy* (- dx dμ)
+               (/ x-μ (* σ σ)))))
+   (define (-conjugate self data-d data)
+     (match-define (normal-dist mean scale) self)
+     (match data-d
+       [`(normal-dist _ ,data-scale)
+        (normal-dist (/ (+ (/ mean (sqr scale))
+                           (/ (vector-sum data)
+                              (sqr data-scale)))
+                        (+ (/ (sqr scale))
+                           (/ (vector-length data)
+                              (sqr data-scale))))
+                     (sqrt
+                      (/ (+ (/ (sqr scale))
+                            (/ (vector-length data)
+                               (sqr data-scale))))))]
+       [_ #f]))
+   (define (-drift-dist self value scale-factor)
+     (match-define (normal-dist mean scale) self)
+     (normal-dist value (* scale scale-factor)))
+   #;
+   (define (-drift1 self value scale-factor)
+     (match-define (normal-dist mean scale) self)
+     (drift:add-normal value (* stddev scale-factor)))])
+
+(define-dist-struct uniform-dist
+  ([lo rational? inexact]
+   [hi rational? inexact])
+  #:guard (lambda (lo hi)
+            (unless (< lo hi)
+              (error 'uniform-dist
+                     (string-append
+                      "invalid range, lower bound is not less than upper bound"
+                      "\n  lower: ~e\n  upper: ~e")
+                     lo hi))
+            (values lo hi))
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (uniform-dist lo hi) self)
+     (+ lo (* (- hi lo) (random))))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (uniform-dist lo hi) self)
+     (m:fluniform-pdf lo hi (inexact x) log?))
+   (define (-cdf self x log? 1-p?)
+     (match-define (uniform-dist lo hi) self)
+     (m:fluniform-cdf lo hi (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (uniform-dist lo hi) self)
+     (m:fluniform-inv-cdf lo hi (inexact x) log? 1-p?))
+   (define (-real-support self)
+     (match-define (uniform-dist lo hi) self)
+     (cons lo hi))
+   (define (-mean self)
+     (match-define (uniform-dist lo hi) self)
+     (/ (+ lo hi) 2))
+   (define (-median self)
+     (match-define (uniform-dist lo hi) self)
+     (/ (+ lo hi) 2))
+   (define (-variance self)
+     (match-define (uniform-dist lo hi) self)
+     (let ([w (- hi lo)]) (* w w (inexact 1/12))))
+   (define (-denergy self x [dx 1] [dlo 0] [dhi 0])
+     (match-define (uniform-dist lo hi) self)
+     (cond [(<= lo x hi)
+            (lazy* (- dhi dlo) (/ (- hi lo)))]
+           [else 0]))
+   #;
+   (define (-drift-dist self value scale-factor)
+     (match-define (uniform-dist lo hi) self)
+     (define equiv-dist (affine-distx (beta-dist 1 1) lo (- hi lo)))
+     (dist-drift-dist equiv-dist scale-factor))])
+
+;; ============================================================
+;; Additional continuous real distributions
+
+(define-dist-struct pareto-dist
+  ([scale positive-rational? inexact]  ;; x_m
+   [shape positive-rational? inexact]) ;; alpha
+  #:methods gen:dist
+  [(define (-sample self)
+     (-invcdf self (random) #f #f))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (pareto-dist scale shape) self)
+     (define lp
+       (if (>= x scale)
+           (- (+ (log shape) (* shape (log scale)))
+              (* (add1 shape) (log x)))
+           -inf.0))
+     (if log? lp (exp lp)))
+   (define (-cdf self x log? 1-p?)
+     (match-define (pareto-dist scale shape) self)
+     (define p
+       (if (> x scale)
+           (- 1.0 (expt (/ scale x) shape))
+           0.0))
+     (convert-p p log? 1-p?))
+   (define (-invcdf self p log? 1-p?)
+     (match-define (pareto-dist scale shape) self)
+     (define p* (unconvert-p p log? 1-p?))
+     (* scale (expt p* (- (/ shape)))))
+   (define (-real-support self)
+     (cons (pareto-dist-scale self) +inf.0))
+   (define (-mean self)
+     (match-define (pareto-dist scale shape) self)
+     (if (<= shape 1)
+         +inf.0
+         (/ (* scale shape) (sub1 shape))))
+   (define (-modes self)
+     (list (pareto-dist-scale self)))
+   (define (-variance self)
+     (match-define (pareto-dist scale shape) self)
+     (if (<= shape 2)
+         +inf.0
+         (/ (* scale scale shape)
+            (* (- shape 1) (- shape 1) (- shape 2)))))
+   (define (-conjugate self data-d data)
+     (match-define (pareto-dist scale shape) self)
+     (match data-d
+       [`(uniform-dist 0 _)
+        (pareto-dist
+         (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
+         (+ shape (vector-length data)))]
+       [_ #f]))])
+
+(define-dist-struct t-dist
+  ([degrees positive-rational? inexact]
+   [mean rational? inexact]
+   [scale positive-rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (t-dist degrees mean scale) self)
+     (+ mean (* scale (std-t-sample degrees))))]
+  #:methods gen:real-dist
+  [(define (-pdf self x log?)
+     (match-define (t-dist degrees mean scale) self)
+     (define sx (/ (- x mean) scale))
+     (define logpdf (- (std-t-logpdf degrees sx) (log scale)))
+     (if log? logpdf (exp logpdf)))
+   (define (-cdf self x log? 1-p?)
+     (match-define (t-dist degrees mean scale) self)
+     (define sx (/ (- x mean) scale))
+     (define p (std-t-cdf degrees sx))
+     (convert-p p log? 1-p?))
+   (define (-invcdf self p log? 1-p?)
+     (match-define (t-dist degrees mean scale) self)
+     (define p* (unconvert-p p log? 1-p?))
+     (error 't-inv-cdf "unimplemented"))
+   (define (-real-support self)
+     '(-inf.0 . +inf.0))
+   (define (-mean self)
+     (match-define (t-dist degrees mean scale) self)
+     (if (> degrees 1) 0 #f))
+   (define (-median self) 0)
+   (define (-variance self) #f)
+   (define (-drift-dist self value scale-factor)
+     (match-define (t-dist degrees mean scale) self)
+     (normal-dist value (* scale scale-factor)))
+   #;
+   (define (-drift1 self value scale-factor)
+     (match-define (t-dist degrees mean scale) self)
+     (drift:add-normal value (* scale scale-factor)))])
+
+(define (std-t-logpdf degrees x)
+  (define logprefix (std-t-logpdf-prefix degrees))
+  (- logprefix
+     (* (+ 1.0 degrees) 0.5
+        (log (+ 1.0 (/ (* x x) degrees))))))
+
+(define (std-t-logpdf-prefix degrees)
+  (+ (m:log-gamma (* 0.5 (+ 1.0 degrees)))
+     (* -0.5 (log degrees))
+     (* -0.5 (log pi))
+     (* -1.0 (m:log-gamma (* degrees 0.5)))))
+
+(define (std-t-cdf degrees x)
+  (cond [#f ;(= degrees 1)
+         (+ 0.5 (* (/ pi) (atan x)))]
+        [#f ;(= degrees 2)
+         (+ 0.5 (/ x (* 2 (sqrt (+ 2 (* x x))))))]
+        [else (std-t-cdf* degrees x)]))
+(define (std-t-cdf* degrees x)
+  (cond [(> x 0)
+         (define x* (/ degrees (+ (* x x) degrees)))
+         (define a (* degrees 0.5))
+         (define b 0.5)
+         (- 1.0 (* 0.5 (m:beta-inc a b x* #f #t)))]
+        [(< x 0)
+         (- 1.0 (std-t-cdf* degrees (- x)))]
+        [(= x 0)
+         0.5]))
+
+(define (std-t-sample degrees)
+  (define u (- (* 2.0 (random)) 1))
+  (define v (- (* 2.0 (random)) 1))
+  (define w (+ (* u u) (* v v)))
+  (cond [(> w 1)
+         (std-t-sample degrees)]
+        [else
+         (define c^2 (/ (* u u) w))
+         (define r^2 (* degrees (+ -1.0 (expt w (/ -2.0 degrees)))))
+         (define x-abs (sqrt (* r^2 c^2)))
+         (if (zero? (random 2))
+             x-abs
+             (- x-abs))]))
+
+
+;; ============================================================
+;; Discrete integer distributions from math library
+
+#|
 (define-real-dist-struct binomial-dist
   ([n exact-nonnegative-integer? #:exact]
    [p (real-in 0 1)])
@@ -101,388 +583,11 @@
              (drift:add-discrete-normal value (* scale-factor (sqrt mean)) 0 +inf.0)))
   |#)
 
-(define-real-dist-struct beta-dist
-  ([a (>=/c 0)]
-   [b (>=/c 0)])
-  #:real #:prefix m:flbeta
-  #:real-methods
-  [(define (-support self) '(0 . 1))
-   (define (-mean self)
-     (match self [(beta-dist a b) (/ a (+ a b))]))
-   (define (-modes self)
-     (match-define (beta-dist a b) self)
-     (if (and (> a 1) (> b 1))
-         (list (/ (+ a -1) (+ a b -2)))
-         '()))
-   (define (-variance self)
-     (match-define (beta-dist a b) self)
-     (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
-   (define (-denergy self x [dx 1] [da 0] [db 0])
-     (match-define (beta-dist a b) self)
-     (+ (lazy* dx (+ (/ (- 1 a) x)
-                     (/ (- b 1) (- 1 x))))
-        (lazy* da (- (log x)))
-        (lazy* db (- (log (- 1 x))))
-        (lazy* da (digamma a))
-        (lazy* db (digamma b))
-        (lazy* (+ da db) (- (digamma (+ a b))))))]
-  #|
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(bernoulli-dist _)
-                   (beta-dist (+ a (for/sum ([x data] #:when (= x 1)) 1))
-                              (+ b (for/sum ([x data] #:when (= x 0)) 0)))]
-                  [`(binomial-dist ,n _)
-                   (beta-dist (+ a (vector-sum data))
-                              (+ b (for/sum ([x (in-vector data)]) (- n x))))]
-                  [`(geometric-dist _)
-                   (beta-dist (+ a (vector-length data))
-                              (+ b (vector-sum data)))]
-                  [_ #f]))
-  #:drift-dist (lambda (value scale-factor)
-                 ;; mode = α / (α + β), peakedness = α + β = S (our choice)
-                 ;; So if we want dist peaked at x:
-                 ;;   α = S * x
-                 ;;   β = S - α = S * (1 - x)
-                 (define S 10) ;; "peakedness" parameter
-                 (beta-dist (* S value) (* S (- 1 value))))
-  |#)
-
-(define-real-dist-struct cauchy-dist
-  ([mode rational?]
-   [scale (>/c 0)])
-  #:real #:prefix m:flcauchy
-  #:real-methods
-  [(define (-support self) '(-inf.0 . +inf.0))
-   (define (-mean self) +nan.0)
-   (define (-modes self) (list (cauchy-dist-mode self)))
-   (define (-variance self) +nan.0)
-   (define (-denergy self x [dx 1] [dm 0] [ds 0])
-     (match-define (cauchy-dist mode scale) self)
-     (define x-m (- x mode))
-     (+ (lazy* ds (/ scale))
-        (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
-           (- (/ (- dx dm) scale)
-              (lazy* ds (/ x-m scale scale))))))]
-  #|
-  #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
-  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor)))
-  |#)
-
-(define-real-dist-struct exponential-dist
-  ([mean (>/c 0)])
-  ;; λ = 1/mean
-  #:real #:prefix m:flexponential
-  #:real-methods
-  [(define (-support self) '(0 . +inf.0))
-   (define (-mean self)
-     (match-define (exponential-dist mean) self)
-     mean)
-   (define (-modes self) '(0))
-   (define (-variance self)
-     (match-define (exponential-dist mean) self)
-     (expt mean 2))
-   (define (-denergy self x [dx 1] [dm 0])
-     (match-define (exponential-dist mean) self)
-     (define /mean (/ mean))
-     (+ (lazy* dm (- /mean (* x /mean /mean)))
-        (* dx /mean)))]
-  #|
-  #:drift-dist (lambda (value scale-factor)
-                 (mult-exp-normal-dist value (* mean scale-factor)))
-  #:drift1 (lambda (value scale-factor)
-             (drift:mult-exp-normal value (* mean scale-factor)))
-  |#)
-
-(define-real-dist-struct gamma-dist
-  ([shape (>/c 0)]
-   [scale (>/c 0)])
-  ;; k = shape, θ = scale
-  #:real #:prefix m:flgamma
-  #:real-methods
-  [(define (-support self) '(0 . +inf.0)) ;; (0, inf)
-   (define (-mean self)
-     (match-define (gamma-dist shape scale) self)
-     (* shape scale))
-   (define (-modes self)
-     (match-define (gamma-dist shape scale) self)
-     (if (> shape 1) (list (* (- shape 1) scale)) null))
-   (define (-variance self)
-     (match-define (gamma-dist shape scale) self)
-     (* shape scale scale))
-   (define (-denergy self x [dx 1] [dk 0] [dθ 0])
-     (match-define (gamma-dist shape scale) self)
-     (define k shape)
-     (define θ scale)
-     (+ (lazy* dx (+ (/ (- 1 k) x) (/ θ)))
-        (lazy* dk (+ (digamma k) (log θ) (- (log x))))
-        (lazy* dθ (- (/ k θ) (/ x (* θ θ))))))]
-  #|
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(poisson-dist _)
-                   (gamma-dist (+ shape (vector-sum data))
-                               (/ scale (add1 (* (vector-length data) scale))))]
-                  [`(exponential-dist _)
-                   (gamma-dist (+ shape (vector-length data))
-                               (/ (+ (/ scale) (vector-sum data))))]
-                  [`(gamma-dist ,data-shape _)
-                   (gamma-dist (+ shape (* data-shape (vector-length data)))
-                               (/ (+ (/ scale) (vector-sum data))))]
-                  [`(inverse-gamma-dist ,data-shape _)
-                   (gamma-dist (+ shape (* (vector-length data) data-shape))
-                               (/ (+ (/ scale) (for/sum ([x (in-vector data)]) (/ x)))))]
-                  [`(normal-dist ,data-mean _)
-                   (gamma-dist (+ shape (/ (vector-length data) 2))
-                               (/ (+ (/ scale)
-                                     (* 1/2 (for/sum ([x (in-vector data)])
-                                              (sqr (- x data-mean)))))))]
-                  [_ #f]))
-  #:drift-dist (lambda (value scale-factor)
-                 (mult-exp-normal-dist value (* scale (sqrt shape) scale-factor)))
-  #:drift1 (lambda (value scale-factor)
-             (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor)))
-  |#)
-
-(define-real-dist-struct logistic-dist
-  ([mean real?]
-   [scale (>/c 0)])
-  #:real #:prefix m:fllogistic
-  #:real-methods
-  [(define (-support self) '(-inf.0 . +inf.0))
-   (define (-mean self) (logistic-dist-mean self))
-   (define (-median self) (logistic-dist-mean self))
-   (define (-modes self) (list (logistic-dist-mean self)))
-   (define (-variance self)
-     (match-define (logistic-dist mean scale) self)
-     (* scale scale pi pi 1/3))
-   (define (-denergy self x [dx 1] [dm 0] [ds 0])
-     (match-define (logistic-dist mean scale) self)
-     (define s scale)
-     (define x-m (- x mean))
-     (define A (- (/ (- dx dm) s) (lazy* ds (/ x-m (* s s)))))
-     (define B (exp (- (/ x-m s))))
-     (+ A
-        (lazy* ds (/ s))
-        (* 2 (/ (+ 1 B)) B (- A))))]
-  #|
-  #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
-  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor)))
-  |#)
-
-(define-real-dist-struct normal-dist
-  ([mean real?]
-   [stddev (>/c 0)])
-  #:real #:prefix m:flnormal
-  #:real-methods
-  [(define (-support self) '(-inf.0 . +inf.0))
-   (define (-mean self) (normal-dist-mean self))
-   (define (-median self) (normal-dist-mean self))
-   (define (-modes self) (list (normal-dist-mean self)))
-   (define (-variance self)
-     (match-define (normal-dist mean stddev) self)
-     (* stddev stddev))
-   (define (-denergy self x [dx 1] [dμ 0] [dσ 0])
-     (match-define (normal-dist mean stddev) self)
-     (define μ mean)
-     (define σ stddev)
-     (define x-μ (- x μ))
-     (+ (lazy* dσ (- (/ σ) (/ (* x-μ x-μ) (* σ σ σ))))
-        (lazy* (- dx dμ)
-               (/ x-μ (* σ σ)))))]
-  #|
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(normal-dist _ ,data-stddev)
-                   (normal-dist (/ (+ (/ mean (sqr stddev))
-                                      (/ (vector-sum data)
-                                         (sqr data-stddev)))
-                                   (+ (/ (sqr stddev))
-                                      (/ (vector-length data)
-                                         (sqr data-stddev))))
-                                (sqrt
-                                 (/ (+ (/ (sqr stddev))
-                                       (/ (vector-length data)
-                                          (sqr data-stddev))))))]
-                  [_ #f]))
-  #:drift-dist (lambda (value scale-factor) (normal-dist value (* stddev scale-factor)))
-  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* stddev scale-factor)))
-  |#)
-
-(define-real-dist-struct uniform-dist
-  ([min real?]
-   [max real?])
-  #:real #:prefix m:fluniform
-  #:guard (lambda (a b _name)
-            (unless (< a b)
-              (error 'uniform-dist
-                     "lower bound is not less than upper bound\n  lower: ~e\n  upper: ~e"
-                     a b))
-            (values a b))
-  #:real-methods
-  [(define (-support self)
-     (match-define (uniform-dist min max) self)
-     (cons min max))
-   (define (-mean self)
-     (match-define (uniform-dist min max) self)
-     (/ (+ min max) 2))
-   (define (-median self)
-     (match-define (uniform-dist min max) self)
-     (/ (+ min max) 2))
-   (define (-variance self)
-     (match-define (uniform-dist min max) self)
-     (* (- max min) (- max min) 1/12))
-   (define (-denergy self x [dx 1] [dmin 0] [dmax 0])
-     (match-define (uniform-dist min max) self)
-     (cond [(<= min x max)
-            (lazy* (- dmax dmin) (/ (- max min)))]
-           [else 0]))]
-  #|
-  #:drift-dist (lambda (value scale-factor)
-                 (define equiv-dist (affine-distx (beta-dist 1 1) min (- max min)))
-                 (dist-drift-dist equiv-dist scale-factor))
-  |#)
-
-
-;; ============================================================
-;; Additional continuous real distributions
-
-(define-real-dist-struct pareto-dist
-  ([scale (>/c 0)]  ;; x_m
-   [shape (>/c 0)]) ;; alpha
-  #:real
-  #:dist-methods
-  [(define (-sample self)
-     (-invcdf self (random) #f #f))]
-  #:real-methods
-  [(define (-pdf self x log?)
-     (match-define (pareto-dist scale shape) self)
-     (define lp
-       (if (>= x scale)
-           (- (+ (log shape) (* shape (log scale)))
-              (* (add1 shape) (log x)))
-           -inf.0))
-     (if log? lp (exp lp)))
-   (define (-cdf self x log? 1-p?)
-     (match-define (pareto-dist scale shape) self)
-     (define p
-       (if (> x scale)
-           (- 1.0 (expt (/ scale x) shape))
-           0.0))
-     (convert-p p log? 1-p?))
-   (define (-invcdf self p log? 1-p?)
-     (match-define (pareto-dist scale shape) self)
-     (define p* (unconvert-p p log? 1-p?))
-     (* scale (expt p* (- (/ shape)))))
-   (define (-support self)
-     (cons (pareto-dist-scale self) +inf.0))
-   (define (-mean self)
-     (match-define (pareto-dist scale shape) self)
-     (if (<= shape 1)
-         +inf.0
-         (/ (* scale shape) (sub1 shape))))
-   (define (-modes self) (list (pareto-dist-scale self)))
-   (define (-variance self)
-     (match-define (pareto-dist scale shape) self)
-     (if (<= shape 2)
-         +inf.0
-         (/ (* scale scale shape)
-            (* (- shape 1) (- shape 1) (- shape 2)))))]
-   #|
-   #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(uniform-dist 0 _)
-                   (pareto-dist
-                    (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
-                    (+ shape (vector-length data)))]
-                  [_ #f]))
-   |#)
-;; DRIFT: FIXME
+|#
 
 ;; ------------------------------------------------------------
 
-(define-real-dist-struct t-dist
-  ([degrees (>/c 0)]
-   [mean rational?]
-   [scale (>/c 0)])
-  #:real
-  #:dist-methods
-  [(define (-sample self)
-     (match-define (t-dist degrees location scale) self)
-     (+ location (* scale (std-t-sample degrees))))]
-  #:real-methods
-  [(define (-pdf self x log?)
-     (match-define (t-dist degrees mean scale) self)
-     (define sx (/ (- x mean) scale))
-     (define logpdf (- (std-t-logpdf degrees sx) (log scale)))
-     (if log? logpdf (exp logpdf)))
-   (define (-cdf self x log? 1-p?)
-     (match-define (t-dist degrees mean scale) self)
-     (define sx (/ (- x mean) scale))
-     (define p (std-t-cdf degrees sx))
-     (convert-p p log? 1-p?))
-   (define (-invcdf self p log? 1-p?)
-     (match-define (t-dist degrees mean scale) self)
-     (define p* (unconvert-p p log? 1-p?))
-     (error 't-inv-cdf "unimplemented"))
-   (define (-support self) '(-inf.0 . +inf.0))
-   (define (-mean self)
-     (match-define (t-dist degrees mean scale) self)
-     (if (> degrees 1) 0 #f))
-   (define (-median self) 0)
-   (define (-variance self) #f)]
-  #|
-  #:drift-dist (lambda (value scale-factor) (normal-dist value (* scale scale-factor)))
-  #:drift1 (lambda (value scale-factor) (drift:add-normal value (* scale scale-factor)))
-  |#)
-
-(define (std-t-logpdf degrees x)
-  (define logprefix (std-t-logpdf-prefix degrees))
-  (- logprefix
-     (* (+ 1.0 degrees) 0.5
-        (log (+ 1.0 (/ (* x x) degrees))))))
-
-;; FIXME: memoize/special-case?
-(define (std-t-logpdf-prefix degrees)
-  (+ (m:log-gamma (* 0.5 (+ 1.0 degrees)))
-     (* -0.5 (log degrees))
-     (* -0.5 (log pi))
-     (* -1.0 (m:log-gamma (* degrees 0.5)))))
-
-(define (std-t-cdf degrees x)
-  (cond [#f ;(= degrees 1)
-         (+ 0.5 (* (/ pi) (atan x)))]
-        [#f ;(= degrees 2)
-         (+ 0.5 (/ x (* 2 (sqrt (+ 2 (* x x))))))]
-        [else
-         (define (gen-cdf x)
-           (cond [(> x 0)
-                  (define x* (/ degrees (+ (* x x) degrees)))
-                  (define a (* degrees 0.5))
-                  (define b 0.5)
-                  (- 1.0 (* 0.5 (m:beta-inc a b x* #f #t)))]
-                 [(< x 0)
-                  (- 1.0 (gen-cdf (- x)))]
-                 [(= x 0)
-                  0.5]))
-         (gen-cdf x)]))
-
-(define (std-t-sample degrees)
-  (define u (- (* 2.0 (random)) 1))
-  (define v (- (* 2.0 (random)) 1))
-  (define w (+ (* u u) (* v v)))
-  (cond [(> w 1)
-         (std-t-sample degrees)]
-        [else
-         (define c^2 (/ (* u u) w))
-         (define r^2 (* degrees (+ -1.0 (expt w (/ -2.0 degrees)))))
-         (define x-abs (sqrt (* r^2 c^2)))
-         (if (zero? (random 2))
-             x-abs
-             (- x-abs))]))
-
-;; ------------------------------------------------------------
-
+#;
 (define-real-dist-struct samples-dist
   ([samples vector? #;(vectorof real?) #:exact])
   #:real
@@ -515,10 +620,10 @@
    #; (define (-variance self) _)
    ])
 
-
 ;; ============================================================
 ;; Discrete distributions
 
+#|
 (define-real-dist-struct bernoulli-dist
   ([p (real-in 0 1)])
   #:nat
@@ -628,6 +733,7 @@
            i]
           [else
            (loop (add1 i) (- p (vector-ref probs i)))])))
+|#
 
 
 ;; ------------------------------------------------------------
