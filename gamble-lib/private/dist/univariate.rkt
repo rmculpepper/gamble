@@ -33,11 +33,12 @@
   [(define (-sample self)
      (match-define (beta-dist a b) self)
      (flvector-ref (m:flbeta-sample a b 1) 0))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (beta-dist a b) self)
-     (m:flbeta-pdf a b (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:flbeta-pdf a b (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (beta-dist a b) self)
      (m:flbeta-cdf a b (inexact x) log? 1-p?))
    (define (-invcdf self p log? 1-p?)
@@ -92,11 +93,12 @@
   [(define (-sample self)
      (match-define (cauchy-dist mode scale) self)
      (flvector-ref (m:flcauchy-sample mode scale 1) 0))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (cauchy-dist mode scale) self)
-     (m:flcauchy-pdf mode scale (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:flcauchy-pdf mode scale (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (cauchy-dist mode scale) self)
      (m:flcauchy-cdf mode scale (inexact x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
@@ -128,11 +130,12 @@
   [(define (-sample self)
      (match-define (exponential-dist mean) self)
      (flvector-ref (m:flexponential-sample mean 1) 0))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (exponential-dist mean) self)
-     (m:flexponential-pdf mean (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:flexponential-pdf mean (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (exponential-dist mean) self)
      (m:flexponential-cdf mean (inexact x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
@@ -166,11 +169,12 @@
   [(define (-sample self)
      (match-define (gamma-dist shape scale) self)
      (flvector-ref (m:flgamma-sample shape scale 1) 0))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (gamma-dist shape scale) self)
-     (m:flgamma-pdf shape scale (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:flgamma-pdf shape scale (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (gamma-dist shape scale) self)
      (m:flgamma-cdf shape scale (inexact x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
@@ -230,11 +234,12 @@
   [(define (-sample self)
      (match-define (logistic-dist mean scale) self)
      (flvector-ref (m:fllogistic-sample mean scale 1) 0))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (logistic-dist mean scale) self)
-     (m:fllogistic-pdf mean scale (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:fllogistic-pdf mean scale (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (logistic-dist mean scale) self)
      (m:fllogistic-cdf mean scale (inexact x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
@@ -271,11 +276,12 @@
   [(define (-sample self)
      (match-define (normal-dist mean scale) self)
      (flvector-ref (m:flnormal-sample mean scale 1) 0))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (normal-dist mean scale) self)
-     (m:flnormal-pdf mean scale (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:flnormal-pdf mean scale (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (normal-dist mean scale) self)
      (m:flnormal-cdf mean scale (inexact x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
@@ -332,11 +338,12 @@
   [(define (-sample self)
      (match-define (uniform-dist lo hi) self)
      (+ lo (* (- hi lo) (random))))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (uniform-dist lo hi) self)
-     (m:fluniform-pdf lo hi (inexact x) log?))
-   (define (-cdf self x log? 1-p?)
+     (m:fluniform-pdf lo hi (inexact x) log?))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (uniform-dist lo hi) self)
      (m:fluniform-cdf lo hi (inexact x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
@@ -374,7 +381,7 @@
   #:methods gen:dist
   [(define (-sample self)
      (-invcdf self (random) #f #f))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (pareto-dist scale shape) self)
      (define lp
@@ -382,8 +389,9 @@
            (- (+ (log shape) (* shape (log scale)))
               (* (add1 shape) (log x)))
            -inf.0))
-     (if log? lp (exp lp)))
-   (define (-cdf self x log? 1-p?)
+     (if log? lp (exp lp)))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (pareto-dist scale shape) self)
      (define p
        (if (> x scale)
@@ -426,13 +434,14 @@
   [(define (-sample self)
      (match-define (t-dist degrees mean scale) self)
      (+ mean (* scale (std-t-sample degrees))))]
-  #:methods gen:real-dist
+  #:methods gen:continuous-dist
   [(define (-pdf self x log?)
      (match-define (t-dist degrees mean scale) self)
      (define sx (/ (- x mean) scale))
      (define logpdf (- (std-t-logpdf degrees sx) (log scale)))
-     (if log? logpdf (exp logpdf)))
-   (define (-cdf self x log? 1-p?)
+     (if log? logpdf (exp logpdf)))]
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
      (match-define (t-dist degrees mean scale) self)
      (define sx (/ (- x mean) scale))
      (define p (std-t-cdf degrees sx))

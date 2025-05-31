@@ -54,63 +54,76 @@
   (-total-measure dist)            ;; Dist -> NNReal
   #:defaults
   ([(lambda (v) (real-dist? v))
-    (define (-density self x)
-      (density (-pdf self x #f) 1))
     (define (-measure self ms)
-      (match-define (measurable _ ivls) ms)
-      (let loop ([ivls ivls] [acc 0])
-        (match ivls
-          [(list* lo hi ivls)
-           (loop ivls (+ acc (- (-cdf self hi #f #f) (-cdf self lo #f #f))))]
-          [(list) acc])))
+      (match-define (measurable atoms ivls) ms)
+      (define ivls-mass
+        (let loop ([ivls ivls] [acc 0])
+          (match ivls
+            [(list* lo hi ivls)
+             (loop ivls (+ acc (- (-cdf self hi #f #f) (-cdf self lo #f #f))))]
+            [(list) acc])))
+      (define atoms-mass
+        (cond [(integer-dist? self)
+               (for/sum ([v (in-hash-keys atoms)])
+                 (dist-density self v))]
+              [else 0])) 
+      (+ ivls-mass atoms-mass))
     (define (-total-measure self) 1)]
-   [(lambda (v) (integer-dist? v))
-    (define (-measure self ms)
-      ;; FIXME
-      (error 'dist-measure:integer-dist "unimplemented"))
-    (define (-total-measure self) 1)]))
+   [(lambda (v) (continuous-dist? v))
+    (define (-density self x)
+      (density (-pdf self x #f) 1))]))
 
 (define (dist-sample d) (-sample d))
 (define (dist-density d x) (-density d x))
 (define (dist-measure d ms) (-measure d ms))
 (define (dist-total-measure d) (-total-measure d))
 
-(define-generics enum-dist         ;; extends dist
+(define-generics enumerable-dist   ;; extends dist
   ;; Represents discrete, enumerable distributions.
-  (-sequence enum-dist)            ;; Dist -> (values Sequence[X])
+  (-sequence enumerable-dist)      ;; Dist -> (values Sequence[X])
   #:fallbacks [])
 
 (define (in-dist dist) (-sequence dist))
 
-(define-generics real-dist         ;; extends dist
-  ;; Represents continuous, normalized real-valued distributions.
+(define-generics real-dist ;; extends dist; comprises {continuous,integer}-dist
+  ;; Represents normalized real-valued distributions.
+  ;; If ddim = 1, continuous wrt Lebesgue measure.
   ;; type X = Real
-  (-pdf real-dist x log?)          ;; Dist X Boolean -> NNReal
   (-cdf real-dist x log? 1-p?)     ;; Dist X Boolean Boolean -> NNReal
   (-invcdf real-dist x log? 1-p?)  ;; Dist Real Bool Bool -> X
-  ;; (-denergy real-dist x . d/dts)   ;; Dist X Param ... -> Real
-  (-real-support real-dist)        ;; Dist -> (cons ExtReal ExtReal) or #f
+  (-support real-dist)             ;; Dist -> (cons ExtReal ExtReal) or #f
   (-mean real-dist)                ;; Dist -> Real or #f
   (-median real-dist)              ;; Dist -> Real or #f
   (-modes real-dist)               ;; Dist -> (Listof Real) or #f
   (-variance real-dist)            ;; Dist -> Real or #f
+  #:defaults
+  ([(lambda (v) (continuous-dist? v))
+    (define (-ddim self) 1)]
+   [(lambda (v) (integer-dist? v))
+    (define (-ddim self) 0)])
   #:fallbacks
-  [(define (-real-support d) '(-inf.0 . +inf.0))
+  [(define (-support d) '(-inf.0 . +inf.0))
    (define (-mean d) #f)
    (define (-median d) #f)
    (define (-modes d) #f)
    (define (-variance d) #f)])
 
-(define (dist-pdf d x [log? #f])
-  (-pdf d x log?))
 (define (dist-cdf d x [log? #f] [1-p? #f])
   (-cdf d x log? 1-p?))
 (define (dist-inv-cdf d r [log? #f] [1-p? #f])
   (-invcdf d r log? 1-p?))
 
-(define-generics integer-dist      ;; extends enum-dist
+(define-generics continuous-dist   ;; extends real-dist
+  ;; Represents normalized, continuous real-valued distributions.
+  (-pdf continuous-dist x log?)    ;; Dist X Boolean -> NNReal
+  ;; (-denergy real-dist x . d/dts)   ;; Dist X Param ... -> Real
+  #:fallbacks [])
+
+(define (dist-pdf d x [log? #f])
+  (-pdf d x log?))
+
+(define-generics integer-dist      ;; extends real-dist, enumerable-dist
   ;; Represents discrete, normalized integer-valued distributions.
-  (-integer-support integer-dist)  ;; Dist -> (cons ExtInteger ExtInteger) or #f
   #:fallbacks [])
 
 ;; FIXME: real^2-dist
