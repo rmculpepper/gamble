@@ -191,13 +191,6 @@
   (provide define-dist-struct)
 
   (begin-for-syntax
-    (define-syntax-class name-dist-id
-      #:attributes (name)
-      (pattern nd:id
-               #:do [(define nd-s (symbol->string (syntax-e #'nd)))
-                     (define m (regexp-match #rx"^(.*)-dist$" nd-s))]
-               #:fail-unless m "expected identifier ending in `-dist`"
-               #:with name (format-id #'nd "~a" (cadr m))))
     (define-syntax-class param-spec
       (pattern [param:id pred:expr] #:with conv #'begin)
       (pattern [param:id pred:expr conv:expr]))
@@ -208,7 +201,7 @@
 
   (define-syntax define-dist-struct
     (syntax-parser
-      [(_ nd:name-dist-id (p:param-spec ...)
+      [(_ nd:id (p:param-spec ...)
           g:maybe-guard
           more ...)
        #'(struct nd (p.param ...)
