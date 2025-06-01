@@ -1,52 +1,108 @@
-;; Copyright 2015-2020 Ryan Culpepper
+;; Copyright 2015-2025 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require "base.rkt"
-         "density.rkt"
-         "define.rkt"
+(require racket/match
+         "base.rkt"
+         (submod "util.rkt" math)
+         (submod "util.rkt" density)
+         (submod "util.rkt" define)
+         "measurable.rkt"
          "discrete.rkt")
-(provide #| implicit from define-dist-type |#)
+(provide (all-defined-out))
 
 ;; ============================================================
+;; continuous-dist to continuous-dist
 
-(define-dist-type affine-distx
-  ;; a != 0
-  ([d real-dist?] [a real?] [b real?])
-  #:lebesgue
-  #:pdf affine-distx-pdf
-  #:cdf affine-distx-cdf
-  #:inv-cdf affine-distx-inv-cdf
-  #:sample affine-distx-sample
-  ;; FIXME: support
-  #:support #f)
+;; ----------------------------------------
+;; mixture
 
-(define (affine-forward a b x)
+(define-dist-struct mixture-distx
+  ([mix (discrete-dist-of continuous-dist?)])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (mixture-distx mix) self)
+     (dist-sample (dist-sample mix)))
+   (define (-pdf self x log?)
+     (match-define (mixture-distx mix) self)
+     (if log?
+         (logspace-sum
+          (for/list ([(cd w) (in-discrete-dist mix)])
+            (+ (log w) (dist-pdf cd x #t))))
+         (for/sum ([(cd w) (in-discrete-dist mix)])
+           (* w (dist-pdf cd x #f)))))
+   (define (-measure self ms)
+     (match-define (mixture-distx mix) self)
+     (for/sum ([(cd w) (in-discrete-dist mix)])
+       (* w (dist-measure cd ms))))
+   (define (-total-measure self)
+     (match-define (mixture-distx mix) self)
+     (for/sum ([(cd w) (in-discrete-dist mix)])
+       (* w (dist-total-measure cd))))]
+  #:methods gen:continuous-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (mixture-distx mix) self)
+     (if log?
+         (logspace-sum
+          (for/list ([(cd w) (in-discrete-dist mix)])
+            (+ (log w) (dist-cdf cd x #t 1-p?))))
+         (for/sum ([(cd w) (in-discrete-dist mix)])
+           (* w (dist-cdf cd x #f 1-p?)))))])
+
+;; ----------------------------------------
+;; affine transformation
+
+(define-dist-struct affine-distx
+  ([d continuous-dist?]
+   [a nonzero-rational? inexact]
+   [b rational? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (affine-distx d a b) self)
+     (affine-apply a b (dist-sample d)))
+   (define (-pdf self y log?)
+     (match-define (affine-distx d a b) self)
+     (define x (affine-invert a b y))
+     (cond [(rational? x)
+            (define xpdf (dist-pdf d x log?))
+            (cond [log? (- xpdf (log (abs a)))]
+                  [else (/ xpdf (abs a))])]
+           [else (if log? -inf.0 0)]))
+   (define (-measure self ms)
+     (match-define (affine-distx d a b) self)
+     (define (affine-f x) (affine-apply a b x))
+     (match-define (measurable _ ivls) ms)
+     (let ([ivls (map affine-f ivls)])
+       (let ([ivls (if (< a 0) (reverse ivls) ivls)])
+         (dist-measure d (measurable (hash) ivls)))))
+   (define (-total-measure self)
+     (match-define (affine-distx d a b) self)
+     (dist-total-measure d))]
+  #:methods gen:continuous-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self y log? 1-p?)
+     (match-define (affine-distx d a b) self)
+     (dist-cdf d (affine-invert a b y) log? (if (< a 0) (not 1-p?) 1-p?)))
+   (define (-invcdf self r log? 1-p?)
+     (match-define (affine-distx d a b) self)
+     (define x (dist-inv-cdf d r log? (if (< a 0) (not 1-p?) 1-p?)))
+     (affine-apply a b x))
+
+   ])
+
+(define (nonzero-rational? v)
+  (and (rational? v) (not (zero? v))))
+
+(define (affine-apply a b x)
   (+ b (* a x)))
 
 (define (affine-invert a b y)
   (/ (- y b) a))
 
-(define (affine-distx-pdf d a b y log?)
-  (define x (affine-invert a b y))
-  (cond [(rational? x)
-         (define xpdf (dist-pdf d x log?))
-         (cond [log? (- xpdf (log a))]
-               [else (/ xpdf a)])]
-        [else (if log? -inf.0 0)]))
-
-(define (affine-distx-cdf d a b y log? 1-p?)
-  (dist-cdf d (affine-invert a b y) log? 1-p?))
-
-(define (affine-distx-inv-cdf d a b r log? 1-p?)
-  (affine-forward a b (dist-inv-cdf d r log? (if (< a 0) (not 1-p?) 1-p?))))
-
-(define (affine-distx-sample d a b)
-  (affine-forward a b (dist-sample d)))
-
 ;; ============================================================
-
+#|
 (define-dist-type real-map-distx
   ;; f must be injective, continuous, differentiable, monotonic
   ;; invf returns NaN for out-of-range inputs
@@ -77,9 +133,11 @@
 
 (define (map*-distx-sample d f invf df)
   (f (dist-sample d)))
+|#
 
 ;; ============================================================
 
+#|
 (define-dist-type clip-distx
   ([dist real-dist?] [a real?] [b real?])
   #:lebesgue ;; FIXME?
@@ -124,50 +182,33 @@
          (let loop ()
            (define x (dist-sample d))
            (if (<= a x b) x (loop)))]))
+|#
 
 ;; ============================================================
+;; continuous-dist to integer-dist
 
-(define-dist-type discretize-distx
-  ([dist real-dist?])
-  #:counting
-  #:pdf discretize-distx-pdf
-  #:cdf discretize-distx-cdf
-  #:inv-cdf discretize-distx-inv-cdf
-  #:sample discretize-distx-sample
-  #:support (integer-range -inf.0 +inf.0)) ;; FIXME
+;; ----------------------------------------
+;; discretize
 
-(define (discretize-distx-pdf d x log?)
-  ;; integer x "unrounds" to [x-0.5, x+0.5]
-  (define p (- (dist-cdf d (+ x 0.5) #f #f)
-               (dist-cdf d (- x 0.5) #f #f)))
-  (convert-p p log? #f))
-
-(define (discretize-distx-cdf d x log? 1-p?)
-  (let ([x (round x)])
-    (dist-cdf d (+ x 0.5) log? 1-p?)))
-
-(define (discretize-distx-inv-cdf d p log? 1-p?)
-  (inexact->exact (round (dist-inv-cdf d p log? 1-p?))))
-
-(define (discretize-distx-sample d)
-  (inexact->exact (round (dist-sample d))))
+(define-dist-struct discretize-distx
+  ([dist continuous-dist?])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (discretize-distx d) self)
+     (exact (round (dist-sample d))))
+   (define (-pdf d x log?)
+     ;; integer x "unrounds" to [x-0.5, x+0.5]
+     (define hi (dist-cdf d (+ x 0.5) log? #f))
+     (define lo (dist-cdf d (- x 0.5) log? #f))
+     (if log? (logspace- hi lo) (- hi lo)))]
+  #:methods gen:integer-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (discretize-distx d) self)
+     (define ix (floor x)) ;; floor, not round
+     (dist-cdf d (+ ix 0.5) log? 1-p?))
+   (define (-invcdf self p log? 1-p?)
+     (match-define (discretize-distx d) self)
+     (exact (round (dist-inv-cdf d p log? 1-p?))))])
 
 ;; ============================================================
-
-(define-dist-type mixture-dist
-  ([mix (discrete-dist-of dist?)])
-  #:mixture
-  #:density mixture-density
-  #:sample mixture-sample)
-
-(define (make-mixture-dist ds [ws (make-vector (vector-length ds) 1)])
-  (mixture-dist (make-discrete-dist ds ws)))
-
-(define (mixture-density mix x full?)
-  (density-sum (for/list ([subdist (in-vector (discrete-dist-vs mix))])
-                 (dist-density subdist x full?))
-               (discrete-dist-ws mix)))
-
-(define (mixture-sample mix)
-  (define d (dist-sample mix))
-  (dist-sample d))
