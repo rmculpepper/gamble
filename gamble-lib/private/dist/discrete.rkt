@@ -30,58 +30,101 @@
 ;; Uses equal? to distinguish elements of support.
 
 ;; DiscreteDist[X]:
-(struct discrete-dist
-  (h                ;; Hash[X => PosReal]
-   wsum             ;; NNReal
-   [ext #:mutable]  ;; DiscreteDistExtension/#f
-   )
+(struct discrete-dist (h wsum)
   #:transparent
-  #:property prop:auto-equal+hash
-  (list (struct-field-index h))
   #:property prop:custom-write
   (lambda (self port mode)
     (define h (discrete-dist-h self))
     (print-discrete-dist 'discrete-dist h port mode))
   #:methods gen:dist
-  [(define (-sample self) (-discrete-sample self))
+  [(define (-sample self)
+     (-discrete-sample self))
    (define (-density self x log?)
      (density (-discrete-pdf self x log?) 0 log?))
    (define (-pdf self x log?)
      (-discrete-pdf self x log?))
-   (define (-measure self ms) (-discrete-measure self ms))
-   (define (-total-measure self) (discrete-dist-wsum self))]
+   (define (-measure self ms)
+     (-discrete-measure self ms))
+   (define (-total-measure self)
+     (discrete-dist-wsum self))]
   #:methods gen:enumerable-dist
-  [(define (-sequence self) (in-hash-keys (discrete-dist-h self)))])
+  [(define (-sequence self)
+     (in-hash-keys (discrete-dist-h self)))])
+
+;; ----------------------------------------
+;; Constructor
+
+;; -discrete-intern-table : EphHashalw[Hash => DiscreteDist]
+;; Needs ephemeron, since dist contains hash. Use hashalw to avoid
+;; issues if hash has mutable keys.
+(define -discrete-intern-table (make-ephemeron-hashalw))
+
+(define (hash->discrete-dist h)
+  (define who 'hash->discrete-dist)
+  (define (bad) (raise-argument-error who "(hash/c any/c (>=/c 0))" h))
+  (let loop ([h h])
+    (define (copy f)
+      (for/fold ([dh (hash)]) ([(v w) (in-hash h)] #:when (> w 0))
+        (hash-set dh v (f w))))
+    (cond [(hash-ref -discrete-intern-table h #f)
+           => values]
+          [(and (hash? h) (immutable? h) (not (impersonator? h))
+                (hash-equal? h) (hash-strong? h))
+           (define-values (wsum any-zero? any-exact?)
+             (for/fold ([s 0] [any-zero? #f] [any-exact? #f])
+                       ([w (in-hash-values h)])
+               (unless (and (rational? w) (>= w 0)) (bad))
+               (values (+ s w)
+                       (or any-zero? (zero? w))
+                       (or any-exact? (exact? w)))))
+           (cond [(and any-exact? (inexact? wsum))
+                  (loop (copy inexact))]
+                 [any-zero?
+                  (loop (copy values))]
+                 [else
+                  (define dist (discrete-dist h wsum))
+                  (hash-set! -discrete-intern-table h dist)
+                  dist])]
+          [(hash? h)
+           (loop (copy values))]
+          [else (bad)])))
+
+(define empty-discrete-dist (hash->discrete-dist '#hash()))
+
+;; ----------------------------------------
+;; DDExt
 
 ;; DDExt is (ddext (Vectorof X) (Vectorof PosReal) (Vectorof PosReal))
 ;; - cws[k] is sum of ws[0..k] (inclusive)
-(struct ddext (vs ws cws))
+(struct ddext (vs ws cws) #:transparent)
 
-(define empty-ddext (ddext '#() '#() '#()))
-(define empty-discrete-dist (discrete-dist '#hash() 0 empty-ddext))
+;; -discrete-ext-table : WeakHasheq[DiscreteDist => DDExt]
+(define -discrete-ext-table (make-weak-hasheq))
+
+(define (-discrete-ext dist)
+  (define (calc-ext)
+    (define h (discrete-dist-h dist))
+    (define len (hash-count h))
+    (define vs (make-vector len))
+    (define ws (make-vector len))
+    (define cws (make-vector len))
+    (for/fold ([s 0]) ([(v w) (in-hash h)] [i (in-naturals)])
+      (vector-set! vs i v)
+      (vector-set! ws i w)
+      (vector-set! cws i (+ s w))
+      (+ s w))
+    (ddext (vector->immutable-vector vs)
+           (vector->immutable-vector ws)
+           (vector->immutable-vector cws)))
+  (hash-ref! -discrete-ext-table dist (lambda () (calc-ext))))
+
+(void (-discrete-ext empty-discrete-dist))
 
 ;; ----------------------------------------
-;; Constructors
+;; More constructors
 
 (define (dirac v [w 1])
-  (discrete-dist (hash v w) w #f))
-
-(define (hash->discrete-dist h)
-  (define (bad) (raise-argument-error 'hash->discrete-dist "(hash/c any/c (>=/c 0))" h))
-  (cond [(and (immutable? h) (hash-equal? h) (not (impersonator? h))
-              (for/fold ([s 0]) ([w (in-hash-values h)])
-                ;; Use > here; if any zero-weight values, copy to eliminate.
-                (and (rational? w) (> w 0) (+ s w))))
-         => (lambda (wsum) (discrete-dist h wsum #f))]
-        [(hash? h)
-         (define-values (dh wsum)
-           (for/fold ([dh (hash)] [wsum 0]) ([(v w) (in-hash h)])
-             (unless (and (rational? w) (>= w 0)) (bad))
-             (if (> w 0)
-                 (values (hash-set dh v (+ w (hash-ref dh v 0))) (+ wsum w))
-                 (values dh wsum))))
-         (discrete-dist dh wsum #f)]
-        [else (bad)]))
+  (discrete-dist (hash v w) w))
 
 (define make-discrete-dist
   (case-lambda
@@ -112,33 +155,13 @@
   (ddext-vs (-discrete-ext dist)))
 (define (discrete-dist-weights dist)
   (ddext-ws (-discrete-ext dist)))
-(define (discrete-dist-hash dist)
+(define (discrete-dist->hash dist)
   (discrete-dist-h dist))
-
-(define (-discrete-ext dist)
-  (define (calc-ext)
-    (define h (discrete-dist-h dist))
-    (define len (hash-count h))
-    (define vs (make-vector len))
-    (define ws (make-vector len))
-    (define cws (make-vector len))
-    (for/fold ([s 0]) ([(v w) (in-hash h)] [i (in-naturals)])
-      (vector-set! vs i v)
-      (vector-set! ws i w)
-      (vector-set! cws i (+ s w))
-      (+ s w))
-    (ddext (vector->immutable-vector vs)
-           (vector->immutable-vector ws)
-           (vector->immutable-vector cws)))
-  (or (discrete-dist-ext dist)
-      (let ([ext (calc-ext)])
-        (set-discrete-dist-ext! dist ext)
-        ext)))
 
 (define LINEAR-SAMPLE-LIMIT 10)
 
 (define (-discrete-sample dist)
-  (match-define (discrete-dist h wsum _) dist)
+  (match-define (discrete-dist h wsum) dist)
   (define n (hash-count h))
   (when (zero? n) (error 'dist-sample:discrete-dist "empty distribution"))
   (cond [(< n LINEAR-SAMPLE-LIMIT)
@@ -169,7 +192,7 @@
           [else 0])))
 
 (define (-discrete-normalize dist)
-  (match-define (discrete-dist h wsum _) dist)
+  (match-define (discrete-dist h wsum) dist)
   (cond [(or (zero? wsum) (= wsum 1)) dist]
         [else (for/discrete-dist ([(v w) (in-hash h)])
                 (values v (/ w wsum)))]))
@@ -323,6 +346,6 @@
   (lambda (self d)
     (match-define (discrete-dist-of pred) self)
     (match d
-      [(discrete-dist h _ _)
+      [(discrete-dist h _)
        (for/and ([v (in-hash-keys h)]) (pred v))]
       [_ #f])))
