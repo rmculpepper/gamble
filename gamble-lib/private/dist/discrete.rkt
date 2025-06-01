@@ -12,7 +12,9 @@
          racket/vector
          scramble/struct
          "base.rkt"
+         (submod "util.rkt" math)
          (submod "util.rkt" density)
+         (submod "util.rkt" weights)
          "measurable.rkt")
 (provide (all-defined-out))
 
@@ -42,7 +44,10 @@
     (print-discrete-dist 'discrete-dist h port mode))
   #:methods gen:dist
   [(define (-sample self) (-discrete-sample self))
-   (define (-density self x) (-discrete-density self x))
+   (define (-density self x log?)
+     (density (-discrete-pdf self x log?) 0 log?))
+   (define (-pdf self x log?)
+     (-discrete-pdf self x log?))
    (define (-measure self ms) (-discrete-measure self ms))
    (define (-total-measure self) (discrete-dist-wsum self))]
   #:methods gen:enumerable-dist
@@ -141,7 +146,7 @@
         [else
          (match-define (ddext vs ws cws) (-discrete-ext dist))
          (define p (* (random) wsum))
-         (vector-ref vs (binary-search/least-gt cws p))]))
+         (vector-ref vs (binary-search/least-geq cws p))]))
 
 (define (-discrete-sample/linear h wsum)
   (define p (* (random) wsum))
@@ -151,9 +156,9 @@
     (cond [(> p w) (loop (- p w) (hash-iterate-next h iter))]
           [else (hash-iterate-key h iter)])))
 
-(define (-discrete-density dist x)
+(define (-discrete-pdf dist x log?)
   (define h (discrete-dist-h dist))
-  (density (hash-ref h x 0) 0))
+  (convert-p (hash-ref h x 0) log? #f))
 
 (define (-discrete-measure dist ms)
   (define h (discrete-dist-h dist))

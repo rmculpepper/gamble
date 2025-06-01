@@ -16,38 +16,41 @@
   (-density dist x log?)           ;; Dist X Boolean -> Density
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
-  #:defaults
-  ([(lambda (v) (continuous-dist? v))
-    (define (-density self x log?)
-      (density (dist-pdf self x log?) 1 log?))
-    (define (-measure self ms)
-      (match-define (measurable _atoms ivls) ms)
-      (let loop ([ivls ivls] [acc 0])
-        (match ivls
-          [(list* lo hi ivls)
-           (loop ivls (+ acc (- (-cdf self hi #f #f) (-cdf self lo #f #f))))]
-          [(list) acc])))
-    (define (-total-measure self) 1)]
-   [(lambda (v) (integer-dist? v))
-    (define (-density self x log?)
-      (density (dist-pdf self x log?) 0 log?))
-    (define (-measure self ms)
-      (match-define (measurable atoms ivls) ms)
-      (define ivls-mass
-        (let loop ([ivls ivls] [acc 0])
-          (match ivls
-            [(list* lo hi ivls)
-             (define mass
-               ;; Interval is (lo,hi) but cdf includes endpoint; adjust if necessary.
-               (let ([hi* (if (integer? hi) (- hi 0.5) hi)])
-                 (- (-cdf self hi* #f #f) (-cdf self lo #f #f))))
-             (loop ivls (+ acc mass))]
-            [(list) acc])))
-      (define atoms-mass
-        (for/sum ([v (in-hash-keys atoms)])
-          (dist-pdf self v #f)))
-      (+ ivls-mass atoms-mass))
-    (define (-total-measure self) 1)]))
+  #:fallbacks
+  [(define (-density self x log?)
+     (cond [(continuous-dist? self)
+            (density (dist-pdf self x log?) 1 log?)]
+           [(integer-dist? self)
+            (density (dist-pdf self x log?) 0 log?)]
+           [else (raise-support-error 'dist-density self)]))
+   (define (-measure self ms)
+     (match-define (measurable atoms ivls) ms)
+     (cond [(continuous-dist? self)
+            (let loop ([ivls ivls] [acc 0])
+              (match ivls
+                [(list* lo hi ivls)
+                 (loop ivls (+ acc (- (-cdf self hi #f #f) (-cdf self lo #f #f))))]
+                [(list) acc]))]
+           [(integer-dist? self)
+            (define ivls-mass
+              (let loop ([ivls ivls] [acc 0])
+                (match ivls
+                  [(list* lo hi ivls)
+                   (define mass
+                     ;; Interval is (lo,hi) but cdf includes endpoint; adjust if necessary.
+                     (let ([hi* (if (integer? hi) (- hi 0.5) hi)])
+                       (- (-cdf self hi* #f #f) (-cdf self lo #f #f))))
+                   (loop ivls (+ acc mass))]
+                  [(list) acc])))
+            (define atoms-mass
+              (for/sum ([v (in-hash-keys atoms)])
+                (dist-pdf self v #f)))
+            (+ ivls-mass atoms-mass)]
+           [else (raise-support-error 'dist-measure self)]))
+   (define (-total-measure self)
+     (cond [(continuous-dist? self) 1]
+           [(integer-dist? self) 1]
+           [else (raise-support-error 'dist-total-measure self)]))])
 
 (define (dist-sample d) (-sample d))
 (define (dist-pdf d x [log? #f]) (-pdf d x log?))

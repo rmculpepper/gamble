@@ -29,7 +29,7 @@
      (-multinomial-pdf n ws x log?))
    (define (-density self x log?)
      (match-define (multinomial-dist n ws) self)
-     (density (-multinomial-pdf n ws x log?) 0))
+     (density (-multinomial-pdf n ws x log?) 0 log?))
    ;; (define (-measure ms) #f)
    (define (-total-measure self) 1)]
   #|
