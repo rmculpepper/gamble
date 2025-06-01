@@ -12,36 +12,46 @@
 (define-generics dist
   ;; type X
   (-sample dist)                   ;; Dist -> X
-  (-density dist x)                ;; Dist X -> Density
+  (-pdf dist x log?)               ;; Dist X Boolean -> Real/ExtReal
+  (-density dist x log?)           ;; Dist X Boolean -> Density
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
   #:defaults
-  ([(lambda (v) (real-dist? v))
+  ([(lambda (v) (continuous-dist? v))
+    (define (-density self x log?)
+      (density (dist-pdf self x log?) 1 log?))
+    (define (-measure self ms)
+      (match-define (measurable _atoms ivls) ms)
+      (let loop ([ivls ivls] [acc 0])
+        (match ivls
+          [(list* lo hi ivls)
+           (loop ivls (+ acc (- (-cdf self hi #f #f) (-cdf self lo #f #f))))]
+          [(list) acc])))
+    (define (-total-measure self) 1)]
+   [(lambda (v) (integer-dist? v))
+    (define (-density self x log?)
+      (density (dist-pdf self x log?) 0 log?))
     (define (-measure self ms)
       (match-define (measurable atoms ivls) ms)
       (define ivls-mass
         (let loop ([ivls ivls] [acc 0])
           (match ivls
             [(list* lo hi ivls)
-             (loop ivls (+ acc (- (-cdf self hi #f #f) (-cdf self lo #f #f))))]
+             (define mass
+               ;; Interval is (lo,hi) but cdf includes endpoint; adjust if necessary.
+               (let ([hi* (if (integer? hi) (- hi 0.5) hi)])
+                 (- (-cdf self hi* #f #f) (-cdf self lo #f #f))))
+             (loop ivls (+ acc mass))]
             [(list) acc])))
       (define atoms-mass
-        (cond [(integer-dist? self)
-               (for/sum ([v (in-hash-keys atoms)])
-                 (dist-density self v))]
-              [else 0])) 
+        (for/sum ([v (in-hash-keys atoms)])
+          (dist-pdf self v #f)))
       (+ ivls-mass atoms-mass))
-    (define (-total-measure self) 1)]
-   [(lambda (v) (continuous-dist? v))
-    (define (-density self x)
-      (density (if (rational? x) (-pdf self x #f) 0) 1))]
-   [(lambda (v) (integer-dist? v))
-    (define (-density self x)
-      (cond [(integer? x) (-pmf self x #f)]
-            [else 0]))]))
+    (define (-total-measure self) 1)]))
 
 (define (dist-sample d) (-sample d))
-(define (dist-density d x) (-density d x))
+(define (dist-pdf d x [log? #f]) (-pdf d x log?))
+(define (dist-density d x [log? #f]) (-density d x log?))
 (define (dist-measure d ms) (-measure d ms))
 (define (dist-total-measure d) (-total-measure d))
 
@@ -50,7 +60,7 @@
   (-sequence enumerable-dist)      ;; Dist -> (values Sequence[X])
   #:fallbacks [])
 
-(define (in-dist dist) (-sequence dist))
+(define (in-dist-values dist) (-sequence dist))
 
 (define-generics real-dist ;; extends dist; comprises {continuous,integer}-dist
   ;; Represents normalized real-valued distributions.
@@ -82,16 +92,11 @@
 
 (define-generics continuous-dist   ;; extends real-dist
   ;; Represents normalized, continuous real-valued distributions.
-  (-pdf continuous-dist x log?)    ;; Dist Real Boolean -> Real
   ;; (-denergy real-dist x . d/dts)   ;; Dist Real Param ... -> Real
   #:fallbacks [])
 
-(define (dist-pdf d x [log? #f])
-  (-pdf d x log?))
-
 (define-generics integer-dist      ;; extends real-dist, enumerable-dist
   ;; Represents discrete, normalized integer-valued distributions.
-  (-pmf integer-dist x log?)       ;; Dist Integer Boolean -> Real
   #:fallbacks [])
 
 ;; FIXME: real^2-dist

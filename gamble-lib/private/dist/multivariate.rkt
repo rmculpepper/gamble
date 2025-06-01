@@ -21,12 +21,15 @@
   ([n exact-nonnegative-integer?]
    [ws vector? -multinomial-guard-weights])
   #:methods gen:dist
-  [(define (-density self x)
-     (match-define (multinomial-dist n ws) self)
-     (-multinomial-density n ws x #f))
-   (define (-sample self)
+  [(define (-sample self)
      (match-define (multinomial-dist n ws) self)
      (-multinomial-sample n ws))
+   (define (-pdf self x log?)
+     (match-define (multinomial-dist n ws) self)
+     (-multinomial-pdf n ws x log?))
+   (define (-density self x log?)
+     (match-define (multinomial-dist n ws) self)
+     (density (-multinomial-pdf n ws x log?) 0))
    ;; (define (-measure ms) #f)
    (define (-total-measure self) 1)]
   #|
@@ -62,7 +65,7 @@
   (unless (zero? leftover) (error 'dist-sample:multinomial-dist "internal error"))
   (vector->immutable-vector v))
 
-(define (-multinomial-density n ws v log?)
+(define (-multinomial-pdf n ws v log?)
   (cond [(and (vector? v) (= (vector-length v) (vector-length ws)))
          (define cndws (-multinomial-cndws ws))
          (define-values (leftover ll)
@@ -101,12 +104,15 @@
 (define-dist-struct dirichlet-dist
   ([alpha vector? -dirichlet-guard])
   #:methods gen:dist
-  [(define (-density self x)
+  [(define (-sample self)
      (match-define (dirichlet-dist alpha) self)
-     (-dirichlet-pdf alpha x #f))
-   (define (-sample self)
+     (-dirichlet-sample alpha))
+   (define (-pdf self x log?)
      (match-define (dirichlet-dist alpha) self)
-     (-dirichlet-sample alpha))]
+     (-dirichlet-pdf alpha x log?))
+   (define (-density self x log?)
+     (match-define (dirichlet-dist alpha) self)
+     (density (-dirichlet-pdf alpha x log?) (vector-length alpha) log?))]
   #|
   ;; #:support ;; [0,1]^n, components sum to 1
   #:mean (let ([alphasum (vector-sum alpha)])
