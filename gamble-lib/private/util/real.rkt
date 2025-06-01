@@ -22,6 +22,14 @@
         -inf.0 ;; avoid +nan.0 from subtraction
         (+ M (log (+ (exp (- x M)) (exp (- y M))))))))
 
+;; logspace- : Real Real -> Real
+;; Like (log (- (exp x) (exp y))), but with better precision.
+(define (logspace- x y)
+  (let ([M (max x y)])
+    (if (= M -inf.0)
+        -inf.0 ;; avoid +nan.0 from subtraction
+        (+ M (log (- (exp (- x M)) (exp (- y M))))))))
+
 ;; logspace-sum : (Listof Real) -> Real
 (define (logspace-sum xs)
   (let ([M (apply max -inf.0 xs)])
