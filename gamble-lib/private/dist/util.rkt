@@ -47,8 +47,15 @@
       (let ([s (+ s w)]) (begin (vector-set! cws i s) s)))
     (vector->immutable-vector cws))
 
-  ;; normalize-weights : Symbol Vector -> (ImmVectorof Rational), sums to 1
-  (define (normalize-weights who in-ws)
+  ;; weights-intern-table : WeakHash[Vector => #t]
+  (define weights-intern-table (make-weak-hash))
+
+  ;; normalize-weights : Symbol Vector Bool -> (ImmVectorof Rational), sums to 1
+  (define (normalize-weights who in-ws fl?)
+    (or (hash-ref-key weights-intern-table in-ws #f)
+        (let ([ws (normalize-weights* who in-ws)])
+          (begin (hash-set! weights-intern-table ws #t) ws))))
+  (define (normalize-weights* who in-ws)
     (define ws (vector->immutable-vector in-ws))
     (for ([w (in-vector ws)])
       (unless (and (rational? w) (>= w 0))

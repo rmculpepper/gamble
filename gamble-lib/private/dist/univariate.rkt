@@ -722,16 +722,8 @@
      (match-define (categorical-dist ws) self)
      (in-range 1 (add1 (vector-length ws))))])
 
-;; categorical:intern-ws : WeakHash[ImmVector => #t]
-(define categorical:intern-ws (make-weak-hash))
-
 (define (-categorical-guard-weights in-ws)
-  (cond [(hash-ref-key categorical:intern-ws in-ws #f)
-         => values]
-        [else
-         (define ws (normalize-weights 'categorical-dist in-ws))
-         (hash-set! categorical:intern-ws ws #t)
-         ws]))
+  (normalize-weights 'categorical-dist in-ws))
 
 ;; categorical:ws=>cws : WeakHasheq[ImmVector => ImmVector]
 (define categorical:ws=>cws (make-weak-hasheq))
@@ -751,194 +743,6 @@
   (define cws (-categorical-cws ws))
   (add1 (binary-search/least-geq cws p)))
 
-;; ------------------------------------------------------------
-
-#;
-(define-real-dist-struct samples-dist
-  ([samples vector? #;(vectorof real?) #:exact])
-  #:real
-  #:guard (lambda (samples _name)
-            (vector->immutable-vector (vector-sort samples <)))
-  #:dist-methods
-  [(define (-sample self)
-     (define samples (samples-dist-samples self))
-     (vector-ref samples (random (vector-length samples))))]
-  #:real-methods
-  [(define (-pdf self x log?) ;; linear, suboptimal
-     (define samples (samples-dist-samples self))
-     (/ (for/sum ([v (in-vector samples)] #:when (= v x)) 1)
-        (vector-length samples)))
-   (define (-cdf self x log? 1-p?) ;; linear, suboptimal
-     (define samples (samples-dist-samples self))
-     (/ (for/sum ([v (in-vector samples)] #:when (<= v x)) 1)
-        (vector-length samples)))
-   (define (-invcdf self p0 log? 1-p?)
-     (define p (unconvert-p p0 log? 1-p?))
-     (define samples (samples-dist-samples self))
-     (vector-ref samples (* p (vector-length samples))))
-   (define (-mean self)
-     (define samples (samples-dist-samples self))
-     (/ (for/sum ([v (in-vector samples)]) v)
-        (vector-length samples)))
-   (define (-median self)
-     (define samples (samples-dist-samples self))
-     (vector-ref samples (quotient (vector-length samples) 2)))
-   #; (define (-variance self) _)
-   ])
-
-;; ============================================================
-;; Discrete distributions
-
-
-;; ------------------------------------------------------------
-
-#|
-
-(define-dist-type multinomial-dist
-  ([n exact-nonnegative-integer?]
-   [weights (vectorof (>=/c 0))])
-  #:counting
-  #:pdf multinomial-dist
-  #:sample multinomial-sample
-  #:guard (lambda (n weights _name)
-            (values n (validate/normalize-weights 'multinomial-dist weights)))
-  ;; FIXME: drift by computing new multinomial-dist ??
-  ;;  eg, scale-weighted average of prior weights and derived from current value?
-  #:drift1 (lambda (value scale-factor) (multinomial-drift n weights value scale-factor)))
-
-;; -- Assume weights are nonnegative, normalized.
-
-;; sampling and pdf as repeated binomial
-
-(define (multinomial-pdf n0 probs v log?)
-  (cond [(and (vector? v) (= (vector-length v) (vector-length probs)))
-         (define n (exact->inexact n0))
-         (define ll
-           (for/sum ([vi (in-vector v)]
-                     [prob (in-vector (multinomial->binomial-weights probs))])
-             (m:flbinomial-pdf n prob (exact->inexact vi) #t)))
-         (if log? ll (exp ll))]
-        [else
-         (impossible log? 'multinomial "not a vector of correct size")]))
-
-(define (multinomial-sample n probs)
-  (define v (make-vector (vector-length probs)))
-  (for ([i (in-range (vector-length probs))]
-        [prob (in-vector (multinomial->binomial-weights probs))])
-    (define k
-      (inexact->exact
-       (flvector-ref (m:flbinomial-sample (exact->inexact n) prob 1) 0)))
-    (vector-set! v i k))
-  v)
-
-;; Do some number of moves based on scale-factor. Symmetric.
-(define (multinomial-drift n _probs old scale-factor)
-  (cond [(or (zero? n) (<= (vector-length old) 1))
-         (cons old 0)]
-        [else
-         (define v (vector-copy old))
-         (define (pick-nonempty-index)
-           (define i (random (vector-length v)))
-           (if (zero? (vector-ref v i))
-               (pick-nonempty-index)
-               i))
-         (define (pick-other-index i)
-           (define j (random (sub1 (vector-length v))))
-           (if (>= j i) (add1 j) j))
-         (for ([_a (in-range (inexact->exact (ceiling (* n scale-factor))))])
-           (define i (pick-nonempty-index))
-           (define j (pick-other-index i))
-           (vector-set! v i (sub1 (vector-ref v i)))
-           (vector-set! v j (add1 (vector-ref v j))))
-         (cons v 0)]))
-
-;; Given (vector pi ...) where pi = prob(X = i), produce
-;; (vector qi ...) where qi = prob(X = i | X >= i).
-(define (multinomial->binomial-weights probs)
-  (define v (make-vector (vector-length probs)))
-  (for/fold ([prest 1.0])
-            ([probi (in-vector probs)] [i (in-naturals)])
-    (vector-set! v i (/ probi prest))
-    (* prest (- 1.0 probi)))
-  (vector-set! v (sub1 (vector-length probs)) 1.0)
-  v)
-
-
-;; ============================================================
-;; Other distributions
-
-;; FIXME: doesn't belong in univariate, exactly, but doesn't use matrices
-;; FIXME: flag for symmetric alphas, can sample w/ fewer gamma samplings
-(define-dist-type dirichlet-dist
-  ([alpha (vectorof (>/c 0))])
-  #:lebesgue
-  #:pdf dirichlet-pdf
-  #:sample dirichlet-sample
-  #:guard (lambda (alpha _name)
-            (vector->immutable-vector (vector-map exact->inexact alpha)))
-  ;; #:support ;; [0,1]^n
-  ;; (product (make-vector (vector-length concentrations) '#s(real-range 0 1)))
-  #:mean (let ([alphasum (vector-sum alpha)])
-           (for/vector ([ai (in-vector alpha)]) (/ ai alphasum)))
-  #:modes (if (for/and ([ai (in-vector alpha)]) (> ai 1))
-              (let ([denom (for/sum ([ai (in-vector alpha)]) (sub1 ai))])
-                (list (for/vector ([ai (in-vector alpha)]) (/ (sub1 ai) denom))))
-              null)
-  #:variance (let* ([a0 (vector-sum alpha)]
-                    [denom (* a0 a0 (add1 a0))])
-               (for/vector ([ai (in-vector alpha)])
-                 (/ (* ai (- a0 ai)) denom)))
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(categorical-dist _)
-                   (define n (vector-length alpha))
-                   (define countv (make-vector n 0))
-                   (for ([x (in-vector data)] [i (in-range n)])
-                     (vector-set! countv i (add1 (vector-ref countv i))))
-                   (dirichlet-dist (vector-map + alpha countv))]
-                  [_ #f])))
-;; DRIFT: (1 - eps) * value + eps * Dir(alpha)
-;; ie, weighted avg of current value and new Dirichlet draw
-;; Q: for alpha, should use either same parameters, OR could use uniform (1 ...)???
-;; ** OR **: take current value, multiply by f(scale-factor), use that as Dirichlet param, draw
-;; NOTE: not symmetric!
-
-(define-syntax-rule (define-memoize1 (fun arg) . body)
-  (begin (define memo-table (make-weak-hash))
-         (define (fun arg)
-           (cond [(hash-ref memo-table arg #f)
-                  => values]
-                 [else
-                  (define r (let () . body))
-                  (hash-set! memo-table arg r)
-                  r]))))
-
-(define-memoize1 (log-multinomial-beta alpha)
-  (- (for/sum ([ai (in-vector alpha)]) (m:log-gamma ai))
-     (m:log-gamma (for/sum ([ai (in-vector alpha)]) ai))))
-
-(define (dirichlet-pdf alpha x log?)
-  (cond [(not (vector? x))
-         (impossible log? 'dirichlet "not a vector")]
-        [(not (= (vector-length x) (vector-length alpha)))
-         (impossible log? 'dirichlet "vector has wrong length")]
-        [else
-         (define lp
-           (- (for/sum ([xi (in-vector x)] [ai (in-vector alpha)]) (* (sub1 ai) (log xi)))
-              (log-multinomial-beta alpha)))
-         (if log? lp (exp lp))]))
-
-(define (dirichlet-sample alpha)
-  ;; TODO: batch gamma sampling when all alphas same?
-  (define n (vector-length alpha))
-  (define x (make-vector n))
-  (for ([a (in-vector alpha)] [i (in-range n)])
-    (vector-set! x i (flvector-ref (m:flgamma-sample a 1.0 1) 0)))
-  (define gsum (for/sum ([g (in-vector x)]) g))
-  (for ([i (in-range n)])
-    (vector-set! x i (/ (vector-ref x i) gsum)))
-  x)
-
 
 ;; ============================================================
 ;; Attic
@@ -956,8 +760,6 @@
   ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
   (define s (sqrt (log (+ 1 (* scale scale)))))
   (affine-distx (exp-distx (normal-dist 0 (sqrt (log (+ 1 (* scale scale)))))) x 0))
-
-|#
 
 ;; ============================================================
 ;; Utils
