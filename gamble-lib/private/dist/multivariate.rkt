@@ -11,7 +11,7 @@
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          "base.rkt"
-         "define.rkt"
+         (submod "util.rkt" define)
          (submod "util.rkt" math)
          (submod "util.rkt" density)
          (submod "util.rkt" weights))

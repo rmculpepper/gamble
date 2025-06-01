@@ -180,3 +180,53 @@
           [else (- ll1 ll2)]))
 
   |#)
+
+;; ------------------------------------------------------------
+
+(module define racket/base
+  (require (for-syntax racket/base
+                       syntax/parse
+                       racket/syntax)
+           racket/match)
+  (provide define-dist-struct)
+
+  (begin-for-syntax
+    (define-syntax-class name-dist-id
+      #:attributes (name)
+      (pattern nd:id
+               #:do [(define nd-s (symbol->string (syntax-e #'nd)))
+                     (define m (regexp-match #rx"^(.*)-dist$" nd-s))]
+               #:fail-unless m "expected identifier ending in `-dist`"
+               #:with name (format-id #'nd "~a" (cadr m))))
+    (define-syntax-class param-spec
+      (pattern [param:id pred:expr] #:with conv #'begin)
+      (pattern [param:id pred:expr conv:expr]))
+    (define-splicing-syntax-class maybe-guard
+      #:attributes (guard-fun)
+      (pattern (~seq #:guard guard-fun))
+      (pattern (~seq) #:attr guard-fun #f)))
+
+  (define-syntax define-dist-struct
+    (syntax-parser
+      [(_ nd:name-dist-id (p:param-spec ...)
+          g:maybe-guard
+          more ...)
+       #'(struct nd (p.param ...)
+           #:transparent
+           #:guard (lambda (p.param ... _name)
+                     (define (bad who)
+                       (maker-error 'nd '(p.param ...) '(p.pred ...) who p.param ...))
+                     (unless (p.pred p.param) (bad 'p.param)) ...
+                     (let ([p.param (p.conv p.param)] ...)
+                       (~? (g.guard-fun p.param ...)
+                           (values p.param ...))))
+           more ...)]))
+
+  (define (maker-error sname fnames fpreds bad-fname . fvalues)
+    (for ([fname (in-list fnames)] [fpred (in-list fpreds)] [index (in-naturals)])
+      (when (eq? fname bad-fname)
+        (apply raise-argument-error sname (format "~s" fpred) index fvalues))))
+
+  (begin))
+
+;; ------------------------------------------------------------
