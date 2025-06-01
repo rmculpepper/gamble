@@ -101,88 +101,98 @@
 (define (affine-invert a b y)
   (/ (- y b) a))
 
-;; ============================================================
-#|
-(define-dist-type real-map-distx
-  ;; f must be injective, continuous, differentiable, monotonic
-  ;; invf returns NaN for out-of-range inputs
-  ([d real-dist?] [f procedure?] [invf procedure?] [df procedure?])
-  #:lebesgue
-  #:pdf map*-distx-pdf
-  #:cdf map*-distx-cdf
-  #:inv-cdf map*-distx-inv-cdf
-  #:sample map*-distx-sample
-  ;; FIXME: support
-  #:support #f)
+;; ----------------------------------------
+;; clip (renormalize)
 
-(define (map*-distx-pdf d f invf df x log?)
-  (define x0 (invf x))
-  (cond [(rational? x0)
-         (define pdf0 (dist-pdf d x0 log?))
-         (define m (abs (df x0)))
-         (cond [log? (- pdf0 (log m))]
-               [else (if (eqv? m 0) +inf.0 (/ pdf0 m))])]
-        [else
-         (if log? -inf.0 0)]))
-
-(define (map*-distx-cdf d f invf df x log? 1-p?)
-  (dist-cdf d (invf x) log? 1-p?))
-
-(define (map*-distx-inv-cdf d f invf df r log? 1-p?)
-  (f (dist-inv-cdf d r log? 1-p?)))
-
-(define (map*-distx-sample d f invf df)
-  (f (dist-sample d)))
-|#
-
-;; ============================================================
-
-#|
-(define-dist-type clip-distx
-  ([dist real-dist?] [a real?] [b real?])
-  #:lebesgue ;; FIXME?
-  #:pdf clip-distx-pdf
-  #:cdf clip-distx-cdf
-  #:inv-cdf clip-distx-inv-cdf
-  #:sample clip-distx-sample
-  #:guard (lambda (dist a b _type)
-            (let ([a (exact->inexact a)]
-                  [b (exact->inexact b)])
-              (values dist (min a b) (max a b))))
-  #:support (real-range a b))
-
-(define (clip-distx-pdf d a b x log?)
-  (define w (- (dist-cdf d b) (dist-cdf d a)))
-  (if log?
-      (- (dist-pdf d x #t) (log w))
-      (/ (dist-pdf d x #f) w)))
-
-(define (clip-distx-cdf d a b x log? 1-p?)
-  (define pa (dist-cdf d a))
-  (define pb (dist-cdf d b))
-  (define px (dist-cdf d x))
-  (define p (/ (- px pa) (- pb pa)))
-  (convert-p p log? 1-p?))
-
-(define (clip-distx-inv-cdf d a b p log? 1-p?)
-  (define pa (dist-cdf d a))
-  (define pb (dist-cdf d b))
-  (define p* (unconvert-p p log? 1-p?))
-  (dist-inv-cdf d (+ (* (- pb pa) p*) pa) #f #f))
+(define-dist-struct clip-distx
+  ;; Represents dist clipped to (a,b) and renormalized.
+  ([dist continuous-dist?]
+   [a rational? inexact]
+   [b rational? inexact])
+  #:extension (pa lpa w lw)
+  #:guard (lambda (dist a b)
+            (unless (< a b)
+              (error 'clip-distx "empty range\n  range: (~e, ~e)" a b))
+            (unless (< (dist-cdf dist a #f #f) (dist-cdf dist b #f #f))
+              (error 'clib-distx "range has no mass\n  dist: ~e\n  range: (~e, ~e)" dist a b))
+            (values dist a b))
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (cond [(< w CLIP-REJECTION-THRESHOLD)
+            (dist-inv-cdf d (+ pa (* w (random))))]
+           [else
+            (let loop ()
+              (define x (dist-sample d))
+              (if (<= a x b) x (loop)))]))
+   (define (-pdf self x log?)
+     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (cond [log? (- (dist-pdf d x #t) lw)]
+           [else (/ (dist-pdf d x #f) w)]))]
+  #:methods gen:continuous-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (cond [(<= x a) (convert-p 0.0 log? 1-p?)]
+           [(>= x b) (convert-p 1.0 log? 1-p?)]
+           [log? (- (dist-cdf d x #t 1-p?) lw)]
+           [else (/ (dist-cdf d x #f 1-p?) w)]))
+   (define (-invcdf self p log? 1-p?)
+     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (cond [log?
+            (define p* (logspace+ lpa (+ p lw)))
+            (dist-inv-cdf d p* #t 1-p?)]
+           [else
+            (define p* (+ pa (* p w)))
+            (dist-inv-cdf d p* #f 1-p?)]))
+   (define (-support self)
+     (match-define (clip-distx d a b _ _ _ _) self)
+     (cons a b))])
 
 (define CLIP-REJECTION-THRESHOLD 0.25)
 
-(define (clip-distx-sample d a b)
-  (define pa (dist-cdf d a))
-  (define pb (dist-cdf d b))
-  (define w (- pb pa))
-  (cond [(< w CLIP-REJECTION-THRESHOLD)
-         (dist-inv-cdf d (+ pa (* w (random))))]
-        [else
-         (let loop ()
-           (define x (dist-sample d))
-           (if (<= a x b) x (loop)))]))
-|#
+(define (-clip-init self)
+  (unless (clip-distx-lw self)
+    (match-define (clip-distx d a b _ _ _ _) self)
+    (define pa (dist-cdf d a #f #f))
+    (define lpa (dist-cdf d a #t #f))
+    (define w (- (dist-cdf d b #f #f) pa))
+    (define lw (logspace- (dist-cdf d b #t #f) lpa))
+    (set-clip-distx-pa! self pa)
+    (set-clip-distx-lpa! self lpa)
+    (set-clip-distx-w! self w)
+    (set-clip-distx-lw! self lw))
+  self)
+
+;; ----------------------------------------
+;; continuous transformation
+
+(define-dist-struct real-map-distx
+  ;; f must be injective, continuous, differentiable, monotonic increasing
+  ;; invf returns -inf.0 or +inf.0 for out-of-range inputs
+  ([d continuous-dist?] [f procedure?] [invf procedure?] [df procedure?])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (real-map-distx d f invf df) self)
+     (f (dist-sample d)))
+   (define (-pdf self y log?)
+     (match-define (real-map-distx d f invf df) self)
+     (define x (invf y))
+     (cond [(rational? x)
+            (define m (abs (inexact (df x))))
+            (cond [log? (- (dist-pdf d x #t) (log m))]
+                  [else (/ (dist-pdf d x #f) m)])]
+           [else (if log? -inf.0 0)]))]
+  #:methods gen:continuous-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self y log? 1-p?)
+     (match-define (real-map-distx d f invf df) self)
+     ;; If f is not monotonic increasing, need to flip 1-p?.
+     (dist-cdf d (invf y) log? 1-p?))
+   (define (-invcdf self r log? 1-p?)
+     (match-define (real-map-distx d f invf df) self)
+     ;; If f is not monotonic increasing, need to flip 1-p?.
+     (f (dist-inv-cdf d r log? 1-p?)))])
 
 ;; ============================================================
 ;; continuous-dist to integer-dist
@@ -210,5 +220,3 @@
    (define (-invcdf self p log? 1-p?)
      (match-define (discretize-distx d) self)
      (exact (round (dist-inv-cdf d p log? 1-p?))))])
-
-;; ============================================================

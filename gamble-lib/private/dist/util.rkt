@@ -194,6 +194,9 @@
     (define-syntax-class param-spec
       (pattern [param:id pred:expr] #:with conv #'begin)
       (pattern [param:id pred:expr conv:expr]))
+    (define-splicing-syntax-class maybe-extension
+      (pattern (~seq #:extension ~! (f:id ...)))
+      (pattern (~seq) #:with (f ...) #'()))
     (define-splicing-syntax-class maybe-guard
       #:attributes (guard-fun)
       (pattern (~seq #:guard guard-fun))
@@ -202,9 +205,10 @@
   (define-syntax define-dist-struct
     (syntax-parser
       [(_ nd:id (p:param-spec ...)
+          ext:maybe-extension
           g:maybe-guard
           more ...)
-       #'(struct nd (p.param ...)
+       #'(struct nd (p.param ... [ext.f #:auto #:mutable] ...)
            #:transparent
            #:guard (lambda (p.param ... _name)
                      (define (bad who)
