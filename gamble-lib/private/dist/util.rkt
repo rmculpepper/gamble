@@ -232,4 +232,46 @@
 
   (begin))
 
-;; ------------------------------------------------------------
+;; ============================================================
+
+(module+ test
+  (require rackunit
+           (submod ".." math)
+           (submod ".." weights)
+           (submod ".." density))
+
+  ;; --------------------
+  ;; math
+
+  (for ([v '(0 1 0.0 1.0 0.1 0.9 1/2)])
+    (check-true (probability? v)))
+  (for ([v '(-1 2 1.1 3/2 -inf.0 +inf.0 +nan.0 apple "string" (a b c))])
+    (check-false (probability? v)))
+
+  (check-equal? (ilog 0) -inf.0)
+  (check-equal? (ilog 1) 0.0)
+
+  (check-equal? (convert-p 2/3 #f #f) 2/3)
+  (check-equal? (convert-p 2/3 #f #t) 1/3)
+  (check-equal? (convert-p 2/3 #t #f) (log 2/3))
+
+  ;; --------------------
+  ;; weights
+
+  (check-equal? (cumulative-vector (vector 1 2 3))
+                '#(1 3 6))
+  (check-equal? (normalize-inexact-weights 'who (vector 1/6 1/3 0.5))
+                '#(#i1/6 #i1/3 #i1/2))
+  (check-equal? (normalize-inexact-weights 'who (vector 1 2 3))
+                '#(#i1/6 #i1/3 #i1/2))
+
+  (let ([ns '#(1 2 2 2 3 4)])
+    (check-equal? (binary-search/least-geq ns 0) 0)
+    (check-equal? (binary-search/least-geq ns 1) 0)
+    (check-equal? (binary-search/least-geq ns 2) 1)
+    (check-equal? (binary-search/least-geq ns 3) 4))
+
+  ;; --------------------
+  ;; density
+
+  (begin))
