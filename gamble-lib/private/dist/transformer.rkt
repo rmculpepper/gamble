@@ -194,6 +194,21 @@
      ;; If f is not monotonic increasing, need to flip 1-p?.
      (f (dist-inv-cdf d r log? 1-p?)))])
 
+(define (exp-distx dist)
+  (real-map-distx dist exp log:extended exp))
+
+(define (log-distx dist)
+  (define (deriv-log x) (/ (inexact x)))
+  (real-map-distx dist log:checked exp deriv-log))
+
+(define (log:extended x)
+  (if (real? x) (if (< x 0) -inf.0 (log (inexact x))) +nan.0))
+
+(define (log:checked x)
+  (unless (and (real? x) (> x 0))
+    (raise-argument-error 'log:checked "(>/c 0)" x))
+  (log (inexact x)))
+
 ;; ============================================================
 ;; continuous-dist to integer-dist
 
