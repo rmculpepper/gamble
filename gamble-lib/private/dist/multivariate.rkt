@@ -40,7 +40,7 @@
   |#)
 
 (define (-multinomial-guard-weights in-ws)
-  (normalize-weights 'multinomial-dist in-ws #t))
+  (normalize-inexact-weights 'multinomial-dist in-ws))
 
 (define -multinomial:ws=>cndws (make-weak-hasheq))
 

@@ -322,11 +322,7 @@
    [hi rational? inexact])
   #:guard (lambda (lo hi)
             (unless (< lo hi)
-              (error 'uniform-dist
-                     (string-append
-                      "invalid range, lower bound is not less than upper bound"
-                      "\n  lower: ~e\n  upper: ~e")
-                     lo hi))
+              (error 'uniform-dist "invalid range\n  range: (~e, ~e)" lo hi))
             (values lo hi))
   #:methods gen:dist
   [(define (-sample self)
@@ -365,6 +361,51 @@
      (match-define (uniform-dist lo hi) self)
      (define equiv-dist (affine-distx (beta-dist 1 1) lo (- hi lo)))
      (dist-drift-dist equiv-dist scale-factor))])
+
+(define-dist-struct triangle-dist
+  ([lo rational? inexact]
+   [hi rational? inexact]
+   [mode rational? inexact])
+  #:guard (lambda (lo hi mode)
+            (unless (< lo hi)
+              (error 'triangle-dist "invalid range\n  range: (~e, ~e)" lo hi))
+            (unless (and (<= lo mode) (<= mode hi))
+              (error 'triangle-dist
+                     (string-append
+                      "mode is not between lower and upper bounds"
+                      "\n  mode: ~e\n  range: [~e, ~e]")
+                     mode lo hi))
+            (values lo hi mode))
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (triangle-dist lo hi mode) self)
+     (flvector-ref (m:fltriangle-sample lo hi mode 1) 0))
+   (define (-pdf self x log?)
+     (match-define (triangle-dist lo hi mode) self)
+     (m:fltriangle-pdf lo hi mode (inexact x) log?))]
+  #:methods gen:continuous-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (triangle-dist lo hi mode) self)
+     (m:fltriangle-cdf lo hi mode (inexact x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (triangle-dist lo hi mode) self)
+     (m:fltriangle-inv-cdf lo hi mode (inexact x) log? 1-p?))
+   (define (-real-support self)
+     (match-define (triangle-dist lo hi mode) self)
+     (cons lo hi))
+   (define (-mean self)
+     (match-define (triangle-dist lo hi mode) self)
+     (/ (+ lo hi mode) 3))
+   (define (-mode self)
+     (match-define (triangle-dist lo hi mode) self)
+     mode)
+   (define (-variance self)
+     (match-define (triangle-dist lo hi mode) self)
+     (/ (- (+ (* lo lo) (* hi hi) (* mode mode))
+           (+ (* lo hi) (* lo mode) (* hi mode)))
+        18))])
+
 
 ;; ============================================================
 ;; Additional continuous real distributions
@@ -515,7 +556,7 @@
      (exact (flvector-ref (m:flbinomial-sample (inexact n) p 1) 0)))
    (define (-pdf self x log?)
      (match-define (binomial-dist n p) self)
-     (m:flbinomial-pdf (inexact n) p (inexact x) #f))]
+     (if (integer? x) (m:flbinomial-pdf (inexact n) p (inexact x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
@@ -557,7 +598,7 @@
      (exact (flvector-ref (m:flgeometric-sample p 1) 0)))
    (define (-pdf self x log?)
      (match-define (geometric-dist p) self)
-     (m:flgeometric-pdf p (inexact x) #f))]
+     (if (integer? x) (m:flgeometric-pdf p (inexact x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
@@ -594,7 +635,7 @@
      (exact (flvector-ref (m:flpoisson-sample mean 1) 0)))
    (define (-pdf self x log?)
      (match-define (poisson-dist mean) self)
-     (m:flpoisson-pdf mean (inexact x) #f))]
+     (if (integer? x) (m:flpoisson-pdf mean (inexact x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
@@ -630,42 +671,39 @@
 ;; Discrete integer distributions from math library (finite)
 
 (define-dist-struct bernoulli-dist
-  ([p (real-in 0 1) inexact])
+  ([p probability? inexact])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (bernoulli-dist p) self)
      (if (<= (random) p) 1 0))
-   (define (-pmf self x log?)
+   (define (-pdf self x log?)
      (match-define (bernoulli-dist p) self)
-     (define r
-       (cond [(= x 0) (- 1 p)]
-             [(= x 1) p]
-             [else 0]))
+     (define r (cond [(= x 1) p] [(= x 0) (- 1 p)] [else 0.0]))
      (convert-p r log? #f))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (bernoulli-dist p) self)
-     (define r
-       (cond [(< x 0) 0]
-             [(< x 1) (- 1 p)]
-             [else 1]))
+     (define r (cond [(< x 0) 0.0] [(< x 1) (- 1.0 p)] [else 1.0]))
      (convert-p r log? 1-p?))
    (define (-invcdf self r0 log? 1-p?)
      (match-define (bernoulli-dist p) self)
      (define r (unconvert-p r0 log? 1-p?))
-     (cond [(< r p) 1] [else 0]))
+     (cond [(<= r p) 1] [else 0]))
    (define (-support self) '(0 . 1))
    (define (-mean self) (bernoulli-dist-p self))
    (define (-modes self)
      (match-define (bernoulli-dist p) self)
-     (cond [(> p 1/2) '(1)] [(= p 1/2) '(0 1)] [else '(0)]))
+     (cond [(> p 0.5) '(1)] [(< p 0.5) '(0)] [else '(0 1)]))
    (define (-variance self)
      (match-define (bernoulli-dist p) self)
      (* p (- 1 p)))]
   #:methods gen:enumerable-dist
   [(define (-sequence self)
-     (in-range 0 2))]
+     (in-range 0 2))
+   (define (-wsequence self)
+     (match-define (bernoulli-dist p) self)
+     (in-hash (hash 1 p 0 (- 1.0 p))))]
   #|
   #:drift-dist (lambda (value scale-factor)
                  (define (squash x) (/ x (+ 1 x))) ;; R+ -> [0,1]
@@ -676,6 +714,9 @@
   #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0))
   |#)
 
+;; ============================================================
+;; Other integer distributions (finite)
+
 (define-dist-struct categorical-dist
   ;; support is {1,...,k}
   ([weights vector? -categorical-guard-weights])
@@ -683,18 +724,22 @@
   [(define (-sample self)
      (match-define (categorical-dist ws) self)
      (-categorical-inv-cdf 'dist-sample:categorical-dist ws (random)))
-   (define (-pmf self x0 log?)
+   (define (-pdf self x log?)
      (match-define (categorical-dist ws) self)
-     (define x (and (integer? x0) (inexact->exact x0)))
-     (cond [(and x (<= 1 x (vector-length ws)))
-            (convert-p (vector-ref ws (sub1 x)) log?)]
-           [else (if log? -inf.0 0)]))]
+     (cond [(and (integer? x) (<= 1 x (vector-length ws)))
+            (convert-p (vector-ref ws (sub1 (exact x))) log?)]
+           [else (impossible log?)]))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (categorical-dist ws) self)
-     (cond [(rational? x) (convert-p (-categorical-cdf ws x) log? 1-p?)]
-           [else (if log? -inf.0 0)]))
+     (define k (exact (floor x)))
+     (define p
+       (cond [(<= 1 k (vector-length ws))
+              (vector-ref (-categorical-cws ws) (sub1 k))]
+             [(< k 1) 0.0]
+             [else 1.0]))
+     (convert-p p log? 1-p?))
    (define (-invcdf self p0 log? 1-p?)
      (match-define (categorical-dist ws) self)
      (define p (unconvert-p p0 log? 1-p?))
@@ -720,10 +765,13 @@
   #:methods gen:enumerable-dist
   [(define (-sequence self)
      (match-define (categorical-dist ws) self)
-     (in-range 1 (add1 (vector-length ws))))])
+     (in-range 1 (add1 (vector-length ws))))
+   (define (-wsequence self)
+     (match-define (categorical-dist ws) self)
+     (in-parallel (in-naturals 1) (in-vector ws)))])
 
 (define (-categorical-guard-weights in-ws)
-  (normalize-weights 'categorical-dist in-ws))
+  (normalize-inexact-weights 'categorical-dist in-ws))
 
 ;; categorical:ws=>cws : WeakHasheq[ImmVector => ImmVector]
 (define categorical:ws=>cws (make-weak-hasheq))
@@ -731,35 +779,9 @@
 (define (-categorical-cws ws)
   (hash-ref! categorical:ws=>cws ws (lambda () (cumulative-vector ws))))
 
-(define (-categorical-cdf ws x)
-  (define k (exact (floor x)))
-  (cond [(<= 1 k (vector-length ws))
-         (define cws (-categorical-cws ws))
-         (vector-ref cws (sub1 k))]
-        [(< k 1) 0]
-        [else 1]))
-
 (define (-categorical-inv-cdf who ws p)
   (define cws (-categorical-cws ws))
   (add1 (binary-search/least-geq cws p)))
-
-
-;; ============================================================
-;; Attic
-
-#;
-(define (discrete-normal-dist mean stddev a b)
-  (discretize-distx (clip-distx (normal mean stddev) (- a 0.5) (+ b 0.5))))
-
-#;
-(define (mult-exp-normal-dist x scale)
-  ;; Want to multiply by factor log-normally distributed, with stddev proportional
-  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
-  ;; Let's approximate as exp[2s^2] - 1. So we want
-  ;; exp[2s^2] - 1 ~= scale^2, so
-  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
-  (define s (sqrt (log (+ 1 (* scale scale)))))
-  (affine-distx (exp-distx (normal-dist 0 (sqrt (log (+ 1 (* scale scale)))))) x 0))
 
 ;; ============================================================
 ;; Utils

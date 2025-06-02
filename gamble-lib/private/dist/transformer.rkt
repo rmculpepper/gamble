@@ -69,7 +69,7 @@
             (define xpdf (dist-pdf d x log?))
             (cond [log? (- xpdf (log (abs a)))]
                   [else (/ xpdf (abs a))])]
-           [else (if log? -inf.0 0)]))
+           [else (impossible log?)]))
    (define (-measure self ms)
      (match-define (affine-distx d a b) self)
      (define (affine-f x) (affine-apply a b x))
@@ -182,7 +182,7 @@
             (define m (abs (inexact (df x))))
             (cond [log? (- (dist-pdf d x #t) (log m))]
                   [else (/ (dist-pdf d x #f) m)])]
-           [else (if log? -inf.0 0)]))]
+           [else (impossible log?)]))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self y log? 1-p?)
@@ -200,23 +200,49 @@
 ;; ----------------------------------------
 ;; discretize
 
-(define-dist-struct discretize-distx
+(define-dist-struct discretize/floor-distx
   ([dist continuous-dist?])
   #:methods gen:dist
   [(define (-sample self)
-     (match-define (discretize-distx d) self)
-     (exact (round (dist-sample d))))
-   (define (-pdf d x log?)
-     ;; integer x "unrounds" to [x-0.5, x+0.5]
-     (define hi (dist-cdf d (+ x 0.5) log? #f))
-     (define lo (dist-cdf d (- x 0.5) log? #f))
-     (if log? (logspace- hi lo) (- hi lo)))]
+     (match-define (discretize/floor-distx d) self)
+     (exact (floor (dist-sample d))))
+   (define (-pdf self x log?)
+     (cond [(integer? x)
+            (match-define (discretize/floor-distx d) self)
+            ;; integer x "unfloors" to [x, x+1)
+            (define hi (dist-cdf d (+ x 0.5) log? #f))
+            (define lo (dist-cdf d (- x 0.5) log? #f))
+            (if log? (logspace- hi lo) (- hi lo))]
+           [else (impossible log?)]))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
-     (match-define (discretize-distx d) self)
+     (match-define (discretize/floor-distx d) self)
+     (dist-cdf d (+ (floor x) 1.0) log? 1-p?))
+   (define (-invcdf self p log? 1-p?)
+     (match-define (discretize/floor-distx d) self)
+     (exact (floor (dist-inv-cdf d p log? 1-p?))))])
+
+(define-dist-struct discretize/round-distx
+  ([dist continuous-dist?])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (discretize/round-distx d) self)
+     (exact (round (dist-sample d))))
+   (define (-pdf self x log?)
+     (cond [(integer? x)
+            (match-define (discretize/round-distx d) self)
+            ;; integer x "unrounds" to [x-0.5, x+0.5]
+            (define hi (dist-cdf d (+ x 0.5) log? #f))
+            (define lo (dist-cdf d (- x 0.5) log? #f))
+            (if log? (logspace- hi lo) (- hi lo))]
+           [else (impossible log?)]))]
+  #:methods gen:integer-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (discretize/round-distx d) self)
      (define ix (floor x)) ;; floor, not round
      (dist-cdf d (+ ix 0.5) log? 1-p?))
    (define (-invcdf self p log? 1-p?)
-     (match-define (discretize-distx d) self)
+     (match-define (discretize/round-distx d) self)
      (exact (round (dist-inv-cdf d p log? 1-p?))))])

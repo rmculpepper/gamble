@@ -18,6 +18,8 @@
   (begin-encourage-inline
     (define (probability? v)
       (and (real? v) (<= 0 v 1)))
+    (define (nontrivial-probability? v)
+      (and (real? v) (< 0 v 1)))
     (define (nonnegative-rational? v)
       (and (rational? v) (>= v 0)))
     (define (positive-rational? v)
@@ -29,7 +31,9 @@
       (if log? (log (inexact p*)) p*))
     (define (unconvert-p p log? 1-p?)
       (define p* (if log? (exp p) p))
-      (if 1-p? (- 1 p*) p*)))
+      (if 1-p? (- 1 p*) p*))
+    (define (impossible log?)
+      (if log? -inf.0 0.0)))
 
   ;; Multiply, but short-circuit if first arg evals to 0.
   ;; FIXME: preserve (in)exactness?
@@ -51,25 +55,27 @@
       (let ([s (+ s w)]) (begin (vector-set! cws i s) s)))
     (vector->immutable-vector cws))
 
-  ;; weights-intern-table : WeakHash[Vector => #t]
+  ;; weights-intern-table : WeakHash[ImmVector => #t]
   (define weights-intern-table (make-weak-hash))
 
-  ;; normalize-weights : Symbol Vector Bool -> (ImmVectorof Rational), sums to 1
-  (define (normalize-weights who in-ws fl?)
+  ;; normalize-inexact-weights : Symbol Vector Bool -> (ImmVectorof Flonum), sums to 1
+  (define (normalize-inexact-weights who in-ws)
     (or (hash-ref-key weights-intern-table in-ws #f)
-        (let ([ws (normalize-weights* who in-ws)])
-          (begin (hash-set! weights-intern-table ws #t) ws))))
-  (define (normalize-weights* who in-ws)
+        (let ([ws (normalize-inexact-weights* who in-ws)])
+          (begin0 ws (hash-set! weights-intern-table ws #t)))))
+  (define (normalize-inexact-weights* who in-ws)
     (define ws (vector->immutable-vector in-ws))
-    (for ([w (in-vector ws)])
-      (unless (and (rational? w) (>= w 0))
-        (raise-argument-error who "(vectorof (>=/c 0))" ws)))
-    (define wsum (for/sum ([w (in-vector ws)]) w))
-    (unless (> wsum 0)
-      (error who "weights sum to zero\n  weights: ~e" ws))
-    (cond [(= wsum 1) ws]
+    (define-values (wsum any-exact?)
+      (for/fold ([s 0.0] [any-exact? #f]) ([w (in-vector ws)])
+        (unless (and (rational? w) (>= w 0))
+          (raise-argument-error who "(vectorof (>=/c 0))" ws))
+        (values (+ s w) (or any-exact? (exact? w)))))
+    (cond [(zero? wsum)
+           (error who "weights sum to zero\n  weights: ~e" ws)]
+          [(and (= wsum 1.0) (not any-exact?))
+           ws]
           [else (vector->immutable-vector
-                 (vector-map (lambda (w) (/ w wsum)) ws))]))
+                 (vector-map (lambda (w) (/ (exact->inexact w) wsum)) ws))]))
 
   ;; binary-search/least-geq : (Vectorof Real) Real -> Nat
   ;; PRE: cws is sorted increasing, cws[last] >= x
