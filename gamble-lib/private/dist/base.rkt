@@ -5,6 +5,7 @@
 #lang racket/base
 (require racket/match
          racket/generic
+         racket/sequence
          "measurable.rkt"
          (submod "util.rkt" density))
 (provide (all-defined-out))
@@ -60,9 +61,14 @@
 
 (define-generics enumerable-dist   ;; extends dist
   ;; Represents discrete, enumerable distributions.
-  (-sequence enumerable-dist)      ;; Dist -> (values Sequence[X])
-  #:fallbacks [])
+  (-sequence enumerable-dist)      ;; Dist -> Sequence[X]
+  (-wsequence enumerable-dist)     ;; Dist -> Sequence[(values X NNReal)]
+  #:fallbacks
+  [(define (-wsequence self)
+     (sequence-map (lambda (v) (values v (dist-pdf self v #f)))
+                   (in-dist-values self)))])
 
+(define (in-dist dist) (-wsequence dist))
 (define (in-dist-values dist) (-sequence dist))
 
 (define-generics real-dist ;; extends dist; comprises {continuous,integer}-dist

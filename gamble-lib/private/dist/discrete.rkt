@@ -49,7 +49,9 @@
      (discrete-dist-wsum self))]
   #:methods gen:enumerable-dist
   [(define (-sequence self)
-     (in-hash-keys (discrete-dist-h self)))])
+     (in-hash-keys (discrete-dist-h self)))
+   (define (-wsequence self)
+     (in-hash (discrete-dist-h self)))])
 
 ;; ----------------------------------------
 ;; Constructor
