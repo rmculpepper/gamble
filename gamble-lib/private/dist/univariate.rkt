@@ -37,7 +37,7 @@
      (m:flbeta-cdf a b (inexact x) log? 1-p?))
    (define (-invcdf self p log? 1-p?)
      (match-define (beta-dist a b) self)
-     (m:flbeta-cdf a b (inexact p) log? 1-p?))
+     (m:flbeta-inv-cdf a b (inexact p) log? 1-p?))
    (define (-real-support self) '(0 . 1))
    (define (-mean self)
      (match self [(beta-dist a b) (/ a (+ a b))]))
@@ -427,16 +427,22 @@
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
-     (match-define (pareto-dist scale shape) self)
-     (define p
-       (if (> x scale)
-           (- 1.0 (expt (/ scale x) shape))
-           0.0))
-     (convert-p p log? 1-p?))
+     (match-define (pareto-dist xm alpha) self)
+     (cond [(< x xm) (impossible log?)]
+           [log?
+            (define ltail (* alpha (- (log xm) (log x))))
+            (if 1-p? ltail (logspace- 0 ltail))]
+           [else
+            (define tail (expt (/ xm x) alpha))
+            (if 1-p? tail (- 1 tail))]))
    (define (-invcdf self p log? 1-p?)
-     (match-define (pareto-dist scale shape) self)
-     (define p* (unconvert-p p log? 1-p?))
-     (* scale (expt p* (- (/ shape)))))
+     (match-define (pareto-dist xm alpha) self)
+     (cond [log?
+            (define lpc (if 1-p? p (logspace- (log 1.0) p)))
+            (exp (+ (log xm) (* (- (/ alpha)) lpc)))]
+           [else
+            (define pc (if 1-p? p (- 1 p)))
+            (* xm (expt pc (- (/ alpha))))]))
    (define (-real-support self)
      (cons (pareto-dist-scale self) +inf.0))
    (define (-mean self)
@@ -802,3 +808,54 @@
 (define (vector-sum v) (for/sum ([x (in-vector v)]) x))
 
 (define (digamma x) (m:psi0 x))
+
+;; ============================================================
+;; Tests
+
+(module+ test
+  (require rackunit)
+
+  (define EPS 1e-3)
+
+  (define (check-continuous-dist d)
+    (define vs (for/list ([i 20]) (dist-sample d)))
+    (for ([v vs])
+      (check-pred inexact? v)
+      (define p (dist-pdf d v))
+      (check-pred inexact? p)
+      (check-true (>= p 0))
+      (define lp (dist-pdf d v #t))
+      (check-pred inexact? lp)
+      (check-= lp (log p) EPS)
+      (define cp (dist-cdf d v))
+      (check-pred inexact? cp)
+      (check-pred probability? cp)
+      (check-= (dist-cdf d v #f #t) (- 1 cp) EPS)
+      (check-= (dist-cdf d v #t #f) (log cp) EPS)
+      (check-= (dist-cdf d v #t #t) (log (- 1 cp)) EPS)
+      (check-= (dist-inv-cdf d cp #f #f) v EPS)
+      (check-= (dist-inv-cdf d (log cp) #t #f) v EPS)
+      (check-= (dist-inv-cdf d (- 1 cp) #f #t) v EPS)
+      (check-= (dist-inv-cdf d (log (- 1 cp)) #t #t) v EPS)
+      (void)))
+
+  (let ([d (beta-dist 3 4)])
+    (check-continuous-dist d))
+  (let ([d (cauchy-dist 0 1)])
+    (check-continuous-dist d))
+  (let ([d (exponential-dist 1)])
+    (check-continuous-dist d))
+  (let ([d (gamma-dist 2 3)])
+    (check-continuous-dist d))
+  (let ([d (logistic-dist 0 1)])
+    (check-continuous-dist d))
+  (let ([d (normal-dist 0 1)])
+    (check-continuous-dist d))
+  (let ([d (uniform-dist 0 1)])
+    (check-continuous-dist d))
+  (let ([d (triangle-dist 0 5 3)])
+    (check-continuous-dist d))
+  (let ([d (pareto-dist 1 2)])
+    (check-continuous-dist d))
+
+  (begin))
