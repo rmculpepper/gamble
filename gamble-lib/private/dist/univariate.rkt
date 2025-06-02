@@ -779,9 +779,4 @@
 
 (define (vector-sum v) (for/sum ([x (in-vector v)]) x))
 
-;; use in pdf functions instead of raising type (or other) error
-(define (impossible log? who reason)
-  ;; FIXME: may be useful to log occurrences of these
-  (if log? -inf.0 0))
-
 (define (digamma x) (m:psi0 x))
