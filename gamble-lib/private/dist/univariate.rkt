@@ -704,7 +704,7 @@
    (define (-pdf self x log?)
      (match-define (categorical-dist ws) self)
      (cond [(and (integer? x) (<= 1 x (vector-length ws)))
-            (convert-p (vector-ref ws (sub1 (exact x))) log?)]
+            (convert-p (vector-ref ws (sub1 (exact x))) log? #f)]
            [else (impossible log?)]))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
@@ -784,49 +784,69 @@
 ;; Tests
 
 (module+ test
-  (require rackunit)
+  (require racket/list rackunit)
+
+  ;; rackunit's check-= fails on -inf.0, etc
+  (define-simple-check (check= actual expected tolerance)
+    (<= (- expected (abs tolerance)) actual (+ expected (abs tolerance))))
 
   (define EPS 1e-3)
 
-  (define (check-continuous-dist d)
-    (define vs (for/list ([i 20]) (dist-sample d)))
-    (for ([v vs])
-      (check-pred inexact? v)
+  (define (check-real-dist d continuous? [inv-cdf? continuous?])
+    (define (check-value v)
+      (if continuous?
+          (check-pred inexact? v)
+          (check-pred exact? v))
       (define p (dist-pdf d v))
       (check-pred inexact? p)
       (check-true (>= p 0))
       (define lp (dist-pdf d v #t))
       (check-pred inexact? lp)
-      (check-= lp (log p) EPS)
+      (check= lp (log p) EPS)
       (define cp (dist-cdf d v))
       (check-pred inexact? cp)
       (check-pred probability? cp)
-      (check-= (dist-cdf d v #f #t) (- 1 cp) EPS)
-      (check-= (dist-cdf d v #t #f) (log cp) EPS)
-      (check-= (dist-cdf d v #t #t) (log (- 1 cp)) EPS)
-      (check-= (dist-inv-cdf d cp #f #f) v EPS)
-      (check-= (dist-inv-cdf d (log cp) #t #f) v EPS)
-      (check-= (dist-inv-cdf d (- 1 cp) #f #t) v EPS)
-      (check-= (dist-inv-cdf d (log (- 1 cp)) #t #t) v EPS)
-      (void)))
+      (check= (dist-cdf d v #f #t) (- 1 cp) EPS)
+      (check= (dist-cdf d v #t #f) (log cp) EPS)
+      (check= (dist-cdf d v #t #t) (log (- 1 cp)) EPS)
+      (when inv-cdf?
+        ;; Unreliable for integer-valued distributions.
+        (check= (dist-inv-cdf d cp #f #f) v EPS)
+        (check= (dist-inv-cdf d (log cp) #t #f) v EPS)
+        (check= (dist-inv-cdf d (- 1 cp) #f #t) v EPS)
+        (check= (dist-inv-cdf d (log (- 1 cp)) #t #t) v EPS))
+      (void))
+    (define vs (remove-duplicates (for/list ([i 20]) (dist-sample d))))
+    (for ([v vs]) (test-case (format "~e, ~e" d v) (check-value v))))
 
   (let ([d (beta-dist 3 4)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (cauchy-dist 0 1)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (exponential-dist 1)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (gamma-dist 2 3)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (logistic-dist 0 1)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (normal-dist 0 1)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (uniform-dist 0 1)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (triangle-dist 0 5 3)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
   (let ([d (pareto-dist 1 2)])
-    (check-continuous-dist d))
+    (check-real-dist d #t))
+
+  (let ([d (binomial-dist 10 2/3)])
+    (check-real-dist d #f))
+  (let ([d (geometric-dist 2/3)])
+    (check-real-dist d #f))
+  (let ([d (poisson-dist 1)])
+    (check-real-dist d #f))
+  (let ([d (bernoulli-dist 0.2)])
+    (check-real-dist d #f))
+  (let ([d (categorical-dist '#(1/2 1/3 1/6))])
+    (check-real-dist d #f))
 
   (begin))

@@ -66,7 +66,7 @@
   (define (normalize-inexact-weights* who in-ws)
     (define ws (vector->immutable-vector in-ws))
     (define-values (wsum any-exact?)
-      (for/fold ([s 0.0] [any-exact? #f]) ([w (in-vector ws)])
+      (for/fold ([s 0] [any-exact? #f]) ([w (in-vector ws)])
         (unless (and (rational? w) (>= w 0))
           (raise-argument-error who "(vectorof (>=/c 0))" ws))
         (values (+ s w) (or any-exact? (exact? w)))))
