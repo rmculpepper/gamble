@@ -215,6 +215,9 @@
 ; ----------------------------------------
 
 (module+ test
+  (require rackunit)
+
+  ;; FIXME
   (define m1 (measurable-interval 0.0 1.0))
   (define m2 (measurable-interval 2.0 4.0))
   (define m12 (measurable-union m1 m2))
@@ -223,4 +226,10 @@
   m123
   (define ms1 (measurable-singleton 1.0))
   (measurable-union m123 ms1)
+
+  ;; ----
+  (check-true (ivls-contains? '(1 5) 2))
+  (check-false (ivls-contains? '(1 5) 1))
+  (check-false (ivls-contains? '(1 5) 5))
+
   (begin))

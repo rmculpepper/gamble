@@ -351,3 +351,47 @@
       [(discrete-dist h _)
        (for/and ([v (in-hash-keys h)]) (pred v))]
       [_ #f])))
+
+;; ============================================================
+
+(module+ test
+  (require rackunit)
+
+  (let ([ed (hash->discrete-dist (hash 'a 1/2 'b 1/3 'c 1/6))])
+    (check-equal? (dist-pdf ed 'a #f) 1/2)
+    (check-equal? (dist-pdf ed 'a #t) (log 1/2))
+    (check-equal? (dist-pdf ed 'z #f) 0)
+    (check-equal? (dist-pdf ed 'z #t) -inf.0)
+    (check-equal? (dist-density ed 'a) (density 1/2 0 #f))
+    (check-equal? (dist-measure ed (measurable (hash 'a #t 'c #t) null)) (+ 1/2 1/6))
+    (check-equal? (dist-total-measure ed) 1)
+    (check-equal? (for/hash ([v (in-vector (discrete-dist-values ed))]
+                             [w (in-vector (discrete-dist-weights ed))])
+                    (values v w))
+                  (discrete-dist->hash ed))
+    (check-equal? (for/hash ([(v w) (in-dist ed)]) (values v w))
+                  (discrete-dist->hash ed))
+    (check-equal? (for/hash ([v (in-dist-values ed)]) (values v (dist-pdf ed v)))
+                  (discrete-dist->hash ed))
+    (check-equal? (for/hash ([(v w) (in-discrete-dist ed)]) (values v w))
+                  (discrete-dist->hash ed))
+    (check-equal? (for/discrete-dist ([(v w) (in-discrete-dist ed)]) (values v w)) ed)
+    (void))
+
+  (let ([md (hash->discrete-dist (hash 'a 0.5 'b 1/3 'c 1/6))])
+    (check-equal? (dist-pdf md 'a #f) 0.5)
+    (check-equal? (dist-pdf md 'b #f) #i1/3)
+    (check-equal? (dist-pdf md 'z #f) 0)
+    (check-equal? (dist-measure md (measurable (hash 'a #t 'c #t) null)) (+ #i1/2 #i1/6))
+    (check-equal? (dist-total-measure md) 1.0))
+
+  (let ([pd (hash->discrete-dist (hash 'x 1/5 'y 2/5))]) ;; partial
+    (check-equal? (dist-pdf pd 'x #f) 1/5)
+    (check-equal? (dist-total-measure pd) 3/5))
+
+  (let ([id (make-discrete-dist (vector 1 2 3 4 5))])
+    (check-equal? (dist-pdf id 3 #f) 1/5)
+    (check-equal? (dist-measure id (measurable (hash) '(1 5))) 3/5)
+    (check-equal? (dist-measure id (measurable (hash 1 #t) '(1 5))) 4/5))
+
+  (begin))
