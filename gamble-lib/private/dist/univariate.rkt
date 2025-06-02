@@ -465,87 +465,60 @@
          (+ shape (vector-length data)))]
        [_ #f]))])
 
-(define-dist-struct t-dist
+(define-dist-struct student-t-dist
   ([degrees positive-rational? inexact]
    [mean rational? inexact]
    [scale positive-rational? inexact])
+  #:extension (ext) ;; #f or math/distribution Student-t-Dist
   #:methods gen:dist
   [(define (-sample self)
-     (match-define (t-dist degrees mean scale) self)
-     (+ mean (* scale (std-t-sample degrees))))
+     (-t-sample (-t-ext self)))
    (define (-pdf self x log?)
-     (match-define (t-dist degrees mean scale) self)
-     (define sx (/ (- x mean) scale))
-     (define logpdf (- (std-t-logpdf degrees sx) (log scale)))
-     (if log? logpdf (exp logpdf)))]
+     (-t-pdf (-t-ext self) x log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
-     (match-define (t-dist degrees mean scale) self)
-     (define sx (/ (- x mean) scale))
-     (define p (std-t-cdf degrees sx))
-     (convert-p p log? 1-p?))
+     (-t-cdf (-t-ext self) x log? 1-p?))
    (define (-invcdf self p log? 1-p?)
-     (match-define (t-dist degrees mean scale) self)
-     (define p* (unconvert-p p log? 1-p?))
-     (error 't-inv-cdf "unimplemented"))
+     (-t-inv-cdf (-t-ext self) p log? 1-p?))
    (define (-real-support self)
      '(-inf.0 . +inf.0))
-   (define (-mean self)
-     (match-define (t-dist degrees mean scale) self)
-     (if (> degrees 1) 0 #f))
-   (define (-median self) 0)
-   (define (-variance self) #f)
    (define (-drift-dist self value scale-factor)
-     (match-define (t-dist degrees mean scale) self)
+     (match-define (student-t-dist degrees mean scale _) self)
      (normal-dist value (* scale scale-factor)))
    #;
    (define (-drift1 self value scale-factor)
      (match-define (t-dist degrees mean scale) self)
      (drift:add-normal value (* scale scale-factor)))])
 
-(define (std-t-logpdf degrees x)
-  (define logprefix (std-t-logpdf-prefix degrees))
-  (- logprefix
-     (* (+ 1.0 degrees) 0.5
-        (log (+ 1.0 (/ (* x x) degrees))))))
+(define (-t-ext self)
+  (or (student-t-dist-ext self)
+      (let ()
+        (match-define (student-t-dist degrees mean scale _) self)
+        (define ext (m:student-t-dist degrees mean scale))
+        (set-student-t-dist-ext! self ext)
+        ext)))
 
-(define (std-t-logpdf-prefix degrees)
-  (+ (m:log-gamma (* 0.5 (+ 1.0 degrees)))
-     (* -0.5 (log degrees))
-     (* -0.5 (log pi))
-     (* -1.0 (m:log-gamma (* degrees 0.5)))))
+(module student-t typed/racket/base
+  (require math/distributions)
+  (provide (all-defined-out))
 
-(define (std-t-cdf degrees x)
-  (cond [#f ;(= degrees 1)
-         (+ 0.5 (* (/ pi) (atan x)))]
-        [#f ;(= degrees 2)
-         (+ 0.5 (/ x (* 2 (sqrt (+ 2 (* x x))))))]
-        [else (std-t-cdf* degrees x)]))
-(define (std-t-cdf* degrees x)
-  (cond [(> x 0)
-         (define x* (/ degrees (+ (* x x) degrees)))
-         (define a (* degrees 0.5))
-         (define b 0.5)
-         (- 1.0 (* 0.5 (m:beta-inc a b x* #f #t)))]
-        [(< x 0)
-         (- 1.0 (std-t-cdf* degrees (- x)))]
-        [(= x 0)
-         0.5]))
+  (: -t-sample : Student-T-Dist -> Real)
+  (define (-t-sample tdist)
+    (sample tdist))
 
-(define (std-t-sample degrees)
-  (define u (- (* 2.0 (random)) 1))
-  (define v (- (* 2.0 (random)) 1))
-  (define w (+ (* u u) (* v v)))
-  (cond [(> w 1)
-         (std-t-sample degrees)]
-        [else
-         (define c^2 (/ (* u u) w))
-         (define r^2 (* degrees (+ -1.0 (expt w (/ -2.0 degrees)))))
-         (define x-abs (sqrt (* r^2 c^2)))
-         (if (zero? (random 2))
-             x-abs
-             (- x-abs))]))
+  (: -t-pdf : Student-T-Dist Real Any -> Flonum)
+  (define (-t-pdf tdist x log?)
+    (pdf tdist x log?))
+
+  (: -t-cdf : Student-T-Dist Real Any Any -> Flonum)
+  (define (-t-cdf tdist x log? 1-p?)
+    (cdf tdist x log? 1-p?))
+
+  (: -t-inv-cdf : Student-T-Dist Real Any Any -> Flonum)
+  (define (-t-inv-cdf tdist p log? 1-p?)
+    (inv-cdf tdist p log? 1-p?)))
+(require (submod "." student-t))
 
 
 ;; ============================================================
