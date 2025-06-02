@@ -437,12 +437,10 @@
             (if 1-p? tail (- 1 tail))]))
    (define (-invcdf self p log? 1-p?)
      (match-define (pareto-dist xm alpha) self)
-     (cond [log?
-            (define lpc (if 1-p? p (logspace- (log 1.0) p)))
-            (exp (+ (log xm) (* (- (/ alpha)) lpc)))]
-           [else
-            (define pc (if 1-p? p (- 1 p)))
-            (* xm (expt pc (- (/ alpha))))]))
+     (define lq
+       (cond [log? (if 1-p? p (logspace- (log 1.0) p))]
+             [else (log (if 1-p? p (- 1.0 p)))]))
+     (exp (+ (log xm) (* (- (/ alpha)) lq))))
    (define (-real-support self)
      (cons (pareto-dist-scale self) +inf.0))
    (define (-mean self)
