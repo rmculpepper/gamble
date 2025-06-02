@@ -10,10 +10,12 @@
          racket/vector
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
+         (prefix-in m: (only-in math/flonum flbinomial fllog-binomial))
          "base.rkt"
          (submod "util.rkt" define)
          (submod "util.rkt" math)
          (submod "util.rkt" density)
+         (submod "util.rkt" search)
          (submod "util.rkt" weights))
 (provide (all-defined-out))
 
@@ -526,7 +528,7 @@
 
 (define-dist-struct binomial-dist
   ([n exact-nonnegative-integer?]
-   [p (real-in 0 1) inexact])
+   [p probability? inexact])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (binomial-dist n p) self)
@@ -568,7 +570,7 @@
   |#)
 
 (define-dist-struct geometric-dist
-  ([p (real-in 0 1) inexact])
+  ([p probability? inexact])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (geometric-dist p) self)
@@ -690,6 +692,46 @@
                                        [(= value 0) driftiness])))
   #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0))
   |#)
+
+;; ============================================================
+;; Other integer distributions (infinite)
+
+(define-dist-struct negative-binomial-dist
+  ;; Represents number of failures before reaching r successes (p = Pr[success]).
+  ([r exact-positive-integer?] [p probability? inexact])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (negative-binomial-dist r p) self)
+     (define rate (flvector-ref (m:flgamma-sample (inexact r) (/ (- 1 p) p) 1) 0))
+     (exact (flvector-ref (m:flpoisson-sample rate 1) 0)))
+   (define (-pdf self x log?)
+     (match-define (negative-binomial-dist r p) self)
+     (cond [(and (integer? x) (>= x 0))
+            (cond [log?
+                   (define k (inexact x))
+                   (define lcoeff (m:fllog-binomial (inexact r) p))
+                   (+ lcoeff (* k (log (- 1 p))) (* (inexact r) (log p)))]
+                  [else
+                   (define k (exact x))
+                   (define coeff (m:flbinomial (inexact (+ x r -1)) (inexact k)))
+                   (* coeff (expt (- 1 p) k) (expt p r))])]
+           [else (impossible log?)]))]
+  #:methods gen:integer-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (negative-binomial-dist r p) self)
+     (define k (floor (inexact x)))
+     (m:flbinomial-cdf (+ k (inexact r)) (- 1.0 p) k log? 1-p?))
+   (define (-invcdf self px log? 1-p?)
+     (match-define (negative-binomial-dist r p) self)
+     (if 1-p?
+         (cond [(<= px (if log? -inf.0 0.0)) +inf.0]
+               [else (find-least-natural (lambda (k) (< (-cdf self k log? #t) px)))])
+         (cond [(>= px (if log? 0.0 1.0)) +inf.0]
+               [else (find-least-natural (lambda (k) (>= (-cdf self k log? #f) px)))])))]
+  #:methods gen:enumerable-dist
+  [(define (-sequence self)
+     (in-naturals))])
 
 ;; ============================================================
 ;; Other integer distributions (finite)

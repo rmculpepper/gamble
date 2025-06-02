@@ -15,6 +15,7 @@
          (submod "util.rkt" math)
          (submod "util.rkt" density)
          (submod "util.rkt" weights)
+         (submod "util.rkt" search)
          "measurable.rkt")
 (provide (all-defined-out))
 

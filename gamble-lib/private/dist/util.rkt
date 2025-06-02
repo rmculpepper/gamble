@@ -77,6 +77,11 @@
           [else (vector->immutable-vector
                  (vector-map (lambda (w) (/ (exact->inexact w) wsum)) ws))]))
 
+  (begin))
+
+(module search racket/base
+  (provide (all-defined-out))
+
   ;; binary-search/least-geq : (Vectorof Real) Real -> Nat
   ;; PRE: cws is sorted increasing, cws[last] >= x
   ;; POST: returns least index k such that cws[k] >= x
@@ -90,6 +95,19 @@
              (if (>= (vector-ref cws m) x)
                  (loop a m)
                  (loop m b))])))
+
+  ;; find-least-natural : Nat (Nat -> Boolean) -> Nat
+  ;; PRE: if (ok? m) and n > m, then (ok? n)
+  (define (find-least-natural ok?)
+    (define (find-ok last-bad)
+      (define next (+ last-bad last-bad))
+      (cond [(ok? next) (find-least-ok last-bad next)]
+            [else (find-ok next)]))
+    (define (find-least-ok a b) ;; <a is bad; b is ok
+      (cond [(= a b) a]
+            [else (let ([m (quotient (+ a b) 2)])
+                    (if (ok? m) (find-least-ok a m) (find-least-ok (add1 m) b)))]))
+    (if (ok? 0) 0 (find-ok 1)))
 
   (begin))
 
@@ -238,6 +256,7 @@
   (require rackunit
            (submod ".." math)
            (submod ".." weights)
+           (submod ".." search)
            (submod ".." density))
 
   ;; --------------------
@@ -270,6 +289,11 @@
     (check-equal? (binary-search/least-geq ns 1) 0)
     (check-equal? (binary-search/least-geq ns 2) 1)
     (check-equal? (binary-search/least-geq ns 3) 4))
+
+  ;; --------------------
+  ;; search
+
+  (check-equal? (find-least-natural (lambda (k) (> k 50))) 51)
 
   ;; --------------------
   ;; density

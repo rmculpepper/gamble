@@ -96,8 +96,11 @@
 
 (define (dist-cdf d x [log? #f] [1-p? #f])
   (-cdf d x log? 1-p?))
-(define (dist-inv-cdf d r [log? #f] [1-p? #f])
-  (-invcdf d r log? 1-p?))
+
+;; dist-inv-cdf : Real-Dist Real Boolean Boolean -> Real
+;; (dist-inv-cdf d p) returns least x such that Pr[X <= x] >= p, where X ~ d.
+(define (dist-inv-cdf d p [log? #f] [1-p? #f])
+  (-invcdf d p log? 1-p?))
 
 (define-generics continuous-dist   ;; extends real-dist
   ;; Represents normalized, continuous real-valued distributions.
