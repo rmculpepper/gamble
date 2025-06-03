@@ -66,9 +66,9 @@
   (define who 'hash->discrete-dist)
   (define (bad) (raise-argument-error who "(hash/c any/c (>=/c 0))" h))
   (let loop ([h h])
-    (define (copy f)
+    (define (copy fl?)
       (for/fold ([dh (hash)]) ([(v w) (in-hash h)] #:when (> w 0))
-        (hash-set dh v (f w))))
+        (hash-set dh v (if fl? (fl w) w))))
     (cond [(hash-ref -discrete-intern-table h #f)
            => values]
           [(and (hash? h) (immutable? h) (not (impersonator? h))
@@ -81,15 +81,15 @@
                        (or any-zero? (zero? w))
                        (or any-exact? (exact? w)))))
            (cond [(and any-exact? (inexact? wsum))
-                  (loop (copy inexact))]
+                  (loop (copy #t))]
                  [any-zero?
-                  (loop (copy values))]
+                  (loop (copy #f))]
                  [else
                   (define dist (discrete-dist h wsum))
                   (hash-set! -discrete-intern-table h dist)
                   dist])]
           [(hash? h)
-           (loop (copy values))]
+           (loop (copy #f))]
           [else (bad)])))
 
 (define empty-discrete-dist (hash->discrete-dist '#hash()))

@@ -59,7 +59,7 @@
   (define v (make-vector (vector-length ws)))
   (define leftover
     (for/fold ([n n]) ([w (in-vector cndws)] [i (in-naturals)])
-      (define k (exact (flvector-ref (m:flbinomial-sample (inexact n) w 1) 0)))
+      (define k (exact (flvector-ref (m:flbinomial-sample (fl n) w 1) 0)))
       (vector-set! v i k)
       (- n k)))
   (unless (zero? leftover) (error 'dist-sample:multinomial-dist "internal error"))
@@ -70,7 +70,7 @@
          (define cndws (-multinomial-cndws ws))
          (define-values (leftover ll)
            (for/fold ([n n] [ll 0.0]) ([ve (in-vector v)] [w (in-vector cndws)])
-             (define l (m:flbinomial-pdf (inexact n) w (inexact ve) #t))
+             (define l (m:flbinomial-pdf (fl n) w (fl ve) #t))
              (values (- n ve) (+ ll l))))
          (cond [(not (zero? leftover)) (if log? -inf.0 0)]
                [else (if log? ll (exp ll))])]
@@ -152,7 +152,7 @@
          (for ([w (in-vector in-ws)] [i (in-naturals)])
            (unless (and (rational? w) (> w 0))
              (raise-argument-error 'dirichlet-dist "(vectorof (>/c 0))" in-ws))
-           (vector-set! ws i (inexact w)))
+           (vector-set! ws i (fl w)))
          (define wsi (vector->immutable-vector ws))
          (hash-set! -dirichlet-intern-table wsi #t)
          wsi]))

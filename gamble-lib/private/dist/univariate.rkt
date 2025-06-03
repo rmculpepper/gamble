@@ -23,23 +23,23 @@
 ;; Continuous real distributions from math library
 
 (define-dist-struct beta-dist
-  ([a nonnegative-rational? inexact]
-   [b nonnegative-rational? inexact])
+  ([a nonnegative-rational? fl]
+   [b nonnegative-rational? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (beta-dist a b) self)
      (flvector-ref (m:flbeta-sample a b 1) 0))
    (define (-pdf self x log?)
      (match-define (beta-dist a b) self)
-     (m:flbeta-pdf a b (inexact x) log?))]
+     (m:flbeta-pdf a b (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (beta-dist a b) self)
-     (m:flbeta-cdf a b (inexact x) log? 1-p?))
+     (m:flbeta-cdf a b (fl x) log? 1-p?))
    (define (-invcdf self p log? 1-p?)
      (match-define (beta-dist a b) self)
-     (m:flbeta-inv-cdf a b (inexact p) log? 1-p?))
+     (m:flbeta-inv-cdf a b (fl p) log? 1-p?))
    (define (-real-support self) '(0 . 1))
    (define (-mean self)
      (match self [(beta-dist a b) (/ a (+ a b))]))
@@ -83,23 +83,23 @@
      (beta-dist (* S value) (* S (- 1 value))))])
 
 (define-dist-struct cauchy-dist
-  ([mode rational? inexact]
-   [scale positive-rational? inexact])
+  ([mode rational? fl]
+   [scale positive-rational? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (cauchy-dist mode scale) self)
      (flvector-ref (m:flcauchy-sample mode scale 1) 0))
    (define (-pdf self x log?)
      (match-define (cauchy-dist mode scale) self)
-     (m:flcauchy-pdf mode scale (inexact x) log?))]
+     (m:flcauchy-pdf mode scale (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (cauchy-dist mode scale) self)
-     (m:flcauchy-cdf mode scale (inexact x) log? 1-p?))
+     (m:flcauchy-cdf mode scale (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (cauchy-dist mode scale) self)
-     (m:flcauchy-inv-cdf mode scale (inexact x) log? 1-p?))
+     (m:flcauchy-inv-cdf mode scale (fl x) log? 1-p?))
    (define (-real-support self) '(-inf.0 . +inf.0))
    (define (-mean self) +nan.0)
    (define (-modes self) (list (cauchy-dist-mode self)))
@@ -120,7 +120,7 @@
      (drift:add-normal value (* scale scale-factor)))])
 
 (define-dist-struct exponential-dist
-  ([mean positive-rational? inexact])
+  ([mean positive-rational? fl])
   ;; λ = 1/mean
   #:methods gen:dist
   [(define (-sample self)
@@ -128,15 +128,15 @@
      (flvector-ref (m:flexponential-sample mean 1) 0))
    (define (-pdf self x log?)
      (match-define (exponential-dist mean) self)
-     (m:flexponential-pdf mean (inexact x) log?))]
+     (m:flexponential-pdf mean (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (exponential-dist mean) self)
-     (m:flexponential-cdf mean (inexact x) log? 1-p?))
+     (m:flexponential-cdf mean (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (exponential-dist mean) self)
-     (m:flexponential-inv-cdf mean (inexact x) log? 1-p?))
+     (m:flexponential-inv-cdf mean (fl x) log? 1-p?))
    (define (-real-support self) '(0 . +inf.0))
    (define (-mean self)
      (match-define (exponential-dist mean) self)
@@ -158,8 +158,8 @@
      (drift:mult-exp-normal value (* mean scale-factor)))])
 
 (define-dist-struct gamma-dist
-  ([shape positive-rational? inexact]
-   [scale positive-rational? inexact])
+  ([shape positive-rational? fl]
+   [scale positive-rational? fl])
   ;; k = shape, θ = scale
   #:methods gen:dist
   [(define (-sample self)
@@ -167,15 +167,15 @@
      (flvector-ref (m:flgamma-sample shape scale 1) 0))
    (define (-pdf self x log?)
      (match-define (gamma-dist shape scale) self)
-     (m:flgamma-pdf shape scale (inexact x) log?))]
+     (m:flgamma-pdf shape scale (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (gamma-dist shape scale) self)
-     (m:flgamma-cdf shape scale (inexact x) log? 1-p?))
+     (m:flgamma-cdf shape scale (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (gamma-dist shape scale) self)
-     (m:flgamma-inv-cdf shape scale (inexact x) log? 1-p?))
+     (m:flgamma-inv-cdf shape scale (fl x) log? 1-p?))
    (define (-real-support self) '(0 . +inf.0)) ;; (0, inf)
    (define (-mean self)
      (match-define (gamma-dist shape scale) self)
@@ -224,23 +224,23 @@
      (drift:mult-exp-normal value (* scale (sqrt shape) scale-factor)))])
 
 (define-dist-struct logistic-dist
-  ([mean rational? inexact]
-   [scale positive-rational? inexact])
+  ([mean rational? fl]
+   [scale positive-rational? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (logistic-dist mean scale) self)
      (flvector-ref (m:fllogistic-sample mean scale 1) 0))
    (define (-pdf self x log?)
      (match-define (logistic-dist mean scale) self)
-     (m:fllogistic-pdf mean scale (inexact x) log?))]
+     (m:fllogistic-pdf mean scale (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (logistic-dist mean scale) self)
-     (m:fllogistic-cdf mean scale (inexact x) log? 1-p?))
+     (m:fllogistic-cdf mean scale (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (logistic-dist mean scale) self)
-     (m:fllogistic-inv-cdf mean scale (inexact x) log? 1-p?))
+     (m:fllogistic-inv-cdf mean scale (fl x) log? 1-p?))
    (define (-real-support self) '(-inf.0 . +inf.0))
    (define (-mean self) (logistic-dist-mean self))
    (define (-median self) (logistic-dist-mean self))
@@ -266,23 +266,23 @@
      (drift:add-normal value (* scale scale-factor)))])
 
 (define-dist-struct normal-dist
-  ([mean rational? inexact]
-   [scale positive-rational? inexact])
+  ([mean rational? fl]
+   [scale positive-rational? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (normal-dist mean scale) self)
      (flvector-ref (m:flnormal-sample mean scale 1) 0))
    (define (-pdf self x log?)
      (match-define (normal-dist mean scale) self)
-     (m:flnormal-pdf mean scale (inexact x) log?))]
+     (m:flnormal-pdf mean scale (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (normal-dist mean scale) self)
-     (m:flnormal-cdf mean scale (inexact x) log? 1-p?))
+     (m:flnormal-cdf mean scale (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (normal-dist mean scale) self)
-     (m:flnormal-inv-cdf mean scale (inexact x) log? 1-p?))
+     (m:flnormal-inv-cdf mean scale (fl x) log? 1-p?))
    (define (-support self) '(-inf.0 . +inf.0))
    (define (-mean self) (normal-dist-mean self))
    (define (-median self) (normal-dist-mean self))
@@ -320,8 +320,8 @@
      (drift:add-normal value (* stddev scale-factor)))])
 
 (define-dist-struct uniform-dist
-  ([lo rational? inexact]
-   [hi rational? inexact])
+  ([lo rational? fl]
+   [hi rational? fl])
   #:guard (lambda (lo hi)
             (unless (< lo hi)
               (error 'uniform-dist "invalid range\n  range: (~e, ~e)" lo hi))
@@ -332,15 +332,15 @@
      (+ lo (* (- hi lo) (random))))
    (define (-pdf self x log?)
      (match-define (uniform-dist lo hi) self)
-     (m:fluniform-pdf lo hi (inexact x) log?))]
+     (m:fluniform-pdf lo hi (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (uniform-dist lo hi) self)
-     (m:fluniform-cdf lo hi (inexact x) log? 1-p?))
+     (m:fluniform-cdf lo hi (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (uniform-dist lo hi) self)
-     (m:fluniform-inv-cdf lo hi (inexact x) log? 1-p?))
+     (m:fluniform-inv-cdf lo hi (fl x) log? 1-p?))
    (define (-real-support self)
      (match-define (uniform-dist lo hi) self)
      (cons lo hi))
@@ -352,7 +352,7 @@
      (/ (+ lo hi) 2))
    (define (-variance self)
      (match-define (uniform-dist lo hi) self)
-     (let ([w (- hi lo)]) (* w w (inexact 1/12))))
+     (let ([w (- hi lo)]) (* w w (fl 1/12))))
    (define (-denergy self x [dx 1] [dlo 0] [dhi 0])
      (match-define (uniform-dist lo hi) self)
      (cond [(<= lo x hi)
@@ -365,9 +365,9 @@
      (dist-drift-dist equiv-dist scale-factor))])
 
 (define-dist-struct triangle-dist
-  ([lo rational? inexact]
-   [hi rational? inexact]
-   [mode rational? inexact])
+  ([lo rational? fl]
+   [hi rational? fl]
+   [mode rational? fl])
   #:guard (lambda (lo hi mode)
             (unless (< lo hi)
               (error 'triangle-dist "invalid range\n  range: (~e, ~e)" lo hi))
@@ -384,15 +384,15 @@
      (flvector-ref (m:fltriangle-sample lo hi mode 1) 0))
    (define (-pdf self x log?)
      (match-define (triangle-dist lo hi mode) self)
-     (m:fltriangle-pdf lo hi mode (inexact x) log?))]
+     (m:fltriangle-pdf lo hi mode (fl x) log?))]
   #:methods gen:continuous-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (triangle-dist lo hi mode) self)
-     (m:fltriangle-cdf lo hi mode (inexact x) log? 1-p?))
+     (m:fltriangle-cdf lo hi mode (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (triangle-dist lo hi mode) self)
-     (m:fltriangle-inv-cdf lo hi mode (inexact x) log? 1-p?))
+     (m:fltriangle-inv-cdf lo hi mode (fl x) log? 1-p?))
    (define (-real-support self)
      (match-define (triangle-dist lo hi mode) self)
      (cons lo hi))
@@ -413,8 +413,8 @@
 ;; Additional continuous real distributions
 
 (define-dist-struct pareto-dist
-  ([scale positive-rational? inexact]  ;; x_m
-   [shape positive-rational? inexact]) ;; alpha
+  ([scale positive-rational? fl]  ;; x_m
+   [shape positive-rational? fl]) ;; alpha
   #:methods gen:dist
   [(define (-sample self)
      (-invcdf self (random) #f #f))
@@ -468,9 +468,9 @@
        [_ #f]))])
 
 (define-dist-struct student-t-dist
-  ([degrees positive-rational? inexact]
-   [mean rational? inexact]
-   [scale positive-rational? inexact])
+  ([degrees positive-rational? fl]
+   [mean rational? fl]
+   [scale positive-rational? fl])
   #:extension (ext) ;; #f or math/distribution Student-t-Dist
   #:methods gen:dist
   [(define (-sample self)
@@ -528,22 +528,22 @@
 
 (define-dist-struct binomial-dist
   ([n exact-nonnegative-integer?]
-   [p probability? inexact])
+   [p probability? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (binomial-dist n p) self)
-     (exact (flvector-ref (m:flbinomial-sample (inexact n) p 1) 0)))
+     (exact (flvector-ref (m:flbinomial-sample (fl n) p 1) 0)))
    (define (-pdf self x log?)
      (match-define (binomial-dist n p) self)
-     (if (integer? x) (m:flbinomial-pdf (inexact n) p (inexact x) log?) (impossible log?)))]
+     (if (integer? x) (m:flbinomial-pdf (fl n) p (fl x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (binomial-dist n p) self)
-     (m:flbinomial-cdf (inexact n) p (inexact x) log? 1-p?))
+     (m:flbinomial-cdf (fl n) p (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (binomial-dist n p) self)
-     (exact (m:flbinomial-inv-cdf (inexact n) p (inexact x) log? 1-p?)))
+     (exact (m:flbinomial-inv-cdf (fl n) p (fl x) log? 1-p?)))
    (define (-support self)
      (match-define (binomial-dist n _) self)
      (cons 0 n))
@@ -552,7 +552,7 @@
      (* n p))
    (define (-modes self)
      (match-define (binomial-dist n p) self)
-     (filter-modes (lambda (x) (m:flbinomial-pdf (inexact n) p x #f))
+     (filter-modes (lambda (x) (m:flbinomial-pdf (fl n) p x #f))
                    (let ([m (exact (floor (* (+ n 1) p)))])
                      (list m (sub1 m)))))
    (define (-variance self)
@@ -570,22 +570,22 @@
   |#)
 
 (define-dist-struct geometric-dist
-  ([p probability? inexact])
+  ([p probability? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (geometric-dist p) self)
      (exact (flvector-ref (m:flgeometric-sample p 1) 0)))
    (define (-pdf self x log?)
      (match-define (geometric-dist p) self)
-     (if (integer? x) (m:flgeometric-pdf p (inexact x) log?) (impossible log?)))]
+     (if (integer? x) (m:flgeometric-pdf p (fl x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (geometric-dist p) self)
-     (m:flgeometric-cdf p (inexact x) log? 1-p?))
+     (m:flgeometric-cdf p (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (geometric-dist p) self)
-     (exact (m:flgeometric-inv-cdf p (inexact x) log? 1-p?)))
+     (exact (m:flgeometric-inv-cdf p (fl x) log? 1-p?)))
    (define (-support self)
      '(0 . +inf.0))
    (define (-mean self)
@@ -607,22 +607,22 @@
   |#)
 
 (define-dist-struct poisson-dist
-  ([mean positive-rational? inexact])
+  ([mean positive-rational? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (poisson-dist mean) self)
      (exact (flvector-ref (m:flpoisson-sample mean 1) 0)))
    (define (-pdf self x log?)
      (match-define (poisson-dist mean) self)
-     (if (integer? x) (m:flpoisson-pdf mean (inexact x) log?) (impossible log?)))]
+     (if (integer? x) (m:flpoisson-pdf mean (fl x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (poisson-dist mean) self)
-     (m:flpoisson-cdf mean (inexact x) log? 1-p?))
+     (m:flpoisson-cdf mean (fl x) log? 1-p?))
    (define (-invcdf self x log? 1-p?)
      (match-define (poisson-dist mean) self)
-     (exact (m:flpoisson-inv-cdf mean (inexact x) log? 1-p?)))
+     (exact (m:flpoisson-inv-cdf mean (fl x) log? 1-p?)))
    (define (-support self)
      '(0 . +inf.0))
    (define (-mean self)
@@ -650,7 +650,7 @@
 ;; Discrete integer distributions from math library (finite)
 
 (define-dist-struct bernoulli-dist
-  ([p probability? inexact])
+  ([p probability? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (bernoulli-dist p) self)
@@ -698,29 +698,29 @@
 
 (define-dist-struct negative-binomial-dist
   ;; Represents number of failures before reaching r successes (p = Pr[success]).
-  ([r exact-positive-integer?] [p probability? inexact])
+  ([r exact-positive-integer?] [p probability? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (negative-binomial-dist r p) self)
-     (define rate (flvector-ref (m:flgamma-sample (inexact r) (/ (- 1 p) p) 1) 0))
+     (define rate (flvector-ref (m:flgamma-sample (fl r) (/ (- 1 p) p) 1) 0))
      (exact (flvector-ref (m:flpoisson-sample rate 1) 0)))
    (define (-pdf self x log?)
      (match-define (negative-binomial-dist r p) self)
      (cond [(and (integer? x) (>= x 0))
             (define k (exact x))
             (cond [log?
-                   (define lcoeff (m:fllog-binomial (inexact (+ k r -1)) (inexact k)))
-                   (+ lcoeff (* k (log (- 1.0 p))) (* (inexact r) (log p)))]
+                   (define lcoeff (m:fllog-binomial (fl (+ k r -1)) (fl k)))
+                   (+ lcoeff (* k (log (- 1.0 p))) (* (fl r) (log p)))]
                   [else
-                   (define coeff (m:flbinomial (inexact (+ k r -1)) (inexact k)))
+                   (define coeff (m:flbinomial (fl (+ k r -1)) (fl k)))
                    (* coeff (expt (- 1 p) k) (expt p r))])]
            [else (impossible log?)]))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (negative-binomial-dist r p) self)
-     (define k (floor (inexact x)))
-     (m:flbinomial-cdf (+ k (inexact r)) (- 1.0 p) k log? 1-p?))
+     (define k (floor (fl x)))
+     (m:flbinomial-cdf (+ k (fl r)) (- 1.0 p) k log? 1-p?))
    (define (-invcdf self px log? 1-p?)
      (match-define (negative-binomial-dist r p) self)
      (if 1-p?

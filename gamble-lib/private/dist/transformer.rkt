@@ -56,8 +56,8 @@
 
 (define-dist-struct affine-distx
   ([d continuous-dist?]
-   [a nonzero-rational? inexact]
-   [b rational? inexact])
+   [a nonzero-rational? fl]
+   [b rational? fl])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (affine-distx d a b) self)
@@ -107,8 +107,8 @@
 (define-dist-struct clip-distx
   ;; Represents dist clipped to (a,b) and renormalized.
   ([dist continuous-dist?]
-   [a rational? inexact]
-   [b rational? inexact])
+   [a rational? fl]
+   [b rational? fl])
   #:extension (pa lpa w lw)
   #:guard (lambda (dist a b)
             (unless (< a b)
@@ -179,7 +179,7 @@
      (match-define (real-map-distx d f invf df) self)
      (define x (invf y))
      (cond [(rational? x)
-            (define m (abs (inexact (df x))))
+            (define m (abs (fl (df x))))
             (cond [log? (- (dist-pdf d x #t) (log m))]
                   [else (/ (dist-pdf d x #f) m)])]
            [else (impossible log?)]))]
@@ -198,16 +198,16 @@
   (real-map-distx dist exp log:extended exp))
 
 (define (log-distx dist)
-  (define (deriv-log x) (/ (inexact x)))
+  (define (deriv-log x) (/ (fl x)))
   (real-map-distx dist log:checked exp deriv-log))
 
 (define (log:extended x)
-  (if (real? x) (if (< x 0) -inf.0 (log (inexact x))) +nan.0))
+  (if (real? x) (if (< x 0) -inf.0 (log (fl x))) +nan.0))
 
 (define (log:checked x)
   (unless (and (real? x) (> x 0))
     (raise-argument-error 'log:checked "(>/c 0)" x))
-  (log (inexact x)))
+  (log (fl x)))
 
 ;; ============================================================
 ;; continuous-dist to integer-dist

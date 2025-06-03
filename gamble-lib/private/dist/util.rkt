@@ -7,12 +7,13 @@
 ;; ------------------------------------------------------------
 
 (module math racket/base
-  (require (only-in racket/base [exact->inexact inexact] [inexact->exact exact])
+  (require (only-in racket/base
+                    [real->double-flonum fl]
+                    [exact->inexact inexact] [inexact->exact exact])
            (submod racket/performance-hint begin-encourage-inline)
            "../util/real.rkt")
   (provide (all-defined-out)
-           exact
-           inexact
+           fl exact inexact
            (all-from-out "../util/real.rkt"))
 
   (begin-encourage-inline
@@ -25,10 +26,10 @@
     (define (positive-rational? v)
       (and (rational? v) (> v 0)))
     (define (ilog x) ;; avoid error on exact 0
-      (log (inexact x)))
+      (log (fl x)))
     (define (convert-p p log? 1-p?)
       (define p* (if 1-p? (- 1 p) p))
-      (if log? (log (inexact p*)) p*))
+      (if log? (log (fl p*)) p*))
     (define (unconvert-p p log? 1-p?)
       (define p* (if log? (exp p) p))
       (if 1-p? (- 1 p*) p*))
@@ -147,7 +148,7 @@
               (unless (exact-nonnegative-integer? ddim)
                 (raise-argument-error 'density "exact-nonnegative-integer?" ddim))
               (cond [log?
-                     (values (exact->inexact d) ddim #t)]
+                     (values (fl d) ddim #t)]
                     [else
                      (unless (>= d 0)
                        (error 'density "expected nonnegative rational\n  given: ~e" d))
