@@ -16,18 +16,42 @@
          (submod "util.rkt" density)
          (submod "util.rkt" weights)
          (submod "util.rkt" search)
+         (submod "util.rkt" define)
          "measurable.rkt")
 (provide (all-defined-out))
 
-;; The empty dist is represented as a discrete dist with no elements.
+;; ============================================================
+;; Boolean Bernoulli distribution
+
+(define-dist-struct boolean-dist
+  ([p probability? fl])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (boolean-dist p) self)
+     (<= (random) p))
+   (define (-pdf self x log?)
+     (match-define (boolean-dist p) self)
+     (define r (cond [(eq? x #t) p] [(eq? x #f) (- 1 p)] [else 0]))
+     (if log? (log (fl r)) r))
+   (define (-measure self ms)
+     (match-define (boolean-dist p) self)
+     (match-define (measurable atoms _) ms)
+     (+ (if (hash-has-key? atoms #t) p 0)
+        (if (hash-has-key? atoms #f) (- 1 p) 0)))
+   (define (-total-measure self) 1)]
+  #:methods gen:enumerable-dist
+  [(define (-sequence self)
+     (in-list '(#t #f)))
+   (define (-wsequence self)
+     (match-define (boolean-dist p) self)
+     (in-hash (hash #t p #f (- 1 p))))])
 
 ;; ============================================================
 ;; Discrete distribution
 
-;; Categorical dist has support 1..N; discrete has arbitrary values as support.
-;; Prints nicely (sort), but non-standard constructor, can't use as match pattern.
-
 ;; Not necessarily normalized.
+;; The empty dist is represented as a discrete dist with no elements.
+
 ;; Uses equal? to distinguish elements of support.
 
 ;; DiscreteDist[X]:
