@@ -707,13 +707,12 @@
    (define (-pdf self x log?)
      (match-define (negative-binomial-dist r p) self)
      (cond [(and (integer? x) (>= x 0))
+            (define k (exact x))
             (cond [log?
-                   (define k (inexact x))
-                   (define lcoeff (m:fllog-binomial (inexact r) p))
-                   (+ lcoeff (* k (log (- 1 p))) (* (inexact r) (log p)))]
+                   (define lcoeff (m:fllog-binomial (inexact (+ k r -1)) (inexact k)))
+                   (+ lcoeff (* k (log (- 1.0 p))) (* (inexact r) (log p)))]
                   [else
-                   (define k (exact x))
-                   (define coeff (m:flbinomial (inexact (+ x r -1)) (inexact k)))
+                   (define coeff (m:flbinomial (inexact (+ k r -1)) (inexact k)))
                    (* coeff (expt (- 1 p) k) (expt p r))])]
            [else (impossible log?)]))]
   #:methods gen:integer-dist []
@@ -890,5 +889,6 @@
     (check-real-dist d #f))
   (let ([d (categorical-dist '#(1/2 1/3 1/6))])
     (check-real-dist d #f))
-
+  (let ([d (negative-binomial-dist 3 0.4)])
+    (check-real-dist d #f))
   (begin))
