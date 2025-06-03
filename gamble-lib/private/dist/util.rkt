@@ -13,7 +13,7 @@
            (submod racket/performance-hint begin-encourage-inline)
            "../util/real.rkt")
   (provide (all-defined-out)
-           fl exact inexact
+           fl exact inexact xexact
            (all-from-out "../util/real.rkt"))
 
   (begin-encourage-inline
@@ -33,6 +33,8 @@
     (define (unconvert-p p log? 1-p?)
       (define p* (if log? (exp p) p))
       (if 1-p? (- 1 p*) p*))
+    (define (xexact x)
+      (if (rational? x) (exact x) x))
     (define (impossible log?)
       (if log? -inf.0 0.0)))
 

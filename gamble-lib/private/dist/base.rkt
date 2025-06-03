@@ -92,13 +92,13 @@
   ;; type X = Real
   (-cdf real-dist x log? 1-p?)     ;; Dist X Boolean Boolean -> NNReal
   (-invcdf real-dist x log? 1-p?)  ;; Dist Real Bool Bool -> X
-  (-support real-dist)             ;; Dist -> (cons ExtReal ExtReal) or #f
+  (-support real-dist)             ;; Dist -> DistSupport
   (-mean real-dist)                ;; Dist -> Real or #f
   (-median real-dist)              ;; Dist -> Real or #f
   (-modes real-dist)               ;; Dist -> (Listof Real) or #f
   (-variance real-dist)            ;; Dist -> Real or #f
   #:fallbacks
-  [(define (-support d) '(-inf.0 . +inf.0))
+  [(define (-support d) #f)
    (define (-mean d) #f)
    (define (-median d) #f)
    (define (-modes d) #f)
@@ -115,6 +115,11 @@
   (unless (real-dist? d) (raise-argument-error 'dist-inv-cdf "real-dist?" d))
   (unless (real? p) (raise-argument-error 'dist-inv-cdf "real?" p))
   (-invcdf d p (and log?) (and 1-p?)))
+
+;; dist-support : Real-Dist -> DistSupport
+(define (dist-support d)
+  (unless (real-dist? d) (raise-argument-error 'dist-support "real-dist?" d))
+  (-support d))
 
 (define-generics continuous-dist   ;; extends real-dist
   ;; Represents normalized, continuous real-valued distributions.
@@ -133,3 +138,17 @@
 ;; ;; - #s(real-range Min Max)     -- inclusive (may overapprox)
 (struct integer-range (lo hi) #:prefab)
 (struct real-range (lo hi) #:prefab)
+
+(define (support-union s1 s2)
+  (match s1
+    [(real-range lo1 hi1)
+     (match s2
+       [(real-range lo2 hi2)
+        (real-range (min lo1 lo2) (max hi1 hi2))]
+       [_ #f])]
+    [(integer-range lo1 hi1)
+     (match s2
+       [(integer-range lo2 hi2)
+        (integer-range (min lo1 lo2) (max hi1 hi2))]
+       [_ #f])]
+    [_ #f]))

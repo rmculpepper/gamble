@@ -49,7 +49,11 @@
           (for/list ([(cd w) (in-discrete-dist mix)])
             (+ (log w) (dist-cdf cd x #t 1-p?))))
          (for/sum ([(cd w) (in-discrete-dist mix)])
-           (* w (dist-cdf cd x #f 1-p?)))))])
+           (* w (dist-cdf cd x #f 1-p?)))))
+   (define (-support self)
+     (match-define (mixture-distx mix) self)
+     (for/fold ([r #t]) ([cd (in-dist-values mix)])
+       (if (eq? r #t) cd (support-union r (dist-support cd)))))])
 
 ;; ----------------------------------------
 ;; affine transformation
@@ -89,8 +93,13 @@
      (match-define (affine-distx d a b) self)
      (define x (dist-inv-cdf d r log? (if (< a 0) (not 1-p?) 1-p?)))
      (affine-apply a b x))
-
-   ])
+   (define (-support self)
+     (match-define (affine-distx d a b) self)
+     (match (dist-support d)
+       [(real-range lo hi)
+        (let ([flo (affine-apply a b lo)] [fhi (affine-apply a b hi)])
+          (real-range (min flo fhi) (max flo fhi)))]
+       [_ #f]))])
 
 (define (nonzero-rational? v)
   (and (rational? v) (not (zero? v))))
@@ -147,7 +156,10 @@
             (dist-inv-cdf d p* #f 1-p?)]))
    (define (-support self)
      (match-define (clip-distx d a b _ _ _ _) self)
-     (cons a b))])
+     (match (dist-support d)
+       [(real-range lo hi)
+        (real-range (max a lo) (min b hi))]
+       [_ (real-range a b)]))])
 
 (define CLIP-REJECTION-THRESHOLD 0.25)
 
@@ -192,7 +204,16 @@
    (define (-invcdf self r log? 1-p?)
      (match-define (real-map-distx d f invf df) self)
      ;; If f is not monotonic increasing, need to flip 1-p?.
-     (f (dist-inv-cdf d r log? 1-p?)))])
+     (f (dist-inv-cdf d r log? 1-p?)))
+   #;
+   ;; FIXME: won't work with checked-log on [0,x] dist
+   (define (-support self)
+     (match-define (real-map-distx d f invf df) self)
+     (match (dist-support d)
+       [(real-range lo hi)
+        (let ([flo (f lo)] [fhi (f hi)])
+          (real-range (min flo fhi) (max flo fhi)))]
+       [_ #f]))])
 
 (define (exp-distx dist)
   (real-map-distx dist exp log:extended exp))
@@ -236,7 +257,13 @@
      (dist-cdf d (+ (floor x) 1.0) log? 1-p?))
    (define (-invcdf self p log? 1-p?)
      (match-define (discretize/floor-distx d) self)
-     (exact (floor (dist-inv-cdf d p log? 1-p?))))])
+     (exact (floor (dist-inv-cdf d p log? 1-p?))))
+   (define (-support self)
+     (match-define (discretize/floor-distx d) self)
+     (match (dist-support d)
+       [(real-range lo hi)
+        (integer-range (xexact (floor lo)) (xexact (floor hi)))]
+       [_ #f]))])
 
 (define-dist-struct discretize/round-distx
   ([dist continuous-dist?])
@@ -260,4 +287,10 @@
      (dist-cdf d (+ ix 0.5) log? 1-p?))
    (define (-invcdf self p log? 1-p?)
      (match-define (discretize/round-distx d) self)
-     (exact (round (dist-inv-cdf d p log? 1-p?))))])
+     (exact (round (dist-inv-cdf d p log? 1-p?))))
+   (define (-support self)
+     (match-define (discretize/floor-distx d) self)
+     (match (dist-support d)
+       [(real-range lo hi)
+        (integer-range (xexact (round lo)) (xexact (round hi)))]
+       [_ #f]))])
