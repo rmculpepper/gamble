@@ -177,6 +177,41 @@
   self)
 
 ;; ----------------------------------------
+;; exp/log
+
+;; Note: (exp-distx (normal-dist 0 1)) is a "lognormal" distribution, etc.
+;; This library names transformations according to their effect on generation.
+
+(define-dist-struct exp-distx
+  ([d continuous-dist?])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (exp-distx d) self)
+     (exp (dist-sample d)))
+   (define (-pdf self y log?)
+     (match-define (exp-distx d) self)
+     (cond [(and (rational? y) (positive? y))
+            (define x (log (fl y)))
+            (cond [log? (- (dist-pdf d x #t) x)]
+                  [else (/ (dist-pdf d x #f) (fl y))])]
+           [else (impossible log?)]))]
+  #:methods gen:continuous-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self y log? 1-p?)
+     (match-define (exp-distx d) self)
+     (let ([x (if (and (real? y) (positive? y)) (log (fl y)) -inf.0)])
+       (dist-cdf d x log? 1-p?)))
+   (define (-invcdf self r log? 1-p?)
+     (match-define (exp-distx d) self)
+     (exp (dist-inv-cdf d r log? 1-p?)))
+   (define (-support self)
+     (match-define (exp-distx d) self)
+     (match (dist-support d)
+       [(real-range lo hi)
+        (real-range (exp lo) (exp hi))]
+       [_ #f]))])
+
+;; ----------------------------------------
 ;; continuous transformation
 
 (define-dist-struct real-map-distx
@@ -189,7 +224,7 @@
      (f (dist-sample d)))
    (define (-pdf self y log?)
      (match-define (real-map-distx d f invf df) self)
-     (define x (invf y))
+     (define x (and (rational? x) (invf y)))
      (cond [(rational? x)
             (define m (abs (fl (df x))))
             (cond [log? (- (dist-pdf d x #t) (log m))]
@@ -205,8 +240,6 @@
      (match-define (real-map-distx d f invf df) self)
      ;; If f is not monotonic increasing, need to flip 1-p?.
      (f (dist-inv-cdf d r log? 1-p?)))
-   #;
-   ;; FIXME: won't work with checked-log on [0,x] dist
    (define (-support self)
      (match-define (real-map-distx d f invf df) self)
      (match (dist-support d)
@@ -215,20 +248,8 @@
           (real-range (min flo fhi) (max flo fhi)))]
        [_ #f]))])
 
-(define (exp-distx dist)
-  (real-map-distx dist exp log:extended exp))
-
-(define (log-distx dist)
-  (define (deriv-log x) (/ (fl x)))
-  (real-map-distx dist log:checked exp deriv-log))
-
 (define (log:extended x)
   (if (real? x) (if (< x 0) -inf.0 (log (fl x))) +nan.0))
-
-(define (log:checked x)
-  (unless (and (real? x) (> x 0))
-    (raise-argument-error 'log:checked "(>/c 0)" x))
-  (log (fl x)))
 
 ;; ============================================================
 ;; continuous-dist to integer-dist
