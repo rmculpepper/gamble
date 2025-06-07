@@ -18,7 +18,8 @@
   [dist-join (-> finite-dist? finite-dist?)]))
 
 ;; dirac : X -> FDist[X]
-(define (dist-unit v) (dirac v))
+(define (dist-unit v)
+  (dirac-dist v))
 
 ;; dist-fmap : FDist[X] (X -> Y) -> FDist[Y]
 (define (dist-fmap d f)

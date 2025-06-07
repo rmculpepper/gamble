@@ -19,7 +19,7 @@
 ;; mixture
 
 (define-dist-struct mixture-distx
-  ([mix (discrete-dist-of continuous-dist?)])
+  ([mix (discrete-distof continuous-dist?)])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (mixture-distx mix) self)

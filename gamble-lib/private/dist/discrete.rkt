@@ -150,7 +150,7 @@
 ;; ----------------------------------------
 ;; More constructors
 
-(define (dirac v [w 1])
+(define (dirac-dist v [w 1])
   (discrete-dist (hash v w) w))
 
 (define make-discrete-dist
@@ -364,14 +364,14 @@
 ;; flat contract
 
 ;; FIXME
-(struct discrete-dist-of (pred)
+(struct discrete-distof (pred)
   #:property prop:custom-write
   (make-constructor-style-printer
-   (lambda (self) 'discrete-dist-of)
-   (lambda (self) (list (discrete-dist-of-pred self))))
+   (lambda (self) 'discrete-distof)
+   (lambda (self) (list (discrete-distof-pred self))))
   #:property prop:procedure
   (lambda (self d)
-    (match-define (discrete-dist-of pred) self)
+    (match-define (discrete-distof pred) self)
     (match d
       [(discrete-dist h _)
        (for/and ([v (in-hash-keys h)]) (pred v))]
@@ -402,7 +402,7 @@
                   (discrete-dist->hash ed))
     (check-equal? (for/discrete-dist ([(v w) (in-discrete-dist ed)]) (values v w)) ed)
     (void))
-
+  
   (let ([md (hash->discrete-dist (hash 'a 0.5 'b 1/3 'c 1/6))])
     (check-equal? (dist-pdf md 'a #f) 0.5)
     (check-equal? (dist-pdf md 'b #f) #i1/3)
