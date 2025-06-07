@@ -1,16 +1,15 @@
-;; Copyright 2014-2020 Ryan Culpepper
+;; Copyright 2014-2025 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
 (require racket/match
          racket/class
-         "../dist/base.rkt"
-         "../dist/discrete.rkt"
-         "../interfaces.rkt"
-         (submod "../dist/util.rkt" density)
-         (submod "../dist/util.rkt" math)
-         #;"pairingheap.rkt")
+         "dist/base.rkt"
+         "dist/discrete.rkt"
+         "interfaces.rkt"
+         (submod "dist/util.rkt" density)
+         (submod "dist/util.rkt" math))
 (provide enumerate)
 
 (define (enumerate thunk)
