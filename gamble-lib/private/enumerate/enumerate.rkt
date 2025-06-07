@@ -3,109 +3,155 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base syntax/parse)
-         racket/match
+(require racket/match
+         racket/class
          "../dist/base.rkt"
          "../dist/discrete.rkt"
-         "../dist/density.rkt"
-         "../util/debug.rkt"
-         "../util/real.rkt"
-        "lazy-tree.rkt"
-         "pairingheap.rkt")
-(provide enumerate
-         enumerate*)
-
-(define-syntax (enumerate stx)
-  (syntax-parse stx
-    [(enumerate def:expr ... result:expr)
-     #'(enumerate* (lambda () def ... result))]))
-
-;; == Overview ==
-;;
-;; Enumeration using lazy tree of probability-labeled possibilities,
-;; based on delimited continuations (only for discrete ERPs).
-;;
-;; For enumeration to work:
-;;
-;;  - All paths must either terminate or evaluate infinitely many ERPS.
-;;    (and every ERP must generate at least two values with nonzero prob.)
-;;
-;;  - The predicate must accept a nonempty set of paths.
-;;
-;; Without knowing structure of paths and conditioning predicate, can't
-;; make smart distinctions between incomplete paths.
-;;
-;; Would be nice if we could tell whether a path was viable or not wrt
-;; condition. Seems like it would require drastic changes to model of
-;; computation (eg, like symbolic execution) to support non-trivial
-;; conditions. Would that be a profitable place to spend effort?
+         "../interfaces.rkt"
+         (submod "../dist/util.rkt" density)
+         (submod "../dist/util.rkt" math)
+         #;"pairingheap.rkt")
+(provide enumerate)
 
 ;; ============================================================
 
-;; enumerate* : (-> A) -> (DiscreteDist A)
-(define (enumerate* thunk)
-  (vprintf "Enumerating\n")
-  (define tree (reify-tree thunk))
-  (define tbl (explore tree))
-  (table->discrete-dist tbl))
+(define (enumerate thunk)
+  (define ctx (new enumerate-stochastic-ctx%))
+  (hash->discrete-dist
+   (let loop ([h (hash)] [dn one-density] [thunk (lambda () (send ctx run thunk))])
+     (match (thunk)
+       [(done v)
+        (hash-set h v (density+ dn (hash-ref h v #f)))]
+       [(? list? wdn+continue-list)
+        (for/fold ([h h]) ([wdn+continue (in-list wdn+continue-list)])
+          (match-define (cons wdn continue) wdn+continue)
+          (loop h (density* wdn dn) continue))]))))
 
-;; ----------------------------------------
+;; ------------------------------------------------------------
+;; Nesting enumerations
+;;
+;; How to make enumeration nest?
+;;
+;; (enum ;; outer
+;;  ...
+;;  (enum ;; inner
+;;   ...))
+;;
+;; - Straightforward except for mem:
+;;
+;;   - An outer-created memoized function that is invoked in the inner
+;;     enum should fork its possibilities to the *outer* prompt.
+;;   - Except... what if the outer-mem-fun calls its argument, which is an
+;;     inner-mem-fun? Then that "should" fork its possibilities to inner
+;;     prompt.
+;;   - Bleh, mem probably only makes sense on first-order functions.
+;;   - Alternatively, in that case we say the inner-mem-fun has escaped
+;;     its context, error. (In general, mem-fun that escapes its context
+;;     is problematical, except for direct-style mem.)
+;;   - What if outer-mem-fun is (lambda (n) (lambda () (flip (/ n))))?
+;;     Then if applied, gets thunk, then applied in inner, inner explores
+;;     branches. That seems reasonable.
+;;
+;;   - Anyway... when an outer-mem-fun is invoked, it needs to restore
+;;     the outer ERP (and mem) impls.
+;;     - That means nested enum can't use parameterize ... :/
+;;       ??? Doesn't work without parameterize ... investigate?
+;;     - A memoized function must close over the activation support (ctag,
+;;       markparam) for the mem that created it.
+;;   - Each enumeration activation needs a separate prompt tag and
+;;     memo-table key.
+;;   - explore must be rewritten in pure code: find functional priority
+;;     queue (PFDS from planet?), use immutable hash, etc
 
-;; explore : (EnumTree A) -> Hash[A => Real+]
-(define (explore tree)
-  (define initial-table (table (hash) +inf.0))
-  ;; heap lib provides "min-heap", but want max prob, so use >= comparison
-  (define initial-heap (heap entry->=?))
-  (explore/tree initial-heap initial-table tree one-density))
+;; ------------------------------------------------------------
+;; Notes on Parameters and Delimited Continuations
+;;
+;; In the general case, Racket's parameters do not work interact
+;; "correctly" with delimited continuations, in the sense that a
+;; parameter P's value is not determined by the nearest (parameterize
+;; ((P _)) []) in the context. (Parameters are grouped together into a
+;; parameterization, and the nearest parameterization is fetched. This
+;; is a known Racket WONTFIX.)
+;;
+;; However, the way 'enumerate' uses parameters is safe, since
+;; captured continuations are invoked in dynamic contexts that are
+;; mostly "compatible" with the ones they were captured in. But note:
+;;
+;;  - The invocation context needs a different memo-table, so the
+;;    memo-table must be stored using a mark-parameter rather than an
+;;    ordinary parameter.
+;;  - The 'explore' function cannot use parameterize to affect the execution
+;;    of the code that produces the lazy tree. The parameterization is
+;;    essentially captured by the call to 'reify-tree'.
 
-;; A Table[X] is (table Hash[X => Density] Nat), where ddim is the ddim
-;; of all entries in the hash.
-(struct table (h ddim) #:transparent)
+;; ============================================================
 
-;; table->discrete-dist : Table[X] -> DiscreteDist[X]
-(define (table->discrete-dist tbl)
-  (match-define (table h _) tbl)
-  (for/discrete-dist ([(v dn) (in-hash h)])
-    (values v (density-n dn))))
+;; A (EnumTree A) is one of
+;; - (done A)
+;; - (listof (cons Density (-> (EnumTree A))))
+(struct done (answer))
 
-;; table-add : Table[X] X Density -> Table[X]
-(define (table-add tbl v dn)
-  (let ([dn (density-proper dn)])
-    (match-define (table th tddim) tbl)
-    (define ddim (density-ddim dn))
-    (cond [(< ddim tddim)
-           (table (hash v dn) ddim)]
-          [(= ddim tddim)
-           (cond [(hash-ref th v #f)
-                  => (lambda (dn0)
-                       (table (hash-set th v (density+ dn0 dn)) tddim))]
-                 [else (table (hash-set th v dn) tddim)])]
-          [else tbl])))
+;; ============================================================
 
-;; A (HeapEntry A) is (cons Density (-> (EnumTree A))).
-(define (entry->=? x y) (density<=? (car y) (car x)))
+(define enumerate-stochastic-ctx%
+  (class plain-stochastic-ctx%
+    (super-new)
 
-;; explore/tree : Heap Table (EnumTree A) Density -> Table
-(define (explore/tree hp tbl tree tree-dn)
-  (match tree
-    [(only a)
-     (explore/heap hp (table-add tbl a tree-dn))]
-    [(? split? et)
-     (define hp*
-       (for/fold ([hp hp]) ([sub (in-list (split->subtrees tree))])
-         (match-define (cons dn k) sub)
-         (heap-insert hp (cons (density* tree-dn dn) k))))
-     (explore/heap hp* tbl)]
-    [(weight dn k)
-     (explore/tree hp tbl (k) (density* tree-dn dn))]
-    [(failed reason)
-     (explore/heap hp tbl)]))
+    (define memo-key (gensym))
+    (define ctag (make-continuation-prompt-tag))
 
-;; explore/heap : Heap Table -> Table
-(define (explore/heap hp tbl)
-  (cond [(heap-empty? hp) tbl]
-        [else
-         (let ([sub (heap-find-min/max hp)]
-               [hp (heap-delete-min/max hp)])
-           (match-define (cons dn k) sub)
-           (explore/tree hp tbl (k) dn))]))
+    (define/override (sample dist _id)
+      (call/restore
+       (lambda (k restore)
+         (for/list ([(v w) (in-dist dist)])
+           (cons (density w 0 #f) (lambda () (restore (lambda () (k v)))))))))
+
+    (define/override (dscore dn)
+      (call/restore
+       (lambda (k restore)
+         (list (cons dn (lambda () (restore (lambda () (k (void))))))))))
+
+    (define/override (fail reason)
+      (call/restore
+       (lambda (k restore)
+         null)))
+
+    (define/override (run thunk)
+      (call (hash) (lambda () (done (thunk)))))
+
+    (define/private (call memo-table thunk)
+      (parameterize ((current-stochastic-ctx this))
+        (with-continuation-mark memo-key (box memo-table)
+          (call-with-continuation-prompt thunk ctag))))
+
+    (define/private (call/restore proc)
+      (define memo-table (unbox (continuation-mark-set-first #f memo-key)))
+      (call-with-composable-continuation
+       (lambda (k)
+         (abort-current-continuation ctag
+          (lambda () (proc k (lambda (continue) (call memo-table continue))))))
+       ctag))
+
+    (define/override (mem f)
+      (define f-key (gensym))
+      (define (memoized-function . args)
+        (unless (continuation-prompt-available? ctag)
+          (error 'mem
+                 (string-append "memoized function escaped its creating context"
+                                "\n  function: ~e\n  arguments: ~e\n")
+                 f args))
+        (define b (continuation-mark-set-first #f memo-key))
+        (define key (cons f-key args))
+        (cond [(hash-has-key? (unbox b) key)
+               (hash-ref (unbox b) key)]
+              [else
+               ;; Call with creating context; may be outer enumeration!
+               (define v
+                 (parameterize ((current-stochastic-ctx this))
+                   (apply f args)))
+               ;; NOTE: outer b might be stale, if f called ERP!
+               (define b (continuation-mark-set-first #f memo-key))
+               (set-box! b (hash-set (unbox b) key v))
+               v]))
+      memoized-function)
+    ))
