@@ -1,28 +1,26 @@
-;; Copyright 2014-2020 Ryan Culpepper
+;; Copyright 2014-2025 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
 (require racket/class
          racket/match
-         (only-in "dist/base.rkt" dist-sample dist-pdf)
-         (only-in "util/real.rkt" logspace-zero?))
+         (only-in "dist/base.rkt" dist-sample dist-density)
+         (submod "dist/util.rkt" density))
 (provide sample
-         mem
+         observe
+         dscore
          lscore
-         nscore
          fail
-         trycatch
+         mem
          weighted-sampler<%>
          sampler<%>
          weighted-sampler?
          sampler?
          sampler-base%
          stochastic-ctx<%>
-         stochastic-ctx/run<%>
          current-stochastic-ctx
-         plain-stochastic-ctx%
-         plain-stochastic-ctx/run%)
+         plain-stochastic-ctx%)
 
 ;; Defines interfaces, base classes, and parameters.
 
@@ -31,16 +29,12 @@
 
 (define weighted-sampler<%>
   (interface ()
-    sample/weight  ;; -> (cons Any PositiveReal)
-    info           ;; -> Void
+    sample/weight  ;; -> (cons A PosReal) or #f
     ))
 
-;; A sampler is an applicable object taking zero arguments. When
-;; applied, it produces a single sample.
 (define sampler<%>
-  (interface* (weighted-sampler<%>)
-              ([prop:procedure (lambda (this) (send this sample))])
-    sample  ;; -> Any
+  (interface (weighted-sampler<%>)
+    sample  ;; -> A
     ))
 
 (define (weighted-sampler? x) (is-a? x weighted-sampler<%>))
@@ -50,46 +44,39 @@
 (define sampler-base%
   (class* object% (sampler<%>)
     (super-new)
-    (abstract sample)
-    (abstract info)
-    (define/public (sample/weight) (cons (sample) 1))))
+    (define/public (sample/weight) (cons (sample) 1))
+    (abstract sample)))
 
 ;; ============================================================
 ;; Stochastic contexts
 
 (define stochastic-ctx<%>
   (interface ()
-    sample      ;; (Dist A) Address -> A
-    dnscore     ;; Density -> Void
-    lscore      ;; LogReal -> Void
-    nscore      ;; NNReal -> Void
+    sample      ;; (Dist A) Label -> A
     observe     ;; Dist[X] X -> Void
-    fail        ;; Any -> (escapes)
-    mem         ;; Function -> Function
-    trycatch    ;; (-> A) (-> A) -> A
-    ))
+    dscore      ;; Density -> Void
+    lscore      ;; LogReal -> Void
+    mem         ;; (X ... -> Y) -> (X ... -> Y)
 
-(define stochastic-ctx/run<%>
-  (interface (stochastic-ctx<%>)
-    run     ;; (-> A) -> (U (cons 'okay A) (cons 'fail Any))
+    run         ;; (-> A ...) -> (U (list A ...) #f)
+    fail        ;; -> escapes
     ))
 
 (define plain-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
+    (field [escape-prompt (make-continuation-prompt-tag)])
     (super-new)
 
-    (define/public (sample dist _id)
+    (define/public (sample dist _label)
       (dist-sample dist))
 
     ;; No ambient weight to affect; just check likelihood is non-zero.
-    (define/public (dscore dn who)
-      (when (density-zero? dn) (fail who)))
-    (define/public (lscore ll)
-      (dscore (density #f ll 0) 'lscore))
-    (define/public (nscore l)
-      (dscore (density l #f 0) 'nscore))
+    (define/public (dscore dn)
+      (when (density-zero? dn) (fail 'dscore)))
+    (define/public (lscore ll [ddim 1])
+      (dscore (density ll ddim #t)))
     (define/public (observe d v)
-      (dscore (dist-density d v) 'observe))
+      (dscore (dist-density d v)))
 
     (define/public (mem f)
       (let ([memo-table (make-hash)])
@@ -97,30 +84,16 @@
           (hash-ref! memo-table args (lambda () (apply f args))))
         memoized-function))
 
-    (define/public (fail reason)
-      (if reason
-          (error 'fail "failed\n  reason: ~e" reason)
-          (error 'fail "failed")))
-
-    (define/public (trycatch p1 p2)
-      (error 'trycatch "not supported"))
-    ))
-
-(define plain-stochastic-ctx/run%
-  (class* plain-stochastic-ctx% (stochastic-ctx/run<%>)
-    (init-field [escape-prompt (make-continuation-prompt-tag)])
-    (super-new)
-
     (define/public (run thunk)
       (parameterize ((current-stochastic-ctx this))
         (call-with-continuation-prompt
-         (lambda () (cons 'okay (thunk)))
+         (lambda () (call-with-values thunk list))
          escape-prompt)))
 
-    (define/override (fail reason)
+    (define/public (fail reason)
       (abort-current-continuation
        escape-prompt
-       (lambda () (cons 'fail reason))))
+       (lambda () #f)))
     ))
 
 (define current-stochastic-ctx
@@ -129,12 +102,12 @@
 ;; ============================================================
 ;; Primitive operations
 
-(define (mem f) (send (current-stochastic-ctx) mem f))
-(define (dscore dn) (send (current-stochastic-ctx) dscore dn 'dscore))
+(define (sample dist [label #f])
+  (send (current-stochastic-ctx) sample dist label))
+
+(define (dscore dn) (send (current-stochastic-ctx) dscore dn))
 (define (lscore ll) (send (current-stochastic-ctx) lscore ll))
-(define (nscore l) (send (current-stochastic-ctx) nscore l))
 (define (observe dist val) (send (current-stochastic-ctx) observe dist val))
+
+(define (mem f) (send (current-stochastic-ctx) mem f))
 (define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
-(define (sample dist [id #f]) (send (current-stochastic-ctx) sample dist id))
-(define (trycatch p1 p2)
-  (send (current-stochastic-ctx) trycatch p1 p2))
