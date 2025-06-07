@@ -156,7 +156,13 @@
                        (error 'density "expected nonnegative rational\n  given: ~e" d))
                      (values d ddim #f)])))
 
-  (define (density->number d [log? #f])
+  (define one-density (density 1 0 #f))
+
+  (define (density-zero? d)
+    (match-define (density r _ log?) d)
+    (if log? (zero? r) (= r -inf.0)))
+
+  (define (density->real d [log? #f])
     (match-define (density d1 _ log1?) d)
     (cond [(and log? log1?) d1]
           [log? (log d1)]
@@ -186,18 +192,20 @@
                       [log2? (logspace+ (ilog d1) d2)]
                       [else (+ d1 d2)])
                 ddim1
-                (or log1? log2?))]))
+                (or log1? log2?))]
+      [[(? density? d1) #f] d1]))
 
-  #|
-  (define (density-cmp d1 d2)
-    (match-define (density n1 ddim1) d1)
-    (match-define (density n2 ddim2) d2)
+  (define (density<=? d1 d2)
+    (match-define (density dr1 ddim1 log1?) d1)
+    (match-define (density dr2 ddim2 log2?) d2)
     (cond [(= ddim1 ddim2)
-           (cond [(> n1 n2) '>]
-                 [(< n1 n2) '<]
-                 [else '=])]
-          [else #f]))
+           (cond [(and log1? log2?) (<= dr1 dr2)]
+                 [log1? (<= dr1 (log dr2))]
+                 [log2? (<= (log dr1) dr2)]
+                 [else (<= dr1 dr2)])]
+          [else (> ddim1 ddim2)]))
 
+  #;
   ;; density-logratio : Density Density -> Real
   (define (density-logratio d1 d2)
     (match-define (density _ ll1 ddim1) d1)
@@ -206,7 +214,7 @@
           [(> ddim1 ddim2) -inf.0]
           [else (- ll1 ll2)]))
 
-  |#)
+  (begin))
 
 ;; ------------------------------------------------------------
 
