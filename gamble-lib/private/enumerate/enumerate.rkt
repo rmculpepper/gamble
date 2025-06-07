@@ -13,78 +13,23 @@
          #;"pairingheap.rkt")
 (provide enumerate)
 
-;; ============================================================
-
 (define (enumerate thunk)
   (define ctx (new enumerate-stochastic-ctx%))
-  (hash->discrete-dist
-   (let loop ([h (hash)] [dn one-density] [thunk (lambda () (send ctx run thunk))])
-     (match (thunk)
-       [(done v)
-        (hash-set h v (density+ dn (hash-ref h v #f)))]
-       [(? list? wdn+continue-list)
-        (for/fold ([h h]) ([wdn+continue (in-list wdn+continue-list)])
-          (match-define (cons wdn continue) wdn+continue)
-          (loop h (density* wdn dn) continue))]))))
-
-;; ------------------------------------------------------------
-;; Nesting enumerations
-;;
-;; How to make enumeration nest?
-;;
-;; (enum ;; outer
-;;  ...
-;;  (enum ;; inner
-;;   ...))
-;;
-;; - Straightforward except for mem:
-;;
-;;   - An outer-created memoized function that is invoked in the inner
-;;     enum should fork its possibilities to the *outer* prompt.
-;;   - Except... what if the outer-mem-fun calls its argument, which is an
-;;     inner-mem-fun? Then that "should" fork its possibilities to inner
-;;     prompt.
-;;   - Bleh, mem probably only makes sense on first-order functions.
-;;   - Alternatively, in that case we say the inner-mem-fun has escaped
-;;     its context, error. (In general, mem-fun that escapes its context
-;;     is problematical, except for direct-style mem.)
-;;   - What if outer-mem-fun is (lambda (n) (lambda () (flip (/ n))))?
-;;     Then if applied, gets thunk, then applied in inner, inner explores
-;;     branches. That seems reasonable.
-;;
-;;   - Anyway... when an outer-mem-fun is invoked, it needs to restore
-;;     the outer ERP (and mem) impls.
-;;     - That means nested enum can't use parameterize ... :/
-;;       ??? Doesn't work without parameterize ... investigate?
-;;     - A memoized function must close over the activation support (ctag,
-;;       markparam) for the mem that created it.
-;;   - Each enumeration activation needs a separate prompt tag and
-;;     memo-table key.
-;;   - explore must be rewritten in pure code: find functional priority
-;;     queue (PFDS from planet?), use immutable hash, etc
-
-;; ------------------------------------------------------------
-;; Notes on Parameters and Delimited Continuations
-;;
-;; In the general case, Racket's parameters do not work interact
-;; "correctly" with delimited continuations, in the sense that a
-;; parameter P's value is not determined by the nearest (parameterize
-;; ((P _)) []) in the context. (Parameters are grouped together into a
-;; parameterization, and the nearest parameterization is fetched. This
-;; is a known Racket WONTFIX.)
-;;
-;; However, the way 'enumerate' uses parameters is safe, since
-;; captured continuations are invoked in dynamic contexts that are
-;; mostly "compatible" with the ones they were captured in. But note:
-;;
-;;  - The invocation context needs a different memo-table, so the
-;;    memo-table must be stored using a mark-parameter rather than an
-;;    ordinary parameter.
-;;  - The 'explore' function cannot use parameterize to affect the execution
-;;    of the code that produces the lazy tree. The parameterization is
-;;    essentially captured by the call to 'reify-tree'.
-
-;; ============================================================
+  (define (init-thunk) (send ctx run thunk))
+  (define-values (dh ddim)
+    (let loop ([h (hash)] [ddim #f] [dn one-density] [thunk init-thunk])
+      (match (thunk)
+        [(done v)
+         (when (and ddim (not (= ddim (density-ddim dn))))
+           (error 'enumerate "invalid program; observation density dimension varies"))
+         (values (hash-set h v (density+ dn (hash-ref h v #f)))
+                 (or ddim (density-ddim dn)))]
+        [(? list? wdn+continue-list)
+         (for/fold ([h h] [ddim ddim]) ([wdn+continue (in-list wdn+continue-list)])
+           (match-define (cons wdn continue) wdn+continue)
+           (loop h ddim (density* wdn dn) continue))])))
+  (hash->discrete-dist (for/fold ([h (hash)]) ([(v dn) (in-hash dh)])
+                         (hash-set h v (density->real dn)))))
 
 ;; A (EnumTree A) is one of
 ;; - (done A)
