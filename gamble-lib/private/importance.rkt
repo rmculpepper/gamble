@@ -3,49 +3,12 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base syntax/parse)
-         racket/match
+(require racket/match
          racket/class
          "dist/base.rkt"
-         (submod "dist/util.rkt" density)
-         "util/debug.rkt"
-         "interfaces.rkt")
+         "interfaces.rkt"
+         (submod "dist/util.rkt" density))
 (provide (all-defined-out))
-
-;; ============================================================
-;; Rejection sampling
-
-(define (rejection-sampler thunk)
-  (new rejection-sampler% (thunk thunk)))
-
-(define rejection-sampler%
-  (class sampler-base%
-    (init-field thunk)
-    (field [successes 0]
-           [rejections 0])
-    (super-new)
-
-    (define/public (info)
-      (printf "== Rejection sampler\n")
-      (printf "Samples produced: ~s\n" successes)
-      (printf "Rejections: ~s\n" rejections))
-
-    (define/override (sample)
-      (define ctx (new rejection-stochastic-ctx%))
-      (define v (send ctx run thunk))
-      (match (send ctx run thunk)
-        [(list v) v]
-        [#f (sample)]))
-    ))
-
-(define rejection-stochastic-ctx%
-  (class plain-stochastic-ctx%
-    (super-new)
-
-    (define/override (dscore dn)
-      (error 'dscore "not supported by rejection sampler"))
-    ))
-
 
 ;; ============================================================
 ;; Importance sampling
@@ -98,7 +61,7 @@
     ))
 
 (define importance-stochastic-ctx%
-  (class rejection-stochastic-ctx%
+  (class plain-stochastic-ctx%
     (field [obs-dn one-density])
     (inherit fail)
     (super-new)
