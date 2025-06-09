@@ -14,6 +14,64 @@
 
 (define-logger mh)
 
+;; MCMC: sample X ~ f where f(x) is represented implicitly by program
+;; - sample space is represented via `db` mapping "labels" to dist and value
+;; - `trace` wraps `db` with summary information
+;; - `transition` computes the next step in the Markov chain
+;;   - eg, single-site MH, enumerative Gibbs, etc
+;; - `proposal` determines how to change single db entry
+
+
+;; ============================================================
+;; Trace, DB, Entry
+
+;; A Trace is (trace Any DB Real Real Nat)
+(struct trace (value db ll-free ll-obs obs-ddim))
+
+;; DB = (Hashof Address Entry)
+
+;; Entry = (entry Dist[X] X Density)
+(struct entry (dist value density) #:prefab)
+
+;; hash-random-key : Hash[K => V] -> K
+(define (hash-random-key h)
+  (when (zero? (hash-count h)) (error 'hash-random-key "empty hash"))
+  (hash-nth-key h (random (hash-count h))))
+
+;; hash-nth-key : Hash[K => V] Nat -> K
+(define (hash-nth-key h n)
+  (define iter
+    (for/fold ([iter (hash-iterate-first h)]) ([i (in-range n)])
+      (hash-iterate-next h iter)))
+  (hash-iterate-key h iter))
+
+
+;; ============================================================
+;; Transition interface
+
+(define (mcmc-transition? v)
+  (is-a? v mcmc-transition<%>))
+
+(define mcmc-transition<%>
+  (interface ()
+    ;; type TxInfo
+    run  ;; (-> A) Trace -> (values (U Trace #f) TxInfo)
+    ))
+
+
+;; ============================================================
+;; Proposal interface
+
+#;
+(define proposal<%>
+  (interface ()
+    propose1 ;; Key Zones Dist Value -> (U (cons Value Real) #f)
+    propose2 ;; Key Zones Dist Dist Value -> (U (list* Value Real Real) #f)
+    accinfo  ;; -> AccInfo
+    feedback ;; Key Boolean -> Void
+    ))
+
+
 ;; ============================================================
 
 #;
@@ -62,30 +120,6 @@
   (match-define (entry dist v1 dn) ent)
   (define v2 (dist-sample dist))
   (values (entry dist v2 (dist-density dist v2)) 0))
-
-
-;; ============================================================
-;; Traces
-
-;; A Trace is (trace Any DB Real Real Nat)
-(struct trace (value db ll-free ll-obs obs-ddim))
-
-;; DB = (Hashof Address Entry)
-
-;; Entry = (entry Dist[X] X Density)
-(struct entry (dist value density) #:prefab)
-
-;; hash-random-key : Hash[K => V] -> K
-(define (hash-random-key h)
-  (when (zero? (hash-count h)) (error 'hash-random-key "empty hash"))
-  (hash-nth-key h (random (hash-count h))))
-
-;; hash-nth-key : Hash[K => V] Nat -> K
-(define (hash-nth-key h n)
-  (define iter
-    (for/fold ([iter (hash-iterate-first h)]) ([i (in-range n)])
-      (hash-iterate-next h iter)))
-  (hash-iterate-key h iter))
 
 
 ;; ============================================================
@@ -187,17 +221,16 @@
         (set! ll-diff (+ ll-diff (- ll prev-ll)))))
     ))
 
-;; ============================================================
+;; ----------------------------------------
+;; Implicit address support
 
-(define ADDR-mark (gensym 'ADDR))
+(define ADDR-mark (string->uninterned-symbol "ADDR"))
 
 (define (get-addr who)
   (or (continuation-mark-set-first #f ADDR-mark)
-      (error who "no address available")))
+      (error who "no implicit address available")))
 
-;; Delimit call-site tracking.
-;; Can't test using normal (f arg ...) syntax, because testing call-sites 
-;; would be part of context! Use (apply/delimit f arg ...) instead.
+;; Delimit implicit address tracking.
 (define (apply/delimit f [args null])
   (with-continuation-mark ADDR-mark #f
     (apply f args)))
@@ -206,26 +239,18 @@
   (class tracing-stochastic-ctx%
     (super-new)
 
-    ;; run : (-> A) -> (U (cons 'okay A) (cons 'fail any))
-    ;; Run a prob prog using this stochastic ctx, populate current-db, etc.
     (define/override (run thunk)
       (super run (lambda () (apply/delimit thunk))))
 
     (define/override (sample dist addr)
-      (let ([addr (or addr (get-addr))])
-        (super sample dist addr)))
+      (super sample dist (or addr (get-addr 'sample))))
 
     (define/override (mem f)
-      (define addr (get-addr))
+      (define addr (get-addr 'mem))
       (super mem
              (lambda args
                (with-continuation-mark ADDR-mark (list (list 'mem args addr))
-                 (apply/delimit f args)))))
-
-    (define/private (mem-context? context)
-      (and (pair? context)
-           (let ([frame (last context)])
-             (and (list? frame) (memq 'mem frame)))))
+                 (apply f args)))))
     ))
 
 ;; ============================================================
@@ -253,27 +278,4 @@
              (set! last-txinfo new-txinfo)
              (set! rejects (add1 rejects))
              last-trace]))
-    ))
-
-;; ============================================================
-
-(define mcmc-transition<%>
-  (interface ()
-    run  ;; (-> A) Trace -> (values (U Trace #f) TxInfo)
-    ))
-
-;; A TxInfo
-;; - (vector 'delta DB)          -- delta db
-;; - (vector 'slice Real Real)   -- slice w/ interval bounds
-;; - #f
-
-;; ============================================================
-
-#;
-(define proposal<%>
-  (interface ()
-    propose1 ;; Key Zones Dist Value -> (U (cons Value Real) #f)
-    propose2 ;; Key Zones Dist Dist Value -> (U (list* Value Real Real) #f)
-    accinfo  ;; -> AccInfo
-    feedback ;; Key Boolean -> Void
     ))
