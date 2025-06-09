@@ -227,3 +227,53 @@
            (let ([frame (last context)])
              (and (list? frame) (memq 'mem frame)))))
     ))
+
+;; ============================================================
+
+(define mcmc%
+  (class object%
+    (init-field thunk)        ;; -> A
+    (field [last-trace #f]    ;; Trace or #f
+           [last-txinfo #f]   ;; ???
+           [accepts 0]        ;; Nat
+           [rejects 0])       ;; Nat
+    (super-new)
+
+    ;; FIXME: add option to keep history, maybe for convergence diagnostics?
+
+    (define/public (step! transition)
+      (define-values (new-trace new-txinfo)
+        (send transition run thunk last-trace))
+      (cond [new-trace
+             (set! last-trace new-trace)
+             (set! last-txinfo new-txinfo)
+             (set! accepts (add1 accepts))
+             new-trace]
+            [else
+             (set! last-txinfo new-txinfo)
+             (set! rejects (add1 rejects))
+             last-trace]))
+    ))
+
+;; ============================================================
+
+(define mcmc-transition<%>
+  (interface ()
+    run  ;; (-> A) Trace -> (values (U Trace #f) TxInfo)
+    ))
+
+;; A TxInfo
+;; - (vector 'delta DB)          -- delta db
+;; - (vector 'slice Real Real)   -- slice w/ interval bounds
+;; - #f
+
+;; ============================================================
+
+#;
+(define proposal<%>
+  (interface ()
+    propose1 ;; Key Zones Dist Value -> (U (cons Value Real) #f)
+    propose2 ;; Key Zones Dist Dist Value -> (U (list* Value Real Real) #f)
+    accinfo  ;; -> AccInfo
+    feedback ;; Key Boolean -> Void
+    ))
