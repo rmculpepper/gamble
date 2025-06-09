@@ -7,7 +7,7 @@
          racket/generic
          racket/sequence
          "measurable.rkt"
-         (submod "util.rkt" density))
+         "../util/density.rkt")
 (provide (all-defined-out))
 
 (define-generics dist

@@ -5,8 +5,8 @@
 #lang racket/base
 (require racket/class
          racket/match
-         (only-in "dist/base.rkt" dist-sample dist-density)
-         (submod "dist/util.rkt" density))
+         "util/density.rkt"
+         (only-in "dist/base.rkt" dist-sample dist-density))
 (provide sample
          observe
          dscore

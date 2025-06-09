@@ -13,10 +13,10 @@
          scramble/struct
          "base.rkt"
          (submod "util.rkt" math)
-         (submod "util.rkt" density)
          (submod "util.rkt" weights)
          (submod "util.rkt" search)
          (submod "util.rkt" define)
+         "../util/density.rkt"
          "measurable.rkt")
 (provide (all-defined-out))
 

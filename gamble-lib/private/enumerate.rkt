@@ -8,8 +8,8 @@
          "dist/base.rkt"
          "dist/discrete.rkt"
          "interfaces.rkt"
-         (submod "dist/util.rkt" density)
-         (submod "dist/util.rkt" math))
+         "util/density.rkt"
+         "util/real.rkt")
 (provide enumerate)
 
 (define (enumerate thunk)

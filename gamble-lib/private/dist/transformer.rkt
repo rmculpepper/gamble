@@ -6,8 +6,8 @@
 (require racket/match
          "base.rkt"
          (submod "util.rkt" math)
-         (submod "util.rkt" density)
          (submod "util.rkt" define)
+         "../util/density.rkt"
          "measurable.rkt"
          "discrete.rkt")
 (provide (all-defined-out))

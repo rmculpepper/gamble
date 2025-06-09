@@ -3,8 +3,27 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (submod racket/performance-hint begin-encourage-inline))
-(provide (all-defined-out))
+(require (only-in racket/base
+                  [real->double-flonum fl]
+                  [exact->inexact inexact] [inexact->exact exact])
+         (submod racket/performance-hint begin-encourage-inline))
+(provide (all-defined-out) fl exact inexact xexact)
+
+(begin-encourage-inline
+  (define (probability? v)
+    (and (real? v) (<= 0 v 1)))
+  (define (nontrivial-probability? v)
+    (and (real? v) (< 0 v 1)))
+  (define (nonnegative-real? v)
+    (and (real? v) (>= v 0)))
+  (define (positive-real? v)
+    (and (real? v) (> v 0)))
+  (define (nonnegative-rational? v)
+    (and (rational? v) (>= v 0)))
+  (define (positive-rational? v)
+    (and (rational? v) (> v 0)))
+  (define (xexact x)
+    (if (rational? x) (exact x) x)))
 
 ;; ============================================================
 ;; Logspace

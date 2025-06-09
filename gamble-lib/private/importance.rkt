@@ -7,7 +7,7 @@
          racket/class
          "dist/base.rkt"
          "interfaces.rkt"
-         (submod "dist/util.rkt" density))
+         "util/density.rkt")
 (provide (all-defined-out))
 
 ;; ============================================================
