@@ -6,7 +6,10 @@
 (require racket/class
          racket/list
          racket/match
-         "../dist.rkt")
+         "../dist.rkt"
+         "../interfaces.rkt"
+         "../util/real.rkt"
+         "../util/density.rkt")
 (provide (all-defined-out))
 
 (define-logger mh)
@@ -36,6 +39,7 @@
 ;; ============================================================
 ;; Transitions
 
+#;
 ;; kernel-transition : (T -> Dist[T]) -> Transition[T,T]
 (define ((kernel-transition q) t1)
   (define q12 (q t1))
@@ -43,6 +47,7 @@
   (define q21 (q t2))
   (values t2 (density-logratio (dist-density q21 t1) (dist-density q12 t2))))
 
+#;
 ;; single-site : Transition[Entry,EntryDelta] -> Transition[Trace,TraceDelta]
 (define ((single-site etx) tr)
   (define addr (trace-pick-a-key tr))
@@ -51,6 +56,7 @@
   ;; Warning: txlogratio is not complete, if addr value affect control flow.
   (values (hash addr dent) txlogratio))
 
+#;
 ;; resample-tx : Transition[Entry,EntryDelta]
 (define (resample-tx ent)
   (match-define (entry dist v1 dn) ent)
@@ -61,10 +67,13 @@
 ;; ============================================================
 ;; Traces
 
-;; DV = (Hashof Address Entry)
+;; A Trace is (trace Any DB Real Real Nat)
+(struct trace (value db ll-free ll-obs obs-ddim))
+
+;; DB = (Hashof Address Entry)
 
 ;; Entry = (entry Dist[X] X Density)
-(struct entry (dist value dn) #:prefab)
+(struct entry (dist value density) #:prefab)
 
 ;; hash-random-key : Hash[K => V] -> K
 (define (hash-random-key h)
@@ -76,7 +85,7 @@
   (define iter
     (for/fold ([iter (hash-iterate-first h)]) ([i (in-range n)])
       (hash-iterate-next h iter)))
-  (hash-iterate-key k iter))
+  (hash-iterate-key h iter))
 
 
 ;; ============================================================
@@ -84,6 +93,7 @@
 
 (define tracing-stochastic-ctx%
   (class plain-stochastic-ctx%
+    (inherit fail)
     (init-field prev-db       ;; DB, not mutated
                 delta-db      ;; DB, not mutated
                 [ll-R/F 0.0]) ;; Real, log(Q(backward) / Q(forward))
@@ -106,7 +116,7 @@
     ;; complete record of all random choices made by the program;
     ;; if accepted, it typically becomes a new execution's prev-db.
 
-    (define/public (sample dist addr)
+    (define/override (sample dist addr)
       (when (hash-ref current-db addr #f)
         (error 'sample "duplicate label\n  label: ~e" addr))
       (define delta-e (hash-ref delta-db addr #f))
@@ -122,7 +132,7 @@
                    (entry-dist delta-e) (entry-value delta-e))
       (unless (and (entry? delta-e) (equal? (entry-dist delta-e) dist))
         (error 'sample "internal error: delta has wrong dist"))
-      (db-add! context delta-e prev-e)
+      (db-add! addr delta-e prev-e)
       (entry-value delta-e))
 
     (define/private (sample/prev dist addr prev-e)
@@ -136,13 +146,13 @@
                     (define value (entry-value prev-e))
                     (define new-e (entry dist value new-ll))
                     (log-mh-info "RESCORE ~s: ~e, ~e" addr dist value)
-                    (db-add! context new-e prev-e)
+                    (db-add! addr new-e prev-e)
                     value]
                    [else (fail 'sample-rescore)])]
-            [else (sample/new dist context prev-e)]))
+            [else (sample/new dist addr prev-e)]))
 
     (define/private (sample/new dist addr prev-e)
-      (when on-fresh-choice (on-fresh-choice))
+      #; (when on-fresh-choice (on-fresh-choice))
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
       (if prev-e
@@ -150,28 +160,31 @@
                        (entry-dist prev-e) (entry-value prev-e)
                        dist value)
           (log-mh-info "NEW ~s: ~e, ~e" addr dist value))
-      (db-add! add (entry dist value ll) prev-e)
+      (db-add! addr (entry dist value ll) prev-e)
       value)
 
     (define/override (dscore dn)
       (set! ll-obs (+ ll-obs (density->real dn #t)))
-      (set! obs-ddim (+ obs-ddim (density-ddim dn))))
+      (set! obs-ddim (+ obs-ddim (density-ddim dn)))
+      (when (logspace-zero? ll-obs) (fail 'dscore)))
 
     ;; ----------------------------------------
 
     ;; make-trace : Any -> Trace
     ;; Should only be called after run, once current-db has stopped changing.
     (define/public (make-trace value)
-      (trace value current-db ll-free ll-obs ddim))
+      (trace value current-db ll-free ll-obs obs-ddim))
 
     ;; db-add! : Address Entry (U #f Entry) -> Void
     ;; Add entry to current-db and update ll-free, ll-obs.
     ;; When prev-e is not #f, also update ll-diff.
     (define/private (db-add! context e [prev-e #f])
       (hash-set! current-db context e)
-      (set! ll-free (+ ll-free (entry-ll e)))
+      (define ll (density->real (entry-density e) #t))
+      (set! ll-free (+ ll-free ll))
       (when prev-e
-        (set! ll-diff (+ ll-diff (- (entry-ll e) (entry-ll prev-e))))))
+        (define prev-ll (density->real (entry-density prev-e) #t))
+        (set! ll-diff (+ ll-diff (- ll prev-ll)))))
     ))
 
 ;; ============================================================
