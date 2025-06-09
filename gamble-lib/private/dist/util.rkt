@@ -68,6 +68,8 @@
 
   (begin))
 
+;; ------------------------------------------------------------
+
 (module search racket/base
   (provide (all-defined-out))
 
@@ -106,8 +108,13 @@
   (require (for-syntax racket/base
                        syntax/parse
                        racket/syntax)
-           racket/match)
-  (provide define-dist-struct)
+           racket/match
+           racket/generic)
+  (provide (all-defined-out))
+
+  (define-generics meta-dist
+    (-type meta-dist)
+    (-params meta-dist))
 
   (begin-for-syntax
     (define-syntax-class param-spec
@@ -136,6 +143,12 @@
                      (let ([p.param (p.conv p.param)] ...)
                        (~? (g.guard-fun p.param ...)
                            (values p.param ...))))
+           #:methods gen:meta-dist
+           [(define (-type self)
+              (quote nd))
+            (define (-params self)
+              (match-define (nd p.param ... ext.f ...) self)
+              (list p.param ...))]
            more ...)]))
 
   (define (maker-error sname fnames fpreds bad-fname . fvalues)

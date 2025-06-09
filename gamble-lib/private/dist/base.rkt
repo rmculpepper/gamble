@@ -7,8 +7,12 @@
          racket/generic
          racket/sequence
          "measurable.rkt"
-         "../util/density.rkt")
+         "../util/density.rkt"
+         (submod "util.rkt" define))
 (provide (all-defined-out))
+
+(define (dist-type d)
+  (and (meta-dist? d) (-type d)))
 
 (define-generics dist
   ;; type X
@@ -51,7 +55,8 @@
    (define (-total-measure self)
      (cond [(continuous-dist? self) 1]
            [(integer-dist? self) 1]
-           [else (raise-support-error 'dist-total-measure self)]))])
+           [else (raise-support-error 'dist-total-measure self)]))
+   (define (-type self) #f)])
 
 (define (dist-sample d)
   (unless (dist? d) (raise-argument-error 'dist-sample "dist?" d))

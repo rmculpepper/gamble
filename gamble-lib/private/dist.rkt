@@ -12,6 +12,7 @@
          dist-density
          dist-measure
          dist-total-measure
+         dist-type
 
          enumerable-dist?
          in-dist

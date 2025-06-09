@@ -61,6 +61,9 @@
   (lambda (self port mode)
     (define h (discrete-dist-h self))
     (print-discrete-dist 'discrete-dist h port mode))
+  #:methods gen:meta-dist
+  [(define (-type self) 'discrete-dist)
+   (define (-params self) (list (discrete-dist-h self)))]
   #:methods gen:dist
   [(define (-sample self)
      (-discrete-sample self))
