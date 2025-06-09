@@ -13,6 +13,7 @@
 
 ;; ============================================================
 
+#;
 ;; simple-mh-step : (X -> Real) X
 ;;                  #:next (U #f (X ->> (values X Real)))
 ;;                  #:kernel (U #f (X -> (Dist X)))
@@ -106,49 +107,39 @@
     ;; if accepted, it typically becomes a new execution's prev-db.
 
     (define/public (sample dist addr)
-      ;; If choice address is in current-db, likely error unless memoized
-      ;; function (FIXME: shouldn't happen w/ real memoization).
-      ;; Otherwise, consult delta-db (represents proposed changes), then
-      ;; prev-db; they are kept separate to avoid data structure copy and
-      ;; also to provide more precise debugging messages.
-      (cond [(hash-ref current-db addr #f)
-             ;; Collision
-             (error 'sample
-                    (string-append "collision in random choice database"
-                                   "\n  address: ~e")
-                    address)]
-            [(hash-ref delta-db addr #f)
-             => (lambda (e) (sample/delta dist addr e))]
-            [(hash-ref prev-db addr #f)
-             => (lambda (e) (sample/prev dist addr e))]
+      (when (hash-ref current-db addr #f)
+        (error 'sample "duplicate label\n  label: ~e" addr))
+      (define delta-e (hash-ref delta-db addr #f))
+      (define prev-e (hash-ref prev-db addr #f))
+      (cond [delta-e (sample/delta dist addr delta-e prev-e)]
+            [prev-e (sample/prev dist addr prev-e)]
             [else (sample/new dist addr #f)]))
 
-    (define/private (sample/delta dist addr e)
-      (define prev-e (hash-ref prev-db addr #f))
+    (define/private (sample/delta dist addr delta-e prev-e)
       (unless prev-e (error 'sample "internal error: in delta, not in previous"))
       (log-mh-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
                    (entry-dist prev-e) (entry-value prev-e)
-                   (entry-dist e) (entry-value e))
-      (unless (and (entry? e) (equal? (entry-dist e) dist))
+                   (entry-dist delta-e) (entry-value delta-e))
+      (unless (and (entry? delta-e) (equal? (entry-dist delta-e) dist))
         (error 'sample "internal error: delta has wrong dist"))
-      (db-add! context e prev-e)
-      (entry-value e))
+      (db-add! context delta-e prev-e)
+      (entry-value delta-e))
 
-    (define/private (sample/prev dist addr e)
-      (cond [(equal? (entry-dist e) dist)
-             (log-mh-info "REUSE ~s: ~e, ~e" addr dist (entry-value e))
-             (db-add! addr e)
-             (entry-value e)]
-            [(eq? (dist-type (entry-dist e)) (dist-type dist))
-             (define new-ll (dist-pdf dist (entry-value e) #t))
+    (define/private (sample/prev dist addr prev-e)
+      (cond [(equal? (entry-dist prev-e) dist)
+             (log-mh-info "REUSE ~s: ~e, ~e" addr dist (entry-value prev-e))
+             (db-add! addr prev-e)
+             (entry-value prev-e)]
+            [(eq? (dist-type (entry-dist prev-e)) (dist-type dist))
+             (define new-ll (dist-pdf dist (entry-value prev-e) #t))
              (cond [(logspace-nonzero? new-ll)
-                    (define value (entry-value e))
+                    (define value (entry-value prev-e))
                     (define new-e (entry dist value new-ll))
                     (log-mh-info "RESCORE ~s: ~e, ~e" addr dist value)
-                    (db-add! context new-e e)
+                    (db-add! context new-e prev-e)
                     value]
                    [else (fail 'sample-rescore)])]
-            [else (sample/new dist context e)]))
+            [else (sample/new dist context prev-e)]))
 
     (define/private (sample/new dist addr prev-e)
       (when on-fresh-choice (on-fresh-choice))
