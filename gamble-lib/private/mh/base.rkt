@@ -33,17 +33,37 @@
 ;; Entry = (entry Dist[X] X Density)
 (struct entry (dist value density) #:prefab)
 
-;; hash-random-key : Hash[K => V] -> K
-(define (hash-random-key h)
-  (when (zero? (hash-count h)) (error 'hash-random-key "empty hash"))
-  (hash-nth-key h (random (hash-count h))))
+;; traces-obs-diff : Trace Trace -> Real
+(define (traces-obs-diff tr1 tr2)
+  (match-define (trace _ _ _ ll-obs1 obs-ddim1) tr1)
+  (match-define (trace _ _ _ ll-obs2 obs-ddim2) tr2)
+  (cond [(= obs-ddim1 obs-ddim2) (- ll-obs1 ll-obs2)]
+        [(< obs-ddim1 obs-ddim2) +inf.0]
+        [else -inf.0]))
 
-;; hash-nth-key : Hash[K => V] Nat -> K
-(define (hash-nth-key h n)
-  (define iter
-    (for/fold ([iter (hash-iterate-first h)]) ([i (in-range n)])
-      (hash-iterate-next h iter)))
-  (hash-iterate-key h iter))
+;; hash-random-key : Hash[K => V] (K -> Boolean) -> K or #f
+(define (hash-random-key h [ok-key? #f])
+  (define n (hash-count* h ok-key?))
+  (and (> n 0) (hash-nth-key h ok-key?)))
+
+;; hash-count* : Hash[K => V] (U #f (K -> Boolean)) -> Nat
+(define (hash-count* h [ok-key? #f])
+  (if ok-key? (for/sum ([k (in-hash-keys h)] #:when (ok-key? k)) 1) (hash-count h)))
+
+;; hash-nth-key : Hash[K => V] Nat (K -> Boolean) -> K
+;; PRE: hash contains at least n+1 ok keys
+(define (hash-nth-key h n [ok-key? #f])
+  (cond [ok-key?
+         (let loop ([iter (hash-iterate-first h)] [n n])
+           (define key (hash-iterate-key h iter))
+           (if (ok-key? key)
+               (if (zero? n) key (loop (hash-iterate-next h iter) (sub1 n)))
+               (loop (hash-iterate-next h iter) n)))]
+        [else
+         (define iter
+           (for/fold ([iter (hash-iterate-first h)]) ([i (in-range n)])
+             (hash-iterate-next h iter)))
+         (hash-iterate-key h iter)]))
 
 
 ;; ============================================================
@@ -129,21 +149,14 @@
   (class plain-stochastic-ctx%
     (inherit fail)
     (init-field prev-db       ;; DB, not mutated
-                delta-db      ;; DB, not mutated
-                [ll-R/F 0.0]) ;; Real, log(Q(backward) / Q(forward))
-
+                delta-db)     ;; DB, not mutated
     (field [current-db (make-hash)] ;; DB, mutated
            [ll-free  0.0]     ;; sum of ll of all entries in current-db
            [ll-obs   0.0]     ;; sum of ll of all observations
-           [ll-diff  0.0]     ;; see below
+           [ll-diff  0.0]     ;; see get-ll-diff below
            [obs-ddim   0])    ;; density dimension
 
     (super-new)
-
-    ;; ll-diff = SUM_{k in K} (- (entry-ll current-db[k]) (entry-ll prev-db[k]))
-    ;;           where K = dom(current-db) intersected with dom(prev-db)
-
-    ;; Observations do not affect ll-diff, only ll-obs.
 
     ;; The sample method records random choices by mutating
     ;; current-db. At the end of execution, current-db contains a
@@ -208,6 +221,12 @@
     ;; Should only be called after run, once current-db has stopped changing.
     (define/public (make-trace value)
       (trace value current-db ll-free ll-obs obs-ddim))
+
+    ;; get-ll-diff : -> Real
+    ;; ll-diff = SUM_{k in K} (- (entry-ll current-db[k]) (entry-ll prev-db[k]))
+    ;;           where K = dom(current-db) intersected with dom(prev-db)
+    ;; Observations do not affect ll-diff, only ll-obs.
+    (define/public (get-ll-diff) ll-diff)
 
     ;; db-add! : Address Entry (U #f Entry) -> Void
     ;; Add entry to current-db and update ll-free, ll-obs.
