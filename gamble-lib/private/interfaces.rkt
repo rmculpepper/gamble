@@ -55,7 +55,7 @@
     sample      ;; (Dist A) Label -> A
     observe     ;; Dist[X] X -> Void
     dscore      ;; Density -> Void
-    lscore      ;; LogReal -> Void
+    lscore      ;; LogReal Nat -> Void
     mem         ;; (X ... -> Y) -> (X ... -> Y)
 
     run         ;; (-> A ...) -> (U (list A ...) #f)
@@ -73,16 +73,23 @@
     ;; No ambient weight to affect; just check likelihood is non-zero.
     (define/public (dscore dn)
       (when (density-zero? dn) (fail 'dscore)))
-    (define/public (lscore ll [ddim 1])
+    (define/public (lscore ll ddim)
       (dscore (density ll ddim #t)))
     (define/public (observe d v)
       (dscore (dist-density d v)))
 
     (define/public (mem f)
-      (let ([memo-table (make-hash)])
-        (define (memoized-function . args)
-          (hash-ref! memo-table args (lambda () (apply f args))))
-        memoized-function))
+      (define memo-table (make-hash))
+      (define (mf . args)
+        (unless (eq? (current-stochastic-ctx) this)
+          (error (or (object-name f) 'memoized-function)
+                 "called in different stochastic context"))
+        (hash-ref! memo-table args (lambda () (apply f args))))
+      (define fname (object-name f))
+      (define name
+        (cond [name (string->symbol (format "memoized-~a" name))]
+              [else 'memoized-function]))
+      (procedure-reduce-arity mf (procedure-arity f) name))
 
     (define/public (run thunk)
       (parameterize ((current-stochastic-ctx this))
