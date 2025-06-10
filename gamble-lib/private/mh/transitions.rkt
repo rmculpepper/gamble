@@ -13,7 +13,7 @@
 
 ;; ============================================================
 
-(define mh-transition-base%
+(define transition-base%
   (class* object% (mcmc-transition<%>)
     (super-new)
 
@@ -37,8 +37,8 @@
 
 ;; ============================================================
 
-(define perturb-mh-transition-base%
-  (class mh-transition-base%
+(define perturb-transition-base%
+  (class transition-base%
     (init-field [temperature 1])
     (super-new)
 
@@ -84,8 +84,8 @@
 
 ;; ============================================================
 
-(define single-site-mh-transition%
-  (class perturb-mh-transition-base%
+(define single-site-transition%
+  (class perturb-transition-base%
     (init-field ok-addr?      ;; (Addr -> Boolean) or #f
                 proposal)     ;; Proposal
     (super-new)
@@ -135,7 +135,7 @@
 
 ;; ============================================================
 
-(define enumerative-gibbs-mh-transition%
+(define enumerative-gibbs-transition%
   (class* object% (mcmc-transition<%>)
     (init-field ok-addr?)     ;; (Addr -> Boolean) or #f
     (super-new)
@@ -174,4 +174,175 @@
                     [#f lh])]))))
       (define new-trace (dist-sample conditional-dist))
       (values new-trace 'enumerative-gibbs))
+    ))
+
+;; ============================================================
+;; Slice sampling
+;; https://www.cs.toronto.edu/pub/radford/slice-aos.pdf
+
+(define slice-transition%
+  (class* object% (mcmc-transition<%>)
+    (init-field ok-addr?
+                [method 'double] ;; (U 'step 'double)
+                [Wi 1]           ;; slice search width for integer dists
+                [Wr 1.0]         ;; slice search width for real dists
+                [M +inf.0]       ;; max # of widths to grow slice by
+                [small-dist 10]) ;; limit of small-dist optimization, 0 to disable
+    (super-new)
+
+    ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
+    (define/public (run thunk prev-trace)
+      (log-mh-info "Starting transition (~s)" (object-name this%))
+      (define prev-db (trace-db prev-trace))
+      (define addr (hash-random-key prev-db ok-addr?))
+      (unless addr (error 'slice "no suitable addr to change"))
+      (log-mh-info "Addr to change = ~s" addr)
+      (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
+      (unless (real-dist? dist)
+        (error 'slice "distribution does not support slice sampling\n  dist: ~e" dist))
+      (define slice
+        (new slice% (method method) (Wi Wi) (Wr Wr) (M M) (small-dist small-dist)
+             (thunk thunk) (prev-trace prev-trace) (addr addr)))
+      (send slice sample))
+    ))
+
+(define slice%
+  (class object%
+    (init-field method Wi Wr M small-dist thunk prev-trace addr)
+    (super-new)
+
+    (define prev-db (trace-db prev-trace))
+    (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
+
+    ;; ----------------------------------------
+
+    (define/public (sample)
+      (define lthreshold (+ (log (random)) (density->real prev-dn #t)))
+      (log-mh-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
+      (define-values (lo hi) (get-slice-bounds lthreshold))
+      (log-mh-info "Slice bounds = [~s,~s]" lo hi)
+      (select-value lo hi lthreshold))
+
+    ;; ----------------------------------------
+    ;; Eval trace, ll
+
+    (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
+    (hash-set! trace-cache prev-value prev-trace)
+
+    (define/private (eval-ll new-value)
+      (trace-ll (eval-trace new-value)))
+
+    (define/private (eval-trace new-value)
+      (hash-ref! trace-cache new-value (lambda () (eval-trace* new-value))))
+
+    (define/private (eval-trace* new-value)
+      (define new-value-dn (dist-density dist new-value #t))
+      (cond [(not (density-zero? new-value-dn))
+             (define delta-db
+               (hash addr (entry dist new-value new-value-dn)))
+             (define ctx
+               (new tracing-stochastic-ctx% 
+                    (prev-db prev-db)
+                    (delta-db delta-db)
+                    (disallow-new/who 'slice)))
+             (match (send ctx run thunk)
+               [(list sample-value)
+                (define new-trace (send ctx make-trace sample-value))
+                (unless (traces-same-structure? new-trace prev-trace)
+                  (error 'slice "structural change not allowed"))
+                new-trace]
+               [#f #f])]
+            [else #f]))
+
+    ;; ----------------------------------------
+    ;; Find slice bounds
+
+    (define/private (get-slice-bounds lthreshold)
+      (cond [(small-dist? dist)
+             (match (dist-support dist)
+               [(integer-range lo hi) (values lo hi)])]
+            [else
+             (define-values (W u)
+               (cond [(integer-dist? dist) (values Wi (random (add1 Wi)))]
+                     [else (values Wr (* (random) Wr))]))
+             (define lo (- prev-value u))
+             (define hi (+ lo W))
+             (case method
+               [(step)
+                (define-values (lo-k hi-k) (random-split-M))
+                (values (step-out lthreshold lo-k lo (- W))
+                        (step-out lthreshold hi-k hi (+ W)))]
+               [(double)
+                (double-out lthreshold lo hi)])]))
+
+    (define/private (random-split-M)
+      (cond [(= M +inf.0) (values +inf.0 +inf.0)]
+            [else (let ([k (random M)]) (- M 1 k))]))
+
+    (define/private (step-out lthreshold k x delta)
+      (let loop ([k k] [x x] [x-ll (eval-ll x)])
+        (cond [(or (zero? k) (<= x-ll lthreshold)) x]
+              [else (let ([x* (+ x delta)]) (loop (sub1 k) x* (eval-ll x*)))])))
+
+    (define/private (double-out lthreshold lo hi)
+      (let loop ([lo lo] [lo-ll (eval-ll lo)] [hi hi] [hi-ll (eval-ll hi)])
+        (cond [(and (<= lo-ll lthreshold) (<= hi-ll lthreshold))
+               (values lo hi)]
+              [(zero? (random 2))
+               (let ([lo* (- lo (- hi lo))])
+                 (loop lo* (eval-ll lo*) hi hi-ll))]
+              [else
+               (let ([hi* (+ hi (- hi lo))])
+                 (loop lo lo-ll hi* (eval-ll hi*)))])))
+
+    ;; ----------------------------------------
+    ;; Select value in slice
+
+    ;; select-value : Real Real Real -> (values Trace TxInfo)
+    (define/private (select-value lo0 hi0 lthreshold)
+      (let loop ([lo lo0] [hi hi0])
+        (define new-value
+          (if (integer-dist? dist)
+              (+ lo (random (add1 (- hi lo))))
+              (+ lo (* (random) (- hi lo)))))
+        (define new-trace (eval-trace new-value))
+        (cond [(and new-trace
+                    (> (trace-ll new-trace) lthreshold)
+                    (acceptable? new-value lo0 hi0 lthreshold))
+               (values new-trace 'slice)]
+              [(integer-dist? dist)
+               (if (< new-value prev-value)
+                   (loop (add1 new-value) hi)
+                   (loop lo (sub1 new-value)))]
+              [else
+               (if (< new-value prev-value)
+                   (loop new-value hi)
+                   (loop lo new-value))])))
+
+    (define/private (acceptable? new-value lo hi lthreshold)
+      (cond [(small-dist? dist) #t]
+            [(eq? method 'double)
+             (acceptable?/double new-value lo hi lthreshold (integer-dist? dist))]
+            [else #t]))
+
+    (define/private (acceptable?/double new-value lo hi lthreshold int?)
+      (define Wlimit (* 1.1 (if int? Wi Wr))) ;; avoid rounding problems
+      (define (get-mid lo hi)
+        (if int? (round (/ (+ lo hi) 2)) (* 0.5 (+ lo hi))))
+      (let loop ([lo lo] [hi hi])
+        (or (< (- hi lo) Wlimit)
+            (let ([mid (get-mid lo hi)])
+              (define lo* (if (< new-value mid) lo mid))
+              (define hi* (if (< new-value mid) mid hi))
+              (if (and (or (and (<  prev-value mid) (>= new-value mid))
+                           (and (>= prev-value mid) (<  new-value mid)))
+                       (<= (eval-ll lo*) lthreshold)
+                       (<= (eval-ll hi*) lthreshold))
+                  #f ;; not acceptable
+                  (loop lo* hi*))))))
+
+    (define/private (small-dist? dist)
+      (match (dist-support dist)
+        [(integer-range lo hi) (< (- hi lo) small-dist)]
+        [_ #f]))
     ))
