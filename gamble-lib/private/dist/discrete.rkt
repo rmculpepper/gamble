@@ -76,7 +76,8 @@
    (define (-total-measure self)
      (discrete-dist-wsum self))]
   #:methods gen:enumerable-dist
-  [(define (-sequence self)
+  [(define (-finite? self) #t)
+   (define (-sequence self)
      (in-hash-keys (discrete-dist-h self)))
    (define (-wsequence self)
      (in-hash (discrete-dist-h self)))])
@@ -120,6 +121,16 @@
           [else (bad)])))
 
 (define empty-discrete-dist (hash->discrete-dist '#hash()))
+
+(define (log-hash->normalized-discrete-dist lh)
+  (define who 'log-hash->normalized-discrete-dist)
+  (define lwmax (for/fold ([lwmax -inf.0]) ([(v lw) (in-hash lh)]) (max lwmax lw)))
+  (define lnwsum (log (for/sum ([lw (in-hash-values lh)]) (exp (- lw lwmax)))))
+  (define h
+    (for/fold ([h (hash)]) ([(v lw) (in-hash lh)])
+      (define w (exp (- lw lwmax lnwsum)))
+      (if (> w -inf.0) (hash-set h v w) h)))
+  (discrete-dist h 1.0))
 
 ;; ----------------------------------------
 ;; DDExt

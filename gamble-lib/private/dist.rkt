@@ -15,6 +15,7 @@
          dist-type
 
          enumerable-dist?
+         finite-dist?
          in-dist
          in-dist-values
 
@@ -43,7 +44,7 @@
          ;; in-discrete-dist
          for/discrete-dist
          for*/discrete-dist
-         
+         log-hash->normalized-discrete-dist
          (rename-out [m:discrete-dist discrete-dist]
                      [m:make-discrete-dist make-discrete-dist])
          discrete-distof)

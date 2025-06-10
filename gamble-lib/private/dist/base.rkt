@@ -77,12 +77,17 @@
 
 (define-generics enumerable-dist   ;; extends dist
   ;; Represents discrete, enumerable distributions.
+  (-finite? enumerable-dist)       ;; Dist -> Boolean
   (-sequence enumerable-dist)      ;; Dist -> Sequence[X]
   (-wsequence enumerable-dist)     ;; Dist -> Sequence[(values X NNReal)]
   #:fallbacks
-  [(define (-wsequence self)
+  [(define (-finite? self) #f)
+   (define (-wsequence self)
      (sequence-map (lambda (v) (values v (dist-pdf self v #f)))
                    (in-dist-values self)))])
+
+(define (finite-dist? d)
+  (and (enumerable-dist? d) (-finite? d)))
 
 (define (in-dist d)
   (unless (enumerable-dist? d) (raise-argument-error 'in-dist "enumerable-dist?" d))

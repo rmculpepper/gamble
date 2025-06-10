@@ -532,49 +532,6 @@
 ;; ============================================================
 ;; Discrete integer distributions from math library (infinite)
 
-(define-dist-struct binomial-dist
-  ([n exact-nonnegative-integer?]
-   [p probability? fl])
-  #:methods gen:dist
-  [(define (-sample self)
-     (match-define (binomial-dist n p) self)
-     (exact (flvector-ref (m:flbinomial-sample (fl n) p 1) 0)))
-   (define (-pdf self x log?)
-     (match-define (binomial-dist n p) self)
-     (if (integer? x) (m:flbinomial-pdf (fl n) p (fl x) log?) (impossible log?)))]
-  #:methods gen:integer-dist []
-  #:methods gen:real-dist
-  [(define (-cdf self x log? 1-p?)
-     (match-define (binomial-dist n p) self)
-     (m:flbinomial-cdf (fl n) p (fl x) log? 1-p?))
-   (define (-invcdf self x log? 1-p?)
-     (match-define (binomial-dist n p) self)
-     (exact (m:flbinomial-inv-cdf (fl n) p (fl x) log? 1-p?)))
-   (define (-support self)
-     (match-define (binomial-dist n _) self)
-     (integer-range 0 n))
-   (define (-mean self)
-     (match-define (binomial-dist n p) self)
-     (* n p))
-   (define (-modes self)
-     (match-define (binomial-dist n p) self)
-     (filter-modes (lambda (x) (m:flbinomial-pdf (fl n) p x #f))
-                   (let ([m (exact (floor (* (+ n 1) p)))])
-                     (list m (sub1 m)))))
-   (define (-variance self)
-     (match-define (binomial-dist n p) self)
-     (* n p (- 1 p)))]
-  #:methods gen:enumerable-dist
-  [(define (-sequence self)
-     (match-define (binomial-dist n _) self)
-     (in-range 0 (add1 n)))]
-  #|
-  #:drift-dist (lambda (value scale-factor)
-                 (discrete-normal-dist value (* scale-factor (sqrt (* n p (- 1 p))))))
-  #:drift1 (lambda (value scale-factor)
-             (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n))
-  |#)
-
 (define-dist-struct geometric-dist
   ([p probability? fl])
   #:methods gen:dist
@@ -685,7 +642,8 @@
      (match-define (bernoulli-dist p) self)
      (* p (- 1 p)))]
   #:methods gen:enumerable-dist
-  [(define (-sequence self)
+  [(define (-finite? self) #t)
+   (define (-sequence self)
      (in-range 0 2))
    (define (-wsequence self)
      (match-define (bernoulli-dist p) self)
@@ -698,6 +656,50 @@
                  (bernoulli-dist (cond [(= value 1) (- 1 driftiness)]
                                        [(= value 0) driftiness])))
   #:drift1 (lambda (value scale-factor) (cons (- 1 value) 0))
+  |#)
+
+(define-dist-struct binomial-dist
+  ([n exact-nonnegative-integer?]
+   [p probability? fl])
+  #:methods gen:dist
+  [(define (-sample self)
+     (match-define (binomial-dist n p) self)
+     (exact (flvector-ref (m:flbinomial-sample (fl n) p 1) 0)))
+   (define (-pdf self x log?)
+     (match-define (binomial-dist n p) self)
+     (if (integer? x) (m:flbinomial-pdf (fl n) p (fl x) log?) (impossible log?)))]
+  #:methods gen:integer-dist []
+  #:methods gen:real-dist
+  [(define (-cdf self x log? 1-p?)
+     (match-define (binomial-dist n p) self)
+     (m:flbinomial-cdf (fl n) p (fl x) log? 1-p?))
+   (define (-invcdf self x log? 1-p?)
+     (match-define (binomial-dist n p) self)
+     (exact (m:flbinomial-inv-cdf (fl n) p (fl x) log? 1-p?)))
+   (define (-support self)
+     (match-define (binomial-dist n _) self)
+     (integer-range 0 n))
+   (define (-mean self)
+     (match-define (binomial-dist n p) self)
+     (* n p))
+   (define (-modes self)
+     (match-define (binomial-dist n p) self)
+     (filter-modes (lambda (x) (m:flbinomial-pdf (fl n) p x #f))
+                   (let ([m (exact (floor (* (+ n 1) p)))])
+                     (list m (sub1 m)))))
+   (define (-variance self)
+     (match-define (binomial-dist n p) self)
+     (* n p (- 1 p)))]
+  #:methods gen:enumerable-dist
+  [(define (-finite? self) #t)
+   (define (-sequence self)
+     (match-define (binomial-dist n _) self)
+     (in-range 0 (add1 n)))]
+  #|
+  #:drift-dist (lambda (value scale-factor)
+                 (discrete-normal-dist value (* scale-factor (sqrt (* n p (- 1 p))))))
+  #:drift1 (lambda (value scale-factor)
+             (drift:add-discrete-normal value (* scale-factor (sqrt (* n p (- 1 p)))) 0 n))
   |#)
 
 ;; ============================================================
@@ -790,7 +792,8 @@
                            [else (values best best-w)]))])
        (reverse best)))]
   #:methods gen:enumerable-dist
-  [(define (-sequence self)
+  [(define (-finite? self) #t)
+   (define (-sequence self)
      (match-define (categorical-dist ws) self)
      (in-range 1 (add1 (vector-length ws))))
    (define (-wsequence self)
