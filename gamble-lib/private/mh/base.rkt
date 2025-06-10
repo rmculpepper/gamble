@@ -33,6 +33,11 @@
 ;; Entry = (entry Dist[X] X Density)
 (struct entry (dist value density) #:prefab)
 
+;; trace-ll : Trace -> Real
+(define (trace-ll tr)
+  (match-define (trace _ _ ll-free ll-obs _) tr)
+  (+ ll-free ll-obs))
+
 ;; traces-obs-diff : Trace Trace -> Real
 (define (traces-obs-diff tr1 tr2)
   (match-define (trace _ _ _ ll-obs1 obs-ddim1) tr1)
@@ -40,6 +45,16 @@
   (cond [(= obs-ddim1 obs-ddim2) (- ll-obs1 ll-obs2)]
         [(< obs-ddim1 obs-ddim2) +inf.0]
         [else -inf.0]))
+
+;; traces-same-structure? : Trace Trace Boolean -> Boolean
+(define (traces-same-structure? prev-trace new-trace [quick? #f])
+  (define prev-db (trace-db prev-trace))
+  (define new-db (trace-db new-trace))
+  (and (= (hash-count (trace-db prev-trace))
+          (hash-count (trace-db new-trace)))
+       (or quick?
+           (for/and ([addr (in-hash-keys prev-db)])
+             (hash-has-key? new-db addr)))))
 
 ;; hash-random-key : Hash[K => V] (K -> Boolean) -> K or #f
 (define (hash-random-key h [ok-key? #f])
@@ -149,7 +164,8 @@
   (class plain-stochastic-ctx%
     (inherit fail)
     (init-field prev-db       ;; DB, not mutated
-                delta-db)     ;; DB, not mutated
+                delta-db      ;; DB, not mutated
+                [disallow-new/who #f]) ;; #f or Symbol
     (field [current-db (make-hash)] ;; DB, mutated
            [ll-free  0.0]     ;; sum of ll of all entries in current-db
            [ll-obs   0.0]     ;; sum of ll of all observations
@@ -199,7 +215,9 @@
             [else (sample/new dist addr prev-e)]))
 
     (define/private (sample/new dist addr prev-e)
-      #; (when on-fresh-choice (on-fresh-choice))
+      (when disallow-new/who
+        (error disallow-new/who
+               "structural change (sampling new variable) not allowed"))
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
       (if prev-e

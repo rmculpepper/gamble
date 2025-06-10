@@ -102,8 +102,8 @@
                   (perturb-addr addr prev-dist prev-value))
                 (values (hash addr new-e) ll-R/F)])]
             [else
-             (log-mh-info "No suitable key to change")
-             (values (hash) 0.0)]))
+             (log-mh-info "No suitable addr to change")
+             (values (hash) -inf.0)]))
 
     ;; perturb-addr : Address Dist Value -> (values Entry Real)
     (define/public (perturb-addr addr dist prev-value)
@@ -125,10 +125,53 @@
              +inf.0]
             [else
              ;; Note: assumes we pick uniformly from all choices.
-             ;; R = (log (/ 1 nchoices))        = (- (log nchoices))
-             ;; F = (log (/ 1 last-nchoices))   = (- (log last-nchoices))
+             ;; R = (log (/ 1 new-nchoices))    = (- (log new-nchoices))
+             ;; F = (log (/ 1 prev-nchoices))   = (- (log prev-nchoices))
              ;; convert to inexact so (log 0.0) = -inf.0
              (define lR (- (log (fl new-nchoices))))
              (define lF (- (log (fl prev-nchoices))))
              (- lR lF)]))
+    ))
+
+;; ============================================================
+
+(define enumerative-gibbs-mh-transition%
+  (class* object% (mcmc-transition<%>)
+    (init-field ok-addr?)     ;; (Addr -> Boolean) or #f
+    (super-new)
+
+    ;; run : (-> A) Trace -> (values (U Trace #f) TxInfo)
+    (define/public (run thunk prev-trace)
+      (log-mh-info "Starting transition (~s)" (object-name this%))
+      (define prev-db (trace-db prev-trace))
+      (define addr (hash-random-key prev-db ok-addr?))
+      (unless addr (error 'enumerative-gibbs "no suitable addr to change"))
+      (log-mh-info "Addr to change = ~s" addr)
+      (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
+      (unless (finite-dist? dist)
+        (error 'enumerative-gibbs
+               "distribution is not finite\n  addr: ~e\n  dist: ~e" addr dist))
+      (define (make-entry new-value)
+        (entry dist new-value (dist-density dist new-value #t)))
+      (define conditional-dist
+        (log-hash->normalized-discrete-dist
+         (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
+           (cond [(equal? new-value prev-value)
+                  (hash-set lh prev-trace (trace-ll prev-trace))]
+                 [else
+                  (define new-entry (make-entry new-value))
+                  (define delta-db (hash addr new-entry))
+                  (define ctx (new tracing-stochastic-ctx%
+                                   (prev-db prev-db)
+                                   (delta-db delta-db)
+                                   (disallow-new/who 'enumerative-gibbs)))
+                  (match (send ctx run thunk)
+                    [(list new-result)
+                     (define new-trace (send ctx make-trace new-result))
+                     (unless (traces-same-structure? prev-trace new-trace #t)
+                       (error 'enumerative-gibbs "structural change not allowed"))
+                     (hash-set lh new-trace (trace-ll new-trace))]
+                    [#f lh])]))))
+      (define new-trace (dist-sample conditional-dist))
+      (values new-trace 'enumerative-gibbs))
     ))
