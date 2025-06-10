@@ -13,7 +13,7 @@
 
 ;; ============================================================
 
-(define transition-base%
+(define mh-transition-base%
   (class* object% (mcmc-transition<%>)
     (super-new)
 
@@ -38,7 +38,7 @@
 ;; ============================================================
 
 (define perturb-transition-base%
-  (class transition-base%
+  (class mh-transition-base%
     (init-field [temperature 1])
     (super-new)
 
