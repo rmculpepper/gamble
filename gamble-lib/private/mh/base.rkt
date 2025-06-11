@@ -97,14 +97,30 @@
 ;; ============================================================
 ;; Proposal interface
 
-#;
 (define proposal<%>
   (interface ()
-    propose1 ;; Key Zones Dist Value -> (U (cons Value Real) #f)
-    propose2 ;; Key Zones Dist Dist Value -> (U (list* Value Real Real) #f)
-    accinfo  ;; -> AccInfo
-    feedback ;; Key Boolean -> Void
+    propose1 ;; Addr Dist[X] X -> (U (cons X Real) #f)
+    propose2 ;; Addr Dist[X] Dist[X] X -> (U (cons X Real) #f)
     ))
+
+;; propose2:resample : Dist[X] X Dist[X] -> (cons X Real)
+(define (propose2:resample new-dist old-dist old-value)
+  ;; If multiple variables changed, earlier changes may have affected dist params.
+  ;; - (Forward) So resample from new-dist.
+  ;; - (Reverse) Earlier reverse changes produce old-dist, so use old-dist pdf.
+  ;; Then Q(x|x') = Q(x) =  (dist-pdf old-dist old-value)
+  ;;  and Q(x'|x) = Q(x') = (dist-pdf new-dist new-value)
+  (define new-value (dist-sample new-dist))
+  (define lR (dist-pdf old-dist old-value #t))
+  (define lF (dist-pdf new-dist new-value #t))
+  (cons new-value (- lR lF)))
+
+;; propose:resample : Dist[X] X -> (cons X Real)
+(define (propose:resample dist prev-value)
+  ;; Just resample from same dist.
+  ;; Then Kt(x|x') = Kt(x)  = (dist-pdf dist prev-value)
+  ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist new-value)
+  (propose2:resample dist dist prev-value))
 
 
 ;; ============================================================
