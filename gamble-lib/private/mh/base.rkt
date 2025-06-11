@@ -147,28 +147,6 @@
 
 
 ;; ============================================================
-
-#;
-;; simple-mh-step : (X -> Real) X
-;;                  #:next (U #f (X ->> (values X Real)))
-;;                  #:kernel (U #f (X -> (Dist X)))
-;;               -> (values Boolean X)
-(define (simple-mh-step ll x #:next [next #f] #:kernel [q #f])
-  (define-values (x* ll-R/F)
-    (cond [next
-           (next x)]
-          [q
-           (define qf (q x))
-           (define x* (dist-sample qf))
-           (define qb (q x*))
-           (values x* (- (dist-pdf qb x #t) (dist-pdf qf x* #t)))]
-          [else
-           (error 'simple-mh-step "missing #:next or #:kernel argument")]))
-  (define accept (+ ll-R/F (ll x*) (- (ll x))))
-  (if (<= (log (random)) accept) (values #t x*) (values #f x)))
-
-
-;; ============================================================
 ;; Transitions
 
 #;
