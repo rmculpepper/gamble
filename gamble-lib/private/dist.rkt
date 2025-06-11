@@ -27,6 +27,10 @@
          continuous-dist?
          integer-dist?
 
+         dist-drift1
+         dist-drift2
+         dist-drift-dist
+
          (struct-out integer-range)
          (struct-out real-range))
 

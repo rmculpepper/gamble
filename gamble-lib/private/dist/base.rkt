@@ -8,6 +8,7 @@
          racket/sequence
          "measurable.rkt"
          "../util/density.rkt"
+         (submod "util.rkt" math)
          (submod "util.rkt" define))
 (provide (all-defined-out))
 
@@ -139,6 +140,58 @@
 (define-generics integer-dist      ;; extends real-dist, enumerable-dist
   ;; Represents discrete, normalized integer-valued distributions.
   #:fallbacks [])
+
+(define-generics driftable                     ;; extends dist
+  (-drift1 driftable x params? scale)          ;; Dist X Bool Real -> (cons X Real)/#f
+  (-drift2 driftable old-dist x params? scale) ;; Dist Dist X Bool Real -> (cons X Real)/#f
+  (-drift-dist driftable x params? scale)      ;; Dist X Bool Real -> Dist/#f
+  #:fallbacks
+  [(define (-drift1 self old-value params? scale-factor)
+     (dist-drift2 self self old-value params? scale-factor))
+   (define (-drift2 new-dist old-dist old-value params? scale-factor)
+     (cond [(dist-drift-dist new-dist old-value params? scale-factor)
+            => (lambda (fd)
+                 (define new-value (dist-sample fd))
+                 (cond [(dist-drift-dist old-dist new-value params? scale-factor)
+                        => (lambda (rd)
+                             (define lF (dist-pdf fd new-value #t))
+                             (define lR (dist-pdf rd old-value #t))
+                             (cons new-value (- lR lF)))]
+                       [else #f]))]
+           [else #f]))
+   (define (-drift-dist self x params? scale) #f)])
+
+(define (dist-drift1 dist x params? scale)
+  (unless (dist? dist)
+    (raise-argument-error 'dist-drift1 "dist?" dist))
+  (unless (positive-rational? scale)
+    (raise-argument-error 'dist-drift1 "positive-rational?" scale))
+  (cond [(not (driftable? dist)) #f]
+        [(and (integer-dist? dist) (not (integer? x))) #f]
+        [(and (continuous-dist? dist) (not (rational? x))) #f]
+        [else (-drift1 dist x params? scale)]))
+
+(define (dist-drift2 dist old-dist x params? scale)
+  (unless (dist? dist)
+    (raise-argument-error 'dist-drift2 "dist?" dist))
+  (unless (dist? old-dist)
+    (raise-argument-error 'dist-drift2 "dist?" old-dist))
+  (unless (positive-rational? scale)
+    (raise-argument-error 'dist-drift2 "positive-rational?" scale))
+  (cond [(not (and (driftable? dist) (driftable? old-dist))) #f]
+        [(and (integer-dist? dist) (not (integer? x))) #f]
+        [(and (continuous-dist? dist) (not (rational? x))) #f]
+        [else (-drift2 dist old-dist x params? scale)]))
+
+(define (dist-drift-dist dist x params? scale)
+  (unless (dist? dist)
+    (raise-argument-error 'dist-drift-dist "dist?" dist))
+  (unless (positive-rational? scale)
+    (raise-argument-error 'dist-drift-dist "positive-rational?" scale))
+  (cond [(not (driftable? dist)) #f]
+        [(and (integer-dist? dist) (not (integer? x))) #f]
+        [(and (continuous-dist? dist) (not (rational? x))) #f]
+        [else (-drift-dist dist x params? scale)]))
 
 ;; ============================================================
 
