@@ -29,6 +29,7 @@
 (struct trace (value db ll-free ll-obs obs-ddim))
 
 ;; DB = (Hashof Address Entry)
+;; DeltaDB = (Hashof Address (U Entry Proposal))
 
 ;; Entry = (entry Dist[X] X Density)
 (struct entry (dist value density) #:prefab)
@@ -355,23 +356,35 @@
   (class object%
     (init-field thunk)        ;; -> A
     (field [last-trace #f]    ;; Trace or #f
-           [last-txinfo #f]   ;; ???
            [accepts 0]        ;; Nat
            [rejects 0])       ;; Nat
     (super-new)
 
-    ;; FIXME: add option to keep history, maybe for convergence diagnostics?
-
-    (define/public (step! transition)
+    ;; step : Transition -> (values Boolean Trace TxInfo)
+    (define/public (step transition)
       (define-values (new-trace new-txinfo)
         (send transition run thunk last-trace))
       (cond [new-trace
              (set! last-trace new-trace)
-             (set! last-txinfo new-txinfo)
              (set! accepts (add1 accepts))
-             new-trace]
+             (values #t new-trace new-txinfo)]
             [else
-             (set! last-txinfo new-txinfo)
              (set! rejects (add1 rejects))
-             last-trace]))
+             (values #f last-trace new-txinfo)]))
+
+    ;; steps : Nat Transition #:collect (Boolean Trace TxInfo -> X)
+    ;;      -> (Vectorof X)
+    (define/public (steps n transition
+                          #:lag [lag 0]
+                          #:collect [collect #f])
+      (define v (and collect (make-vector n)))
+      (for ([i (in-range n)])
+        (for ([j (in-range lag)])
+          (step transition))
+        (call-with-values
+         (lambda () (step transition))
+         (lambda (accepted? trace txinfo)
+           (when collect
+             (vector-set! v i (collect accepted? trace txinfo))))))
+      (or v (void)))
     ))

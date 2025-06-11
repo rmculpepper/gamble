@@ -59,7 +59,7 @@
          (values threshold new-trace (vector 'delta delta-db))]
         [#f (values -inf.0 #f (vector 'delta delta-db))]))
 
-    ;; delta : Trace -> (values DB Real)
+    ;; delta : Trace -> (values DeltaDB Real)
     (abstract delta)
 
     ;; accept-threshold : Trace Real Trace Real -> Real
@@ -88,7 +88,7 @@
                 proposal)     ;; Proposal
     (super-new)
 
-    ;; delta : Trace -> (values DB Real)
+    ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
@@ -111,7 +111,7 @@
       (define dn (dist-density dist new-value #t))
       (when (density-zero? dn)
         (log-mh-info "proposed impossible value: ~e, ~e" dist new-value))
-      (cons (entry dist new-value dn) ll-R/F))
+      (values (entry dist new-value dn) ll-R/F))
 
     (define/override (accept-threshold* prev-trace new-trace)
       ;; Account for backward and forward likelihood of picking
@@ -136,13 +136,13 @@
                 proposal)     ;; Proposal
     (super-new)
 
-    ;; delta : Trace -> (cons DB Real)
+    ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
       (define last-db (trace-db prev-trace))
       (define delta-db
         (for/hash ([(addr e) (in-hash last-db)] #:when (ok-addr? addr))
           (values addr proposal)))
-      (cons delta-db 0.0))
+      (values delta-db 0.0))
 
     ;; accept-threshold* : Trace Trace -> Real
     (define/override (accept-threshold* prev-trace new-trace)
