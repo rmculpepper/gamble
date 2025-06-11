@@ -97,13 +97,29 @@
 ;; ============================================================
 ;; Proposals
 
+(define (proposal? v)
+  (is-a? v proposal<%>))
+
 (define proposal<%>
   (interface ()
-    propose1 ;; Addr Dist[X] X -> (U (cons X Real) #f)
-    propose2 ;; Addr Dist[X] Dist[X] X -> (U (cons X Real) #f)
+    propose1    ;; Addr Dist[X] X -> (U #f (cons X Real))
+    ;; Used for single-site proposal, or when adjusted variables are
+    ;; known to be independent (dist parameters will not change from
+    ;; previous values).
+
+    propose2    ;; Addr Dist[X] Dist[X] X -> (U #f (cons X Real))
+    ;; Used for multi-site proposal, when change to one variable might
+    ;; affect parameters of other proposal variables.
     ))
 
-;; propose2:resample : Dist[X] X Dist[X] -> (cons X Real)
+;; propose1:resample : Dist[X] X -> (cons X Real)
+(define (propose1:resample dist prev-value)
+  ;; Just resample from same dist.
+  ;; Then Kt(x|x') = Kt(x)  = (dist-pdf dist prev-value)
+  ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist new-value)
+  (propose2:resample dist dist prev-value))
+
+;; propose2:resample : Dist[X] Dist[X] X -> (cons X Real)
 (define (propose2:resample new-dist old-dist old-value)
   ;; If multiple variables changed, earlier changes may have affected dist params.
   ;; - (Forward) So resample from new-dist.
@@ -115,35 +131,70 @@
   (define lF (dist-pdf new-dist new-value #t))
   (cons new-value (- lR lF)))
 
-;; propose:resample : Dist[X] X -> (cons X Real)
-(define (propose:resample dist prev-value)
-  ;; Just resample from same dist.
-  ;; Then Kt(x|x') = Kt(x)  = (dist-pdf dist prev-value)
-  ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist new-value)
-  (propose2:resample dist dist prev-value))
+(define proposal%
+  (class* object% (proposal<%>)
+    (init-field propose1-proc   ;; Addr Dist[X] X -> (U #f (cons X Real))
+                propose2-proc   ;; Addr Dist[X] Dist[X] X -> (U #f (cons X Real))
+                propose-dist)   ;; Addr Dist[X] X -> Dist[X]
+    (define/public (propose1 addr dist prev-value)
+      (define r (propose1* addr dist prev-value))
+      (if (proposal? r) (send r propose1 addr dist prev-value) r))
+    (define/private (propose1* addr dist prev-value)
+      (or (and propose1-proc (propose1-proc addr dist prev-value))
+          (propose2* addr dist dist prev-value)))
+    (define/public (propose2 addr new-dist prev-dist prev-value)
+      (define r (propose2* addr new-dist prev-dist prev-value))
+      (if (proposal? r) (send r propose2 addr new-dist prev-dist prev-value) r))
+    (define/private (propose2* addr new-dist prev-dist prev-value)
+      (or (and propose2-proc (propose2-proc addr new-dist prev-dist prev-value))
+          (and propose-dist
+               (cond [(propose-dist addr new-dist prev-value)
+                      => (lambda (fd)
+                           (define new-value (dist-sample fd))
+                           (cond [(propose-dist addr prev-dist new-value)
+                                  => (lambda (rd)
+                                       (define lF (dist-pdf fd new-value #t))
+                                       (define lR (dist-pdf rd prev-value #t))
+                                       (cons new-value (- lR lF)))]
+                                 [else #f]))]
+                     [else #f]))))
+    ))
 
 (define resample-proposal%
   (class* object% (proposal<%>)
     (super-new)
-
     (define/public (propose1 addr dist value)
-      (propose:resample dist value))
+      (propose1:resample dist value))
     (define/public (propose2 addr new-dist prev-dist prev-value)
       (propose2:resample new-dist prev-dist prev-value))
     ))
 
 (define drift-proposal%
   (class* object% (proposal<%>)
-    (init-field scale-factor)   ;; PosReal or (Addr Dist -> PosReal)
+    (init-field params?     ;; Boolean
+                scale)      ;; PosReal or (Addr Dist -> PosReal)
     (super-new)
-
     (define/public (propose1 addr dist value)
-      (dist-drift1 dist value #t (get-scale-factor addr dist)))
+      (dist-drift1 dist value params? (get-scale addr dist)))
     (define/public (propose2 addr new-dist old-dist old-value)
-      (dist-drift2 new-dist old-dist old-value #t (get-scale-factor addr new-dist)))
-    (define/private (get-scale-factor addr dist)
-      (if (real? scale-factor) scale-factor (scale-factor addr dist)))
+      (dist-drift2 new-dist old-dist old-value params? (get-scale addr new-dist)))
+    (define/private (get-scale addr dist)
+      (if (real? scale) scale (scale addr dist)))
     ))
+
+(define (proposal #:propose1 [propose1 #f]
+                  #:propose2 [propose2 #f]
+                  #:propose-dist [propose-dist #f])
+  (new proposal%
+       (propose1-proc propose1)
+       (propose2-proc propose2)
+       (propose-dist propose-dist)))
+
+(define (resample-proposal)
+  (new resample-proposal%))
+
+(define (drift-proposal #:params? [params? #t] #:scale [scale 1.0])
+  (new drift-proposal% (params? params?) (scale scale)))
 
 
 ;; ============================================================
@@ -278,6 +329,7 @@
                (with-continuation-mark ADDR-mark (list (list 'mem args addr))
                  (apply f args)))))
     ))
+
 
 ;; ============================================================
 

@@ -34,7 +34,6 @@
     (abstract run*)
     ))
 
-
 ;; ============================================================
 
 (define perturb-transition-base%
@@ -94,21 +93,19 @@
     (define/override (perturb prev-trace)
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
-      (cond [addr
-             (log-mh-info "Addr to change = ~s\n" addr)
-             (match (hash-ref prev-db addr)
-               [(entry prev-dist prev-value prev-ll)
-                (define-values (new-e ll-R/F)
-                  (perturb-addr addr prev-dist prev-value))
-                (values (hash addr new-e) ll-R/F)])]
-            [else
-             (log-mh-info "No suitable addr to change")
-             (values (hash) -inf.0)]))
+      (unless addr (error 'single-site "no suitable addr to change"))
+      (log-mh-info "Addr to change = ~s\n" addr)
+      (match (hash-ref prev-db addr)
+        [(entry prev-dist prev-value prev-ll)
+         (define-values (new-e ll-R/F)
+           (perturb-addr addr prev-dist prev-value))
+         (values (hash addr new-e) ll-R/F)]))
 
     ;; perturb-addr : Address Dist Value -> (values Entry Real)
     (define/public (perturb-addr addr dist prev-value)
-      (define-values (new-value ll-R/F)
-        (send proposal propose1 addr dist prev-value))
+      (match-define (cons new-value ll-R/F)
+        (or (send proposal addr dist prev-value)
+            (propose1:resample dist prev-value)))
       (log-mh-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" addr dist
                    prev-value new-value (exp ll-R/F))
       (define dn (dist-density dist new-value #t))
