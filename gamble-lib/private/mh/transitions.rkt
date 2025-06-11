@@ -112,13 +112,18 @@
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
-      (unless addr (error 'single-site-transition "no suitable addr to change"))
-      (log-mh-info "Addr to change = ~s\n" addr)
-      (match (hash-ref prev-db addr)
-        [(entry prev-dist prev-value prev-ll)
-         (define-values (new-e ll-R/F)
-           (delta-addr addr prev-dist prev-value))
-         (values (hash addr new-e) ll-R/F)]))
+      (cond [addr
+             (log-mh-info "Addr to change = ~s\n" addr)
+             (match (hash-ref prev-db addr)
+               [(entry prev-dist prev-value prev-ll)
+                (define-values (new-e ll-R/F)
+                  (delta-addr addr prev-dist prev-value))
+                (values (hash addr new-e) ll-R/F)])]
+            [else
+             ;; Allow empty delta if no known variables; eg, for initial trace.
+             (unless (zero? (hash-count prev-db))
+               (error 'single-site-transition "no suitable addr to change"))
+             (values (hash) 0.0)]))
 
     ;; delta-addr : Address Dist Value -> (values Entry Real)
     (define/public (delta-addr addr dist prev-value)
@@ -158,10 +163,13 @@
 
     ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
-      (define last-db (trace-db prev-trace))
+      (define prev-db (trace-db prev-trace))
       (define delta-db
-        (for/hash ([(addr e) (in-hash last-db)] #:when (ok-addr? addr))
+        (for/hash ([(addr e) (in-hash prev-db)] #:when (ok-addr? addr))
           (values addr proposal)))
+      (when (zero? (hash-count delta-db))
+        (unless (zero? (hash-count prev-db))
+          (error 'multi-site-transition "no suitable addrs to change")))
       (values delta-db 0.0))
 
     ;; accept-threshold* : Trace Trace -> Real
@@ -346,7 +354,7 @@
         (cond [(and new-trace
                     (> (trace-ll new-trace) lthreshold)
                     (acceptable? new-value lo0 hi0 lthreshold))
-               (values new-trace txinfo)]
+               new-trace]
               [(integer-dist? dist)
                (if (< new-value prev-value)
                    (loop (add1 new-value) hi)
