@@ -36,15 +36,15 @@
 
 ;; ============================================================
 
-(define perturb-transition-base%
+(define delta-mh-transition-base%
   (class mh-transition-base%
-    (init-field [temperature 1])
+    (init-field [temperature 1.0])
     (super-new)
 
     ;; run* : (-> A) Trace -> (values Real Trace/#f TxInfo)
     (define/override (run* thunk prev-trace)
       (define prev-db (trace-db prev-trace))
-      (define-values (delta-db delta-ll-R/F) (perturb prev-trace))
+      (define-values (delta-db delta-ll-R/F) (delta prev-trace))
       (define ctx
         (new tracing-stochastic-ctx%
              (prev-db prev-db)
@@ -54,14 +54,13 @@
         [(list new-value)
          (define new-trace (send ctx make-trace new-value))
          (define ll-diff (send ctx get-ll-diff))
-         (define threshold
-           (accept-threshold prev-trace delta-ll-R/F new-trace ll-diff))
+         (define ll-R/F (send ctx get-ll-R/F))
+         (define threshold (accept-threshold prev-trace ll-R/F new-trace ll-diff))
          (values threshold new-trace (vector 'delta delta-db))]
-        [#f
-         (values -inf.0 #f (vector 'delta delta-db))]))
+        [#f (values -inf.0 #f (vector 'delta delta-db))]))
 
-    ;; perturb : Trace -> (values DB Real)
-    (abstract perturb)
+    ;; delta : Trace -> (values DB Real)
+    (abstract delta)
 
     ;; accept-threshold : Trace Real Trace Real -> Real
     ;; Computes (log) accept threshold for current trace.
@@ -84,13 +83,13 @@
 ;; ============================================================
 
 (define single-site-transition%
-  (class perturb-transition-base%
+  (class delta-mh-transition-base%
     (init-field ok-addr?      ;; (Addr -> Boolean) or #f
                 proposal)     ;; Proposal
     (super-new)
 
-    ;; perturb : Trace -> (values DB Real)
-    (define/override (perturb prev-trace)
+    ;; delta : Trace -> (values DB Real)
+    (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
       (unless addr (error 'single-site "no suitable addr to change"))
@@ -98,14 +97,15 @@
       (match (hash-ref prev-db addr)
         [(entry prev-dist prev-value prev-ll)
          (define-values (new-e ll-R/F)
-           (perturb-addr addr prev-dist prev-value))
+           (delta-addr addr prev-dist prev-value))
          (values (hash addr new-e) ll-R/F)]))
 
-    ;; perturb-addr : Address Dist Value -> (values Entry Real)
-    (define/public (perturb-addr addr dist prev-value)
+    ;; delta-addr : Address Dist Value -> (values Entry Real)
+    (define/public (delta-addr addr dist prev-value)
       (match-define (cons new-value ll-R/F)
-        (or (send proposal addr dist prev-value)
-            (propose1:resample dist prev-value)))
+        (or (send proposal propose1 addr dist prev-value)
+            (begin (log-mh-info "Proposal returned #f; resampling")
+                   (propose1:resample dist prev-value))))
       (log-mh-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" addr dist
                    prev-value new-value (exp ll-R/F))
       (define dn (dist-density dist new-value #t))
@@ -128,6 +128,25 @@
              (define lR (- (log (fl new-nchoices))))
              (define lF (- (log (fl prev-nchoices))))
              (- lR lF)]))
+    ))
+
+(define multi-site-transition%
+  (class delta-mh-transition-base%
+    (init-field ok-addr?      ;; (Addr -> Boolean) or #f
+                proposal)     ;; Proposal
+    (super-new)
+
+    ;; delta : Trace -> (cons DB Real)
+    (define/override (delta prev-trace)
+      (define last-db (trace-db prev-trace))
+      (define delta-db
+        (for/hash ([(addr e) (in-hash last-db)] #:when (ok-addr? addr))
+          (values addr proposal)))
+      (cons delta-db 0.0))
+
+    ;; accept-threshold* : Trace Trace -> Real
+    (define/override (accept-threshold* prev-trace new-trace)
+      (if (zero? (hash-count (trace-db prev-trace))) +inf.0 0.0))
     ))
 
 ;; ============================================================

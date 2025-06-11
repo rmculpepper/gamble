@@ -205,6 +205,7 @@
     (inherit fail)
     (init-field prev-db       ;; DB, not mutated
                 delta-db      ;; DB, not mutated
+                [ll-R/F 0.0]  ;; real, mutated
                 [disallow-new/who #f]) ;; #f or Symbol
     (field [current-db (make-hash)] ;; DB, mutated
            [ll-free  0.0]     ;; sum of ll of all entries in current-db
@@ -230,13 +231,26 @@
 
     (define/private (sample/delta dist addr delta-e prev-e)
       (unless prev-e (error 'sample "internal error: in delta, not in previous"))
-      (log-mh-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
-                   (entry-dist prev-e) (entry-value prev-e)
-                   (entry-dist delta-e) (entry-value delta-e))
-      (unless (and (entry? delta-e) (equal? (entry-dist delta-e) dist))
-        (error 'sample "internal error: delta has wrong dist"))
-      (db-add! addr delta-e prev-e)
-      (entry-value delta-e))
+      (cond [(entry? delta-e)
+             (log-mh-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
+                          (entry-dist prev-e) (entry-value prev-e)
+                          (entry-dist delta-e) (entry-value delta-e))
+             (unless (equal? (entry-dist delta-e) dist)
+               (error 'sample "internal error: delta has wrong dist"))
+             (db-add! addr delta-e prev-e)
+             (entry-value delta-e)]
+            [(proposal? proposal)
+             (match-define (entry prev-dist prev-value _) prev-e)
+             (match-define (cons new-value l-R/F)
+               (or (send proposal propose2 addr dist prev-dist prev-value)
+                   (begin (log-mh-info "Late proposal returned #f; resampling")
+                          (propose2:resample dist prev-dist prev-value))))
+             (log-mh-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
+                          prev-dist prev-value dist new-value (exp l-R/F))
+             (define new-ll (dist-pdf dist new-value #t))
+             (db-add! addr (entry dist new-value new-ll) prev-e)
+             (set! ll-R/F (+ ll-R/F l-R/F))
+             new-value]))
 
     (define/private (sample/prev dist addr prev-e)
       (cond [(equal? (entry-dist prev-e) dist)
@@ -285,6 +299,10 @@
     ;;           where K = dom(current-db) intersected with dom(prev-db)
     ;; Observations do not affect ll-diff, only ll-obs.
     (define/public (get-ll-diff) ll-diff)
+
+    ;; get-ll-R/F : -> Real
+    ;; Mutated by late proposals, eg from multi-site MH.
+    (define/public (get-ll-R/F) ll-R/F)
 
     ;; db-add! : Address Entry (U #f Entry) -> Void
     ;; Add entry to current-db and update ll-free, ll-obs.
