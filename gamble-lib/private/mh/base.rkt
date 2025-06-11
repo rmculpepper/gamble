@@ -95,7 +95,7 @@
 
 
 ;; ============================================================
-;; Proposal interface
+;; Proposals
 
 (define proposal<%>
   (interface ()
@@ -121,6 +121,29 @@
   ;; Then Kt(x|x') = Kt(x)  = (dist-pdf dist prev-value)
   ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist new-value)
   (propose2:resample dist dist prev-value))
+
+(define resample-proposal%
+  (class* object% (proposal<%>)
+    (super-new)
+
+    (define/public (propose1 addr dist value)
+      (propose:resample dist value))
+    (define/public (propose2 addr new-dist prev-dist prev-value)
+      (propose2:resample new-dist prev-dist prev-value))
+    ))
+
+(define drift-proposal%
+  (class* object% (proposal<%>)
+    (init-field scale-factor)   ;; PosReal or (Addr Dist -> PosReal)
+    (super-new)
+
+    (define/public (propose1 addr dist value)
+      (dist-drift1 dist value #t (get-scale-factor addr dist)))
+    (define/public (propose2 addr new-dist old-dist old-value)
+      (dist-drift2 new-dist old-dist old-value #t (get-scale-factor addr new-dist)))
+    (define/private (get-scale-factor addr dist)
+      (if (real? scale-factor) scale-factor (scale-factor addr dist)))
+    ))
 
 
 ;; ============================================================
