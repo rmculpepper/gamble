@@ -161,7 +161,7 @@
            [else #f]))
    (define (-drift-dist self x params? scale) #f)])
 
-(define (dist-drift1 dist x params? scale)
+(define (dist-drift1 dist x [params? #t] [scale 1.0])
   (unless (dist? dist)
     (raise-argument-error 'dist-drift1 "dist?" dist))
   (unless (positive-rational? scale)
@@ -171,7 +171,7 @@
         [(and (continuous-dist? dist) (not (rational? x))) #f]
         [else (-drift1 dist x params? scale)]))
 
-(define (dist-drift2 dist old-dist x params? scale)
+(define (dist-drift2 dist old-dist x [params? #t] [scale 1.0])
   (unless (dist? dist)
     (raise-argument-error 'dist-drift2 "dist?" dist))
   (unless (dist? old-dist)
@@ -183,7 +183,7 @@
         [(and (continuous-dist? dist) (not (rational? x))) #f]
         [else (-drift2 dist old-dist x params? scale)]))
 
-(define (dist-drift-dist dist x params? scale)
+(define (dist-drift-dist dist x [params? #t] [scale 1.0])
   (unless (dist? dist)
     (raise-argument-error 'dist-drift-dist "dist?" dist))
   (unless (positive-rational? scale)
