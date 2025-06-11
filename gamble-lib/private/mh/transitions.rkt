@@ -92,7 +92,7 @@
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
-      (unless addr (error 'single-site "no suitable addr to change"))
+      (unless addr (error 'single-site-transition "no suitable addr to change"))
       (log-mh-info "Addr to change = ~s\n" addr)
       (match (hash-ref prev-db addr)
         [(entry prev-dist prev-value prev-ll)
@@ -158,15 +158,15 @@
 
     ;; run : (-> A) Trace -> (values (U Trace #f) TxInfo)
     (define/public (run thunk prev-trace)
+      (define who 'enumerative-gibbs-transition)
       (log-mh-info "Starting transition (~s)" (object-name this%))
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key prev-db ok-addr?))
-      (unless addr (error 'enumerative-gibbs "no suitable addr to change"))
+      (unless addr (error who "no suitable addr to change"))
       (log-mh-info "Addr to change = ~s" addr)
       (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
       (unless (finite-dist? dist)
-        (error 'enumerative-gibbs
-               "distribution is not finite\n  addr: ~e\n  dist: ~e" addr dist))
+        (error who "distribution is not finite\n  addr: ~e\n  dist: ~e" addr dist))
       (define (make-entry new-value)
         (entry dist new-value (dist-density dist new-value #t)))
       (define conditional-dist
@@ -180,16 +180,16 @@
                   (define ctx (new tracing-stochastic-ctx%
                                    (prev-db prev-db)
                                    (delta-db delta-db)
-                                   (disallow-new/who 'enumerative-gibbs)))
+                                   (disallow-new/who who)))
                   (match (send ctx run thunk)
                     [(list new-result)
                      (define new-trace (send ctx make-trace new-result))
                      (unless (traces-same-structure? prev-trace new-trace #t)
-                       (error 'enumerative-gibbs "structural change not allowed"))
+                       (error who "structural change not allowed"))
                      (hash-set lh new-trace (trace-ll new-trace))]
                     [#f lh])]))))
       (define new-trace (dist-sample conditional-dist))
-      (values new-trace 'enumerative-gibbs))
+      (values new-trace who))
     ))
 
 ;; ============================================================
@@ -208,14 +208,15 @@
 
     ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run thunk prev-trace)
+      (define who 'slice-transition)
       (log-mh-info "Starting transition (~s)" (object-name this%))
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key prev-db ok-addr?))
-      (unless addr (error 'slice "no suitable addr to change"))
+      (unless addr (error who "no suitable addr to change"))
       (log-mh-info "Addr to change = ~s" addr)
       (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
       (unless (real-dist? dist)
-        (error 'slice "distribution does not support slice sampling\n  dist: ~e" dist))
+        (error who "distribution does not support slice sampling\n  dist: ~e" dist))
       (define slice
         (new slice% (method method) (Wi Wi) (Wr Wr) (M M) (small-dist small-dist)
              (thunk thunk) (prev-trace prev-trace) (addr addr)))
@@ -265,7 +266,7 @@
                [(list sample-value)
                 (define new-trace (send ctx make-trace sample-value))
                 (unless (traces-same-structure? new-trace prev-trace)
-                  (error 'slice "structural change not allowed"))
+                  (error 'slice-transition "structural change not allowed"))
                 new-trace]
                [#f #f])]
             [else #f]))
@@ -325,7 +326,7 @@
         (cond [(and new-trace
                     (> (trace-ll new-trace) lthreshold)
                     (acceptable? new-value lo0 hi0 lthreshold))
-               (values new-trace 'slice)]
+               (values new-trace 'slice-transition)]
               [(integer-dist? dist)
                (if (< new-value prev-value)
                    (loop (add1 new-value) hi)
