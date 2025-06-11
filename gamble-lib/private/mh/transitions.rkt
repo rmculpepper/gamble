@@ -36,6 +36,26 @@
 
 ;; ============================================================
 
+(define initialize-transition%
+  (class* object% (mcmc-transition<%>)
+    (init-field get-value)  ;; (Addr Dist -> (or/c (list X) #f))
+    (super-new)
+
+    ;; run : (-> A) #f -> (values Trace/#f TxInfo)
+    (define/public (run thunk prev-trace)
+      (log-mh-info "Starting transition (~s)" (object-name this%))
+      (define ctx
+        (new initializing-tracing-stochastic-ctx%
+             (initializer get-value)))
+      (match (send ctx run thunk)
+        [(list new-value)
+         (define new-trace (send ctx make-trace new-value))
+         (values 0.0 new-trace 'initialize-transition)]
+        [#f (values -inf.0 #f 'initialize-transition)]))
+    ))
+
+;; ============================================================
+
 (define delta-mh-transition-base%
   (class mh-transition-base%
     (init-field [temperature 1.0])

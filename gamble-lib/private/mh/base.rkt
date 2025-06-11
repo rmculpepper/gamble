@@ -317,6 +317,23 @@
         (set! ll-diff (+ ll-diff (- ll prev-ll)))))
     ))
 
+(define initializing-tracing-stochastic-ctx%
+  (class tracing-stochastic-ctx%
+    (init-field get-value)  ;; (Addr Dist[X] -> (U #f (list X)))
+    (inherit-field prev-db)
+    (super-new [prev-db (make-hash)] ;; mutated
+               [delta-db (hash)])
+
+    ;; Hack: override sample to add entries to prev-db on demand.
+    (define/override (sample dist addr)
+      (match (get-value addr dist)
+        [(list value)
+         (define dn (dist-density dist value #t))
+         (hash-set! prev-db addr (entry dist value dn))
+         (super sample dist addr)]
+        [_ (super sample dist addr)]))
+    ))
+
 ;; ----------------------------------------
 ;; Implicit address support
 
