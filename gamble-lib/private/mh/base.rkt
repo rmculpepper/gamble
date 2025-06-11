@@ -147,34 +147,6 @@
 
 
 ;; ============================================================
-;; Transitions
-
-#;
-;; kernel-transition : (T -> Dist[T]) -> Transition[T,T]
-(define ((kernel-transition q) t1)
-  (define q12 (q t1))
-  (define t2 (dist-sample q12))
-  (define q21 (q t2))
-  (values t2 (density-logratio (dist-density q21 t1) (dist-density q12 t2))))
-
-#;
-;; single-site : Transition[Entry,EntryDelta] -> Transition[Trace,TraceDelta]
-(define ((single-site etx) tr)
-  (define addr (trace-pick-a-key tr))
-  (match-define (and ent (entry dist value dn)) (hash-ref tr addr))
-  (define-values (dent txlogratio) (etx ent))
-  ;; Warning: txlogratio is not complete, if addr value affect control flow.
-  (values (hash addr dent) txlogratio))
-
-#;
-;; resample-tx : Transition[Entry,EntryDelta]
-(define (resample-tx ent)
-  (match-define (entry dist v1 dn) ent)
-  (define v2 (dist-sample dist))
-  (values (entry dist v2 (dist-density dist v2)) 0))
-
-
-;; ============================================================
 ;; Tracing stochastic context
 
 (define tracing-stochastic-ctx%
