@@ -209,7 +209,7 @@
                      (hash-set lh new-trace (trace-ll new-trace))]
                     [#f lh])]))))
       (define new-trace (dist-sample conditional-dist))
-      (values new-trace who))
+      (values new-trace (vector who)))
     ))
 
 ;; ============================================================
@@ -240,7 +240,7 @@
       (define slice
         (new slice% (method method) (Wi Wi) (Wr Wr) (M M) (small-dist small-dist)
              (thunk thunk) (prev-trace prev-trace) (addr addr)))
-      (send slice sample))
+      (values (send slice sample) (vector who addr)))
     ))
 
 (define slice%
@@ -258,7 +258,7 @@
       (log-mh-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
       (define-values (lo hi) (get-slice-bounds lthreshold))
       (log-mh-info "Slice bounds = [~s,~s]" lo hi)
-      (select-value lo hi lthreshold))
+      (select lo hi lthreshold))
 
     ;; ----------------------------------------
     ;; Eval trace, ll
@@ -335,8 +335,8 @@
     ;; ----------------------------------------
     ;; Select value in slice
 
-    ;; select-value : Real Real Real -> (values Trace TxInfo)
-    (define/private (select-value lo0 hi0 lthreshold)
+    ;; select : Real Real Real -> Trace
+    (define/private (select lo0 hi0 lthreshold)
       (let loop ([lo lo0] [hi hi0])
         (define new-value
           (if (integer-dist? dist)
@@ -346,7 +346,7 @@
         (cond [(and new-trace
                     (> (trace-ll new-trace) lthreshold)
                     (acceptable? new-value lo0 hi0 lthreshold))
-               (values new-trace 'slice-transition)]
+               (values new-trace txinfo)]
               [(integer-dist? dist)
                (if (< new-value prev-value)
                    (loop (add1 new-value) hi)
