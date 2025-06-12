@@ -375,6 +375,37 @@
   (void))
 
 ;; ----------------------------------------
+;; resampling
+
+;; discrete-dist-resample : DiscreteDist Nat -> Vector
+(define (discrete-dist-resample dist n #:mode [mode 'multinomial])
+  (when (zero? (discrete-dist-wsum dist))
+    (error 'discrete-dist-resample "empty dist"))
+  (define r (make-vector n #f))
+  (case mode
+    [(multinomial #f)
+     (for ([i (in-range n)])
+       (vector-set! r i (dist-sample dist)))]
+    [(residual)
+     (match-define (discrete-dist h wsum) dist)
+     (define ww (/ wsum n))
+     (define-values (h* wsum* next-index)
+       (for/fold ([h h] [wsum 0] [i 0]) ([(v w) (in-hash h)])
+         (define whole (floor (/ w ww)))
+         (cond [(zero? whole) (values h (+ wsum w) i)]
+               [else
+                (for ([j (in-range i (+ i (exact whole)))])
+                  (vector-set! r j v))
+                (define wrem (max 0 (- w (* whole ww))))
+                (values (hash-set h v wrem) (+ wsum wrem) (+ i whole))])))
+     (define dist* (discrete-dist h* wsum*))
+     (for ([j (in-range next-index n)])
+       (vector-set! r j (dist-sample dist*)))]
+    [else (error 'discrete-dist-resample "bad resampling mode: ~e" mode)])
+  r)
+
+
+;; ----------------------------------------
 ;; flat contract
 
 ;; FIXME

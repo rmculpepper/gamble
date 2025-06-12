@@ -51,6 +51,7 @@
          log-hash->normalized-discrete-dist
          (rename-out [m:discrete-dist discrete-dist]
                      [m:make-discrete-dist make-discrete-dist])
+         discrete-dist-resample
          discrete-distof)
 
 ;; ----------------------------------------
