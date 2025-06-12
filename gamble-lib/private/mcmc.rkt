@@ -6,8 +6,8 @@
 (require racket/class
          racket/match
          "interfaces.rkt"
-         "mh/base.rkt"
-         "mh/transitions.rkt"
+         "mcmc/base.rkt"
+         "mcmc/transitions.rkt"
          "util/real.rkt")
 (provide proposal?
          proposal
