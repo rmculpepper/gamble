@@ -38,8 +38,7 @@
 
 ;; trace-ll : Trace -> Real
 (define (trace-ll tr)
-  (match-define (trace _ _ ll-free ll-obs _) tr)
-  (+ ll-free ll-obs))
+  (+ (trace-ll-free tr) (trace-ll-obs tr)))
 
 ;; traces-obs-diff : Trace Trace -> Real
 (define (traces-obs-diff tr1 tr2)
