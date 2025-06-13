@@ -59,7 +59,7 @@
 (provide dist-unit
          dist-fmap
          dist-bind
-         ;; dist-bindx
+         dist-bindx
          dist-rescore
          dist-filter
          dist-join)

@@ -39,10 +39,13 @@
     (values (list v vv) (* w ww))))
 
 ;; dist-rescore : FDist[X] (X -> NNReal) -> FDist[X]
-(define (dist-rescore d score)
-  #;(dist-bind d (lambda (v) (dirac v (score v))))
-  (for/discrete-dist ([(v w) (in-dist d)])
-    (values v (* w (score v)))))
+(define (dist-rescore d [scale #f])
+  (let ([scale (or scale
+                   (let ([tm (dist-total-measure d)])
+                     (if (zero? tm) 1 (/ tm))))])
+    #;(dist-bind d (lambda (v) (dirac v (score v))))
+    (for/discrete-dist ([(v w) (in-dist d)])
+      (values v (* w (scale v))))))
 
 ;; dist-filter : FDist[X] (X -> Boolean) -> FDist[X]
 (define (dist-filter d pred)
