@@ -40,7 +40,8 @@
         (if (hash-has-key? atoms #f) (- 1 p) 0)))
    (define (-total-measure self) 1)]
   #:methods gen:enumerable-dist
-  [(define (-sequence self)
+  [(define (-finite? self) #t)
+   (define (-sequence self)
      (in-list '(#t #f)))
    (define (-wsequence self)
      (match-define (boolean-dist p) self)
