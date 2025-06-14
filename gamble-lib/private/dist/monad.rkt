@@ -42,8 +42,8 @@
 (define (dist-rescore d [scale #f])
   (let ([scale (or scale
                    (let ([tm (dist-total-measure d)])
-                     (if (zero? tm) 1 (/ tm))))])
-    #;(dist-bind d (lambda (v) (dirac v (score v))))
+                     (lambda (v) (/ tm))))])
+    #;(dist-bind d (lambda (v) (dirac v (scale v))))
     (for/discrete-dist ([(v w) (in-dist d)])
       (values v (* w (scale v))))))
 

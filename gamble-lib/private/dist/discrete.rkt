@@ -38,10 +38,10 @@
      (match-define (measurable atoms _) ms)
      (+ (if (hash-has-key? atoms #t) p 0)
         (if (hash-has-key? atoms #f) (- 1 p) 0)))
-   (define (-total-measure self) 1)]
+   (define (-total-measure self) 1)
+   (define (-count self) 2)]
   #:methods gen:enumerable-dist
-  [(define (-finite? self) #t)
-   (define (-sequence self)
+  [(define (-sequence self)
      (in-list '(#t #f)))
    (define (-wsequence self)
      (match-define (boolean-dist p) self)
@@ -75,10 +75,11 @@
    (define (-measure self ms)
      (-discrete-measure self ms))
    (define (-total-measure self)
-     (discrete-dist-wsum self))]
+     (discrete-dist-wsum self))
+   (define (-count self)
+     (hash-count (discrete-dist-h self)))]
   #:methods gen:enumerable-dist
-  [(define (-finite? self) #t)
-   (define (-sequence self)
+  [(define (-sequence self)
      (in-hash-keys (discrete-dist-h self)))
    (define (-wsequence self)
      (in-hash (discrete-dist-h self)))])

@@ -22,6 +22,7 @@
   (-density dist x log?)           ;; Dist X Boolean -> Density
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
+  (-count dist)                    ;; Dist -> (U Nat +inf.0), upper bound
   #:fallbacks
   [(define (-density self x log?)
      (cond [(continuous-dist? self)
@@ -57,6 +58,7 @@
      (cond [(continuous-dist? self) 1]
            [(integer-dist? self) 1]
            [else (raise-support-error 'dist-total-measure self)]))
+   (define (-count self) +inf.0)
    (define (-type self) #f)])
 
 (define (dist-sample d)
@@ -75,20 +77,22 @@
 (define (dist-total-measure d)
   (unless (dist? d) (raise-argument-error 'dist-total-measure "dist?" d))
   (-total-measure d))
+(define (dist-count d)
+  (unless (dist? d) (raise-argument-error 'dist-count "dist?" d))
+  (-count d))
 
 (define-generics enumerable-dist   ;; extends dist
   ;; Represents discrete, enumerable distributions.
-  (-finite? enumerable-dist)       ;; Dist -> Boolean
   (-sequence enumerable-dist)      ;; Dist -> Sequence[X]
   (-wsequence enumerable-dist)     ;; Dist -> Sequence[(values X NNReal)]
   #:fallbacks
-  [(define (-finite? self) #f)
+  [(define (-count self) +inf.0)
    (define (-wsequence self)
      (sequence-map (lambda (v) (values v (dist-pdf self v #f)))
                    (in-dist-values self)))])
 
 (define (finite-dist? d)
-  (and (enumerable-dist? d) (-finite? d)))
+  (and (enumerable-dist? d) (< (-count d) +inf.0)))
 
 (define (in-dist d)
   (unless (enumerable-dist? d) (raise-argument-error 'in-dist "enumerable-dist?" d))

@@ -630,7 +630,8 @@
    (define (-pdf self x log?)
      (match-define (bernoulli-dist p) self)
      (define r (cond [(= x 1) p] [(= x 0) (- 1 p)] [else 0.0]))
-     (convert-p r log? #f))]
+     (convert-p r log? #f))
+   (define (-count self) 2)]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
@@ -651,8 +652,7 @@
      (match-define (bernoulli-dist p) self)
      (* p (- 1 p)))]
   #:methods gen:enumerable-dist
-  [(define (-finite? self) #t)
-   (define (-sequence self)
+  [(define (-sequence self)
      (in-range 0 2))
    (define (-wsequence self)
      (match-define (bernoulli-dist p) self)
@@ -674,7 +674,10 @@
      (exact (flvector-ref (m:flbinomial-sample (fl n) p 1) 0)))
    (define (-pdf self x log?)
      (match-define (binomial-dist n p) self)
-     (if (integer? x) (m:flbinomial-pdf (fl n) p (fl x) log?) (impossible log?)))]
+     (if (integer? x) (m:flbinomial-pdf (fl n) p (fl x) log?) (impossible log?)))
+   (define (-count self)
+     (match-define (binomial-dist n p) self)
+     (add1 n))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
@@ -698,8 +701,7 @@
      (match-define (binomial-dist n p) self)
      (* n p (- 1 p)))]
   #:methods gen:enumerable-dist
-  [(define (-finite? self) #t)
-   (define (-sequence self)
+  [(define (-sequence self)
      (match-define (binomial-dist n _) self)
      (in-range 0 (add1 n)))]
   #:methods gen:driftable
@@ -769,7 +771,10 @@
      (match-define (categorical-dist ws) self)
      (cond [(and (integer? x) (<= 1 x (vector-length ws)))
             (convert-p (vector-ref ws (sub1 (exact x))) log? #f)]
-           [else (impossible log?)]))]
+           [else (impossible log?)]))
+   (define (-count self)
+     (match-define (categorical-dist ws) self)
+     (vector-length ws))]
   #:methods gen:integer-dist []
   #:methods gen:real-dist
   [(define (-cdf self x log? 1-p?)
@@ -804,8 +809,7 @@
                            [else (values best best-w)]))])
        (reverse best)))]
   #:methods gen:enumerable-dist
-  [(define (-finite? self) #t)
-   (define (-sequence self)
+  [(define (-sequence self)
      (match-define (categorical-dist ws) self)
      (in-range 1 (add1 (vector-length ws))))
    (define (-wsequence self)
