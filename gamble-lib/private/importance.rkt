@@ -54,10 +54,10 @@
                                         "\n  previous: ~e\n  current: ~e")
                          success-ddim ddim))])
          (set! successes (add1 successes))
-         (cons v weight)]
+         (values v weight)]
         [#f
          (set! rejections (add1 rejections))
-         #f]))
+         (sample/weight)]))
     ))
 
 (define importance-stochastic-ctx%

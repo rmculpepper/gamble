@@ -6,21 +6,9 @@
 (require racket/class
          racket/match
          "util/density.rkt"
-         (only-in "dist/base.rkt" dist-sample dist-density))
-(provide sample
-         observe
-         dscore
-         lscore
-         fail
-         mem
-         weighted-sampler<%>
-         sampler<%>
-         weighted-sampler?
-         sampler?
-         sampler-base%
-         stochastic-ctx<%>
-         current-stochastic-ctx
-         plain-stochastic-ctx%)
+         (only-in "dist/base.rkt" dist-sample dist-density)
+         (only-in "dist/discrete.rkt" for/discrete-dist))
+(provide (all-defined-out))
 
 ;; Defines interfaces, base classes, and parameters.
 
@@ -29,7 +17,7 @@
 
 (define weighted-sampler<%>
   (interface ()
-    sample/weight  ;; -> (cons A PosReal) or #f
+    sample/weight  ;; -> (values A PosReal)
     ))
 
 (define sampler<%>
@@ -46,6 +34,14 @@
     (super-new)
     (define/public (sample/weight) (cons (sample) 1))
     (abstract sample)))
+
+(define (sampler->discrete-dist s n)
+  (cond [(sampler? s)
+         (for/discrete-dist ([i (in-range n)])
+           (values (send s sample) 1.0))]
+        [(weighted-sampler? s)
+         (for/discrete-dist ([i (in-range n)])
+           (send s sample/weight))]))
 
 ;; ============================================================
 ;; Stochastic contexts
@@ -72,7 +68,7 @@
 
     ;; No ambient weight to affect; just check likelihood is non-zero.
     (define/public (dscore dn)
-      (when (density-zero? dn) (fail 'dscore)))
+      (error 'dscore "called outside of sampling context"))
     (define/public (lscore ll ddim)
       (dscore (density ll ddim #t)))
     (define/public (observe d v)
@@ -98,9 +94,9 @@
          escape-prompt)))
 
     (define/public (fail reason)
-      (abort-current-continuation
-       escape-prompt
-       (lambda () #f)))
+      (unless (continuation-prompt-available? escape-prompt)
+        (error 'fail "called outside of sampling context"))
+      (abort-current-continuation escape-prompt (lambda () #f)))
     ))
 
 (define current-stochastic-ctx
