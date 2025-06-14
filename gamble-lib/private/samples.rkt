@@ -13,13 +13,25 @@
 ;; ------------------------------------------------------------
 ;; Empirical CDF
 
-(define (vector->empirical-cdf v)
-  (sorted->empirical-cdf (vector-sort v <)))
-(define (sorted->empirical-cdf sv)
+(define vector->empirical-cdf
+  (case-lambda
+    [(vs)
+     (sorted->empirical-cdf (vector-sort vs <))]
+    [(vs ws)
+     (define svs (for/vector ([v (in-vector vs)] [w (in-vector ws)]) (cons v w)))
+     (vector-sort! svs < #:key car)
+     (define scws (make-vector (vector-length svs)))
+     (for/fold ([sum 0]) ([i (in-naturals)] [vw (in-vector svs)])
+       (vector-set! svs i (car vw))
+       (vector-set! scws i (+ sum (cdr vw)))
+       (+ sum (cdr vw)))
+     (sorted->empirical-cdf svs scws)]))
+
+(define (sorted->empirical-cdf svs [scws #f])
   (define (ecdf x)
-    (cond [(>= (vector-ref sv 0) x)
-           (/ (binary-search/least-geq sv x)
-              (vector-length sv))]
+    (cond [(>= x (vector-ref svs 0))
+           (define k (binary-search/least-geq svs x))
+           (if scws (vector-ref scws k) (/ (add1 k) (vector-length svs)))]
           [else 0]))
   ecdf)
 
