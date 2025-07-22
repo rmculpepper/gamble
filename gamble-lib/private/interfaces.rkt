@@ -38,10 +38,25 @@
 (define (sampler->discrete-dist s n)
   (cond [(sampler? s)
          (for/discrete-dist ([i (in-range n)])
-           (values (send s sample) 1.0))]
+           (values (send s sample) 1))]
         [(weighted-sampler? s)
          (for/discrete-dist ([i (in-range n)])
            (send s sample/weight))]))
+
+(define (generate-samples s n)
+  (define vs (make-vector n))
+  (for ([i (in-range n)])
+    (vector-set! vs i (send s sample)))
+  vs)
+
+(define (generate-weighted-samples s n)
+  (define vs (make-vector n))
+  (define ws (make-vector n))
+  (for ([i (in-range n)])
+    (define-values (v w) (send s sample/weight))
+    (vector-set! vs i v)
+    (vector-set! ws i w))
+  (values vs ws))
 
 ;; ============================================================
 ;; Stochastic contexts
@@ -83,7 +98,7 @@
         (hash-ref! memo-table args (lambda () (apply f args))))
       (define fname (object-name f))
       (define name
-        (cond [name (string->symbol (format "memoized-~a" name))]
+        (cond [fname (string->symbol (format "memoized-~a" fname))]
               [else 'memoized-function]))
       (procedure-reduce-arity mf (procedure-arity f) name))
 

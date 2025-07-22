@@ -9,17 +9,8 @@
          "mcmc/base.rkt"
          "mcmc/transitions.rkt"
          "util/real.rkt")
-(provide proposal?
-         proposal
-         resample-proposal
-         drift-proposal
-
-         mcmc-transition?
-         initialize-transition
-         single-site-transition
-         multi-site-transition
-         enumerative-gibbs-transition
-         slice-transition)
+(provide (all-from-out "mcmc/base.rkt")
+         (all-defined-out))
 
 ;; ============================================================
 ;; Transitions
@@ -105,3 +96,23 @@
       (trace-value best-trace))
     |#
     ))
+
+(define mcmc-sampler%
+  (class sampler-base%
+    (init-field thunk
+                transition)
+    (super-new)
+
+    (define mcmc (new mcmc% (thunk thunk)))
+
+    (define/override (sample)
+      (define-values (accepted? trace txinfo)
+        (send mcmc step transition))
+      (trace-value trace))
+    ))
+
+(define (mcmc-sampler thunk
+                      [transition (single-site-transition #:proposal (resample-proposal))])
+  (new mcmc-sampler% (thunk thunk) (transition transition)))
+
+;; ============================================================

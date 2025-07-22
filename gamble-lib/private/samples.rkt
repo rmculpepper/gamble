@@ -7,7 +7,8 @@
          racket/vector
          racket/match
          "dist.rkt"
-         (submod "dist/util.rkt" search))
+         (submod "dist/util.rkt" search)
+         (only-in math/statistics stddev))
 (provide (all-defined-out))
 
 ;; ------------------------------------------------------------
@@ -59,3 +60,92 @@
     (max m
          (abs (- (/ i n) cdfx))
          (abs (- (/ (sub1 i) n) cdfx)))))
+
+;; ------------------------------------------------------------
+;; Kernel Density Estimation
+
+;; samples-density : (Vectorof Real) (Vectorof Real) 
+;;                -> (values (-> Real Real) (U Real #f) (U Real #f))
+
+;; kde : (Vectorof Real) (Vectorof Real) Real
+;;    -> (values (-> Real Real) (U Real #f) (U Real #f))
+(define (kde uvs uws h0)
+  (unless (= (vector-length uvs) (vector-length uws))
+    (error 'kde "weights vector has wrong length"))
+  (define n (vector-length uvs))
+  (define svs (make-vector n))
+  (define sws (make-vector n))
+  (for ([i (in-naturals)] [v (in-vector uvs)] [w (in-vector uws)])
+    (vector-set! svs i (cons (fl v) (fl w))))
+  (vector-sort! svs < #:key car)
+  (for ([i (in-naturals)] [vw (in-vector svs)])
+    (vector-set! svs i (car vw))
+    (vector-set! sws i (cdr vw)))
+  (define wsum (for/sum ([w (in-vector sws)]) w))
+  (define h (* h0 (silverman-bandwidth svs sws wsum)))
+  (define max-dist
+    (for/fold ([m -inf.0]) ([w (in-vector ws)]) (max m (weight-max-dist w h))))
+  (define c (/ 1.0 (* (sqrt pi) h)))
+  ;; The range of non-zero KDE values
+  (define x-min (- (vector-ref xs 0) max-dist))
+  (define x-max (+ (vector-ref xs (sub1 n)) max-dist))
+  ;; Parameters for fast-gauss
+  ;; Make the KDE functions
+  (define kde/windowed (make-kde/windowed xs h ws max-dist))
+  (define (f y)
+    (cond [(< y x-min)  0.0]
+          [(> y x-max)  0.0]
+          [else (* c (kde/windowed (fl y)))]))
+  (values f x-min x-max))
+
+;; make-kde/windowed : (Vectorof Flonum) Flonum (Vectorof Flonum) Flonum
+;;                  -> (Flonum -> Flonum)
+(define ((make-kde/windowed xs h ws max-dist) y)
+  (cond [(vector-find-index (lambda (x) (<= (abs (- x y)) max-dist)) xs)
+         => (lambda (i)
+              (define j (or (vector-find-index (lambda (x) (> (abs (- x y)) max-dist)) xs i)
+                            (vector-length xs)))
+              (for/sum ([x (in-vector xs i j)] [w (in-vector ws i j)])
+                (define z (/ (- x y) h))
+                (+ p (* w (exp (- (sqr z)))))))]
+        [else 0.0]))
+
+;; vector-find-index : (A -> Boolean) (Vectorof A) -> Nat/#f
+(define (vector-find-index pred? xs [start 0])
+  (for/or ([i (in-naturals start)] [x (in-vector xs start)])
+    (and (pred? x) i)))
+
+;; weight-max-dist : Real Real -> Real
+;; Returns the maximum distance at which unnormalized kernel (with weight w and
+;; width h) will contribute at least EPS to the sum.
+(define (weight-max-dist w h)
+  (define EPS 1e-06)
+  (define a (/ w EPS))
+  (if (> a 1.0) (* h (* (sqrt 2.0) (sqrt (log a)))) 0.0))
+
+;; silverman-bandwidth : (Vectorof Real) -> Real
+(define (silverman-bandwidth xs ws wsum)
+  (define n (vector-length xs))
+  (define-values (cw q25 q75)
+    (for/fold ([cw 0] [q25 -inf.0] [q75 -inf.0])
+              ([x (in-vector xs)] [w (in-vector ws)])
+      (let ([cw (+ cw w)])
+        (values cw
+                (if (< cw (* wsum 0.25)) x q25)
+                (if (< cw (* wsum 0.75)) x q75)))))
+  (define iqr (- q75 q25))
+  (define m (min (stddev xs) (/ iqr 1.349)))
+  (/ (* 0.9 m) (expt n 1/5)))
+
+;; ISV (Improved Sheather-Jones)
+;; https://arxiv.org/pdf/1011.2602
+
+(define xi (expt (/ (- (* 6 (sqrt 2)) 3) 7) 2/5))
+
+(define (isv-bandwidth xs ws wsum)
+  (define n (vector-length xs))
+  (define (gamma l z)
+    __)
+  (let loop ([z epsilon.0])
+    (define zn (* xi (gamma l z)))
+    (if (< (abs (- zn z)) epsilon.0) zn (loop zn))))

@@ -33,8 +33,8 @@
 ;; DB = (Hashof Address Entry)
 ;; DeltaDB = (Hashof Address (U Entry Proposal))
 
-;; Entry = (entry Dist[X] X Density)
-(struct entry (dist value density) #:prefab)
+;; Entry = (entry Dist[X] X Real)
+(struct entry (dist value ll) #:prefab)
 
 ;; trace-ll : Trace -> Real
 (define (trace-ll tr)
@@ -61,7 +61,7 @@
 ;; hash-random-key : Hash[K => V] (K -> Boolean) -> K or #f
 (define (hash-random-key h [ok-key? #f])
   (define n (hash-count* h ok-key?))
-  (and (> n 0) (hash-nth-key h ok-key?)))
+  (and (> n 0) (hash-nth-key h (random n) ok-key?)))
 
 ;; hash-count* : Hash[K => V] (U #f (K -> Boolean)) -> Nat
 (define (hash-count* h [ok-key? #f])
@@ -135,9 +135,9 @@
 
 (define proposal%
   (class* object% (proposal<%>)
-    (init-field propose1-proc   ;; Addr Dist[X] X -> (U #f (cons X Real))
-                propose2-proc   ;; Addr Dist[X] Dist[X] X -> (U #f (cons X Real))
-                propose-dist)   ;; Addr Dist[X] X -> Dist[X]
+    (init-field propose1-proc   ;; Addr Dist[X] X -> (U #f (cons X Real) Proposal)
+                propose2-proc   ;; Addr Dist[X] Dist[X] X -> (U #f (cons X Real) Proposal)
+                propose-dist)   ;; Addr Dist[X] X -> (U #f Dist[X])
     (define/public (propose1 addr dist prev-value)
       (define r (propose1* addr dist prev-value))
       (if (proposal? r) (send r propose1 addr dist prev-value) r))
@@ -223,6 +223,7 @@
     ;; if accepted, it typically becomes a new execution's prev-db.
 
     (define/override (sample dist addr)
+      (unless addr (error 'sample "missing address"))
       (when (hash-ref current-db addr #f)
         (error 'sample "duplicate label\n  label: ~e" addr))
       (define delta-e (hash-ref delta-db addr #f))
@@ -311,10 +312,10 @@
     ;; When prev-e is not #f, also update ll-diff.
     (define/private (db-add! context e [prev-e #f])
       (hash-set! current-db context e)
-      (define ll (density->real (entry-density e) #t))
+      (define ll (entry-ll e))
       (set! ll-free (+ ll-free ll))
       (when prev-e
-        (define prev-ll (density->real (entry-density prev-e) #t))
+        (define prev-ll (entry-ll prev-e))
         (set! ll-diff (+ ll-diff (- ll prev-ll)))))
     ))
 
@@ -329,8 +330,8 @@
     (define/override (sample dist addr)
       (match (get-value addr dist)
         [(list value)
-         (define dn (dist-density dist value #t))
-         (hash-set! prev-db addr (entry dist value dn))
+         (define ll (dist-pdf dist value #t))
+         (hash-set! prev-db addr (entry dist value ll))
          (super sample dist addr)]
         [_ (super sample dist addr)]))
     ))

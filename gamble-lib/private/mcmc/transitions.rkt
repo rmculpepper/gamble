@@ -28,7 +28,7 @@
              (values new-trace new-txinfo)]
             [else
              (log-mh-info "Rejected MH step with threshold ~s" (exp laccept))
-             (cons #f new-txinfo)]))
+             (values #f new-txinfo)]))
 
     ;; run* : (-> A) Trace -> (values Real Trace/#f TxInfo)
     (abstract run*)
@@ -133,10 +133,10 @@
                    (propose1:resample dist prev-value))))
       (log-mh-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" addr dist
                    prev-value new-value (exp ll-R/F))
-      (define dn (dist-density dist new-value #t))
-      (when (density-zero? dn)
+      (define new-ll (dist-pdf dist new-value #t))
+      (when (logspace-zero? new-ll)
         (log-mh-info "proposed impossible value: ~e, ~e" dist new-value))
-      (values (entry dist new-value dn) ll-R/F))
+      (values (entry dist new-value new-ll) ll-R/F))
 
     (define/override (accept-threshold* prev-trace new-trace)
       ;; Account for backward and forward likelihood of picking
@@ -192,11 +192,11 @@
       (define addr (hash-random-key prev-db ok-addr?))
       (unless addr (error who "no suitable addr to change"))
       (log-mh-info "Addr to change = ~s" addr)
-      (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
+      (match-define (entry dist prev-value _) (hash-ref prev-db addr))
       (unless (finite-dist? dist)
         (error who "distribution is not finite\n  addr: ~e\n  dist: ~e" addr dist))
       (define (make-entry new-value)
-        (entry dist new-value (dist-density dist new-value #t)))
+        (entry dist new-value (dist-pdf dist new-value #t)))
       (define conditional-dist
         (log-hash->normalized-discrete-dist
          (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
@@ -242,7 +242,7 @@
       (define addr (hash-random-key prev-db ok-addr?))
       (unless addr (error who "no suitable addr to change"))
       (log-mh-info "Addr to change = ~s" addr)
-      (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
+      (match-define (entry dist prev-value _) (hash-ref prev-db addr))
       (unless (real-dist? dist)
         (error who "distribution does not support slice sampling\n  dist: ~e" dist))
       (define slice
@@ -257,12 +257,12 @@
     (super-new)
 
     (define prev-db (trace-db prev-trace))
-    (match-define (entry dist prev-value prev-dn) (hash-ref prev-db addr))
+    (match-define (entry dist prev-value prev-ll) (hash-ref prev-db addr))
 
     ;; ----------------------------------------
 
     (define/public (sample)
-      (define lthreshold (+ (log (random)) (density->real prev-dn #t)))
+      (define lthreshold (+ (log (random)) prev-ll))
       (log-mh-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
       (define-values (lo hi) (get-slice-bounds lthreshold))
       (log-mh-info "Slice bounds = [~s,~s]" lo hi)
@@ -281,10 +281,10 @@
       (hash-ref! trace-cache new-value (lambda () (eval-trace* new-value))))
 
     (define/private (eval-trace* new-value)
-      (define new-value-dn (dist-density dist new-value #t))
-      (cond [(not (density-zero? new-value-dn))
+      (define new-ll (dist-pdf dist new-value #t))
+      (cond [(not (logspace-zero? new-ll))
              (define delta-db
-               (hash addr (entry dist new-value new-value-dn)))
+               (hash addr (entry dist new-value new-ll)))
              (define ctx
                (new tracing-stochastic-ctx% 
                     (prev-db prev-db)
