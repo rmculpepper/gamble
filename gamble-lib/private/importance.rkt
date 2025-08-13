@@ -17,7 +17,7 @@
   (new importance-sampler% (thunk thunk)))
 
 (define importance-sampler%
-  (class* object% (weighted-sampler<%>)
+  (class weighted-sampler-base%
     (init-field thunk)
     (field [successes 0]
            [rejections 0]
@@ -34,7 +34,7 @@
       (unless (zero? bad-samples)
         (printf "Bad samples emitted (wrong density dimension): ~s" bad-samples)))
 
-    (define/public (sample/weight)
+    (define/override (sample/weight)
       (unless (zero? bad-samples)
         (error 'importance-sampler
                "invalid sampler; observation density dimension varies"))

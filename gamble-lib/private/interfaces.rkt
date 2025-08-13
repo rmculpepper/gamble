@@ -18,45 +18,72 @@
 (define weighted-sampler<%>
   (interface ()
     sample/weight  ;; -> (values A PosReal)
+
+    burn                        ;; Nat -> Void
+    generate-discrete-dist      ;; Nat -> DiscreteDist
+    generate-weighted-samples   ;; Nat -> (values (Vectorof A) (Vectorof PosReal))
     ))
 
 (define sampler<%>
   (interface (weighted-sampler<%>)
     sample  ;; -> A
+
+    generate-samples            ;; Nat -> (Vectorof A)
     ))
 
 (define (weighted-sampler? x) (is-a? x weighted-sampler<%>))
 (define (sampler? x) (is-a? x sampler<%>))
 
-;; Automatic impl of weighted sampler from "ordinary" sampler.
-(define sampler-base%
-  (class* object% (sampler<%>)
+(define weighted-sampler-base%
+  (class* object% (weighted-sampler<%>)
     (super-new)
-    (define/public (sample/weight) (cons (sample) 1))
-    (abstract sample)))
 
-(define (sampler->discrete-dist s n)
-  (cond [(sampler? s)
-         (for/discrete-dist ([i (in-range n)])
-           (values (send s sample) 1))]
-        [(weighted-sampler? s)
-         (for/discrete-dist ([i (in-range n)])
-           (send s sample/weight))]))
+    (abstract sample/weight)
 
-(define (generate-samples s n)
-  (define vs (make-vector n))
-  (for ([i (in-range n)])
-    (vector-set! vs i (send s sample)))
-  vs)
+    (define/public (burn n)
+      (for ([i (in-range n)])
+        (sample/weight))
+      (void))
 
-(define (generate-weighted-samples s n)
-  (define vs (make-vector n))
-  (define ws (make-vector n))
-  (for ([i (in-range n)])
-    (define-values (v w) (send s sample/weight))
-    (vector-set! vs i v)
-    (vector-set! ws i w))
-  (values vs ws))
+    (define/public (generate-discrete-dist n)
+      (for/discrete-dist ([i (in-range n)])
+        (sample/weight)))
+
+    (define/public (generate-weighted-samples n)
+      (define vs (make-vector n))
+      (define ws (make-vector n))
+      (for ([i (in-range n)])
+        (define-values (v w) (sample/weight))
+        (vector-set! vs i v)
+        (vector-set! ws i w))
+      (values vs ws))
+    ))
+
+(define sampler-base%
+  (class* weighted-sampler-base% (sampler<%>)
+    (super-new)
+
+    (define/override (sample/weight) (values (sample) 1))
+    (abstract sample)
+
+    ;; ----
+
+    (define/public (generate-samples n)
+      (define vs (make-vector n))
+      (for ([i (in-range n)])
+        (vector-set! vs i (sample)))
+      vs)
+    ))
+
+(define (sampler->discrete-dist s n #:burn [nburn 0])
+  (send s burn nburn)
+  (send s generate-discrete-dist n))
+(define (generate-samples s n #:burn [nburn 0])
+  (send s burn nburn)
+  (send s generate-samples n))
+(define (generate-weighted-samples s n #:burn [nburn 0])
+  (send s burn nburn)
+  (send s generate-weighted-samples n))
 
 ;; ============================================================
 ;; Stochastic contexts
