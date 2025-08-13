@@ -40,6 +40,13 @@
                      ([v (in-dist-values dist)])
              (values (max xmin v) (min xmax v))))
          (define pdfp
+           (let-values ([(kde1 _xmin1 _xmax1) (kde vs ws 0.5)]
+                        [(kde2 _xmin2 _xmax2) (kde vs ws 1.0)]
+                        [(kde3 _xmin3 _xmax3) (kde vs ws 2.0)])
+             (list (function kde1 #:color "blue" #:alpha 0.25)
+                   (function kde2 #:color "blue" #:alpha 0.50)
+                   (function kde3 #:color "blue" #:alpha 0.25)))
+           #;
            (list
             (plot-density vs 0.5 ws #:color "blue" #:alpha 0.25)
             (plot-density vs 1.0 ws #:color "blue" #:alpha 0.50)

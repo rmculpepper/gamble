@@ -6,7 +6,9 @@
 (require racket/class
          racket/vector
          racket/match
+         racket/math
          "dist.rkt"
+         "util/real.rkt"
          (submod "dist/util.rkt" search)
          (only-in math/statistics stddev))
 (provide (all-defined-out))
@@ -84,19 +86,19 @@
   (define wsum (for/sum ([w (in-vector sws)]) w))
   (define h (* h0 (silverman-bandwidth svs sws wsum)))
   (define max-dist
-    (for/fold ([m -inf.0]) ([w (in-vector ws)]) (max m (weight-max-dist w h))))
+    (for/fold ([m -inf.0]) ([w (in-vector sws)]) (max m (weight-max-dist w h))))
   (define c (/ 1.0 (* (sqrt pi) h)))
   ;; The range of non-zero KDE values
-  (define x-min (- (vector-ref xs 0) max-dist))
-  (define x-max (+ (vector-ref xs (sub1 n)) max-dist))
+  (define x-min (- (vector-ref svs 0) max-dist))
+  (define x-max (+ (vector-ref svs (sub1 n)) max-dist))
   ;; Parameters for fast-gauss
   ;; Make the KDE functions
-  (define kde/windowed (make-kde/windowed xs h ws max-dist))
-  (define (f y)
-    (cond [(< y x-min)  0.0]
-          [(> y x-max)  0.0]
-          [else (* c (kde/windowed (fl y)))]))
-  (values f x-min x-max))
+  (define kde/windowed (make-kde/windowed svs h sws max-dist))
+  (define (the-kde x)
+    (cond [(< x x-min)  0.0]
+          [(> x x-max)  0.0]
+          [else (* c (kde/windowed (fl x)))]))
+  (values the-kde x-min x-max))
 
 ;; make-kde/windowed : (Vectorof Flonum) Flonum (Vectorof Flonum) Flonum
 ;;                  -> (Flonum -> Flonum)
@@ -107,7 +109,7 @@
                             (vector-length xs)))
               (for/sum ([x (in-vector xs i j)] [w (in-vector ws i j)])
                 (define z (/ (- x y) h))
-                (+ p (* w (exp (- (sqr z)))))))]
+                (* w (exp (- (sqr z))))))]
         [else 0.0]))
 
 ;; vector-find-index : (A -> Boolean) (Vectorof A) -> Nat/#f
@@ -137,6 +139,7 @@
   (define m (min (stddev xs) (/ iqr 1.349)))
   (/ (* 0.9 m) (expt n 1/5)))
 
+#|
 ;; ISV (Improved Sheather-Jones)
 ;; https://arxiv.org/pdf/1011.2602
 
@@ -149,3 +152,4 @@
   (let loop ([z epsilon.0])
     (define zn (* xi (gamma l z)))
     (if (< (abs (- zn z)) epsilon.0) zn (loop zn))))
+|#

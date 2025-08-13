@@ -7,6 +7,7 @@
 (define deps
   '("base"
     "math-lib"
+    "pict-lib"
     "rackunit-lib"
     "scramble-lib"
     "typed-racket-lib"))
