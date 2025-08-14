@@ -1,4 +1,4 @@
-;; Copyright (c) 2014 Ryan Culpepper
+;; Copyright (c) 2014-2025 Ryan Culpepper
 ;; Released under the terms of the 2-clause BSD license.
 ;; See the file COPYRIGHT for details.
 
@@ -8,123 +8,122 @@
                      racket/syntax
                      syntax/parse
                      syntax/id-table
+                     syntax/stx
+                     syntax/parse/experimental/template
                      "analysis.rkt"
                      "known-functions.rkt")
          racket/match
+         racket/stxparam
          "../addr.rkt")
-(provide describe-all-call-sites
-         describe-call-site
-         instrumenting-module-begin
-         instrumenting-top-interaction
-         begin-instrumented
-         instrument/local-expand
-         (for-syntax analyze)
-         instrument
-         next-counter)
+(provide (all-defined-out))
 
 (begin-for-syntax
   (define-logger instr)
 
-  ;; analyze : Syntax -> Syntax
-  (define (analyze stx)
-    (define tagged-stx (transform-TAG stx))
-    (analyze-FUN-EXP tagged-stx)
-    (analyze-CALLS-ERP tagged-stx)
-    tagged-stx))
+  (define-template-metafunction ~track
+    (syntax-parser
+      [(_ new-term (~and old-term (old-kw:id . _)))
+       (syntax-track-origin #'new-term #'old-term #'old-kw)]
+      [(_ new-term old-term old-kw)
+       (syntax-track-origin #'new-term #'old-term #'old-kw)])))
 
-(define-syntax (fresh-call-site stx)
-  (syntax-case stx ()
-    [(fresh-call-site info)
-     #'(#%plain-app next-counter
-         (#%plain-app variable-reference->module-source (#%variable-reference))
-         info)]))
+(define-syntax (lift stx)
+  (syntax-parse stx
+    [(_ e:expr) (syntax-local-lift-expression #'e)]))
+
+(define-syntax-rule (begin-for-syntax* expr ...)
+  (define-syntaxes () (begin expr ... (values))))
+
+
+;; ============================================================
+;; Call site indexing
+
+(define next-global-call-site 1)
+
+(define (allocate-call-sites n)
+  (begin0 next-global-call-site
+    (set! next-global-call-site (+ next-global-call-site n))))
+
+(define-syntax-parameter CSBASE
+  (lambda (stx) (wrong-syntax stx "used out of context")))
+(define-syntax-parameter ADDR
+  (lambda (stx) (wrong-syntax stx "used out of context")))
 
 (begin-for-syntax
-  (define (lift-call-site stx)
-    (with-syntax ([stx-file (syntax-source stx)]
-                  [line (syntax-line stx)]
-                  [col (syntax-column stx)]
-                  [fun (syntax-case stx (#%plain-app)
-                         [(#%plain-app f arg ...) (identifier? #'f) #'f]
-                         [_ #f])])
-      (syntax-local-lift-expression
-       #`(fresh-call-site '(stx-file line col #,stx f))))))
+  ;; call-site-counter : (Parameterof Nat)
+  (define call-site-counter (make-parameter 'uninitialized))
+
+  ;; next-call-site : -> Nat
+  (define (next-call-site)
+    (let ([cs (call-site-counter)])
+      (begin (call-site-counter (add1 cs)) cs))))
+
 
 ;; ============================================================
 ;; Instrumenter
 
-(define-syntax (begin-instrumented stx)
-  (syntax-case stx ()
-    [(_ form)
-     (case (syntax-local-context)
-       [(expression)
-        (with-syntax ([e-form (analyze (local-expand #'form 'expression null))])
-          #'(let ([ADDR #f]) (instrument e-form)))]
-       [else ;; module, top-level
-        (let ([e-form (local-expand #'form (syntax-local-context) #f)])
-          (syntax-parse e-form
-            #:literal-sets (kernel-literals)
-            [(define-values ids rhs)
-             #'(define-values ids (begin-instrumented rhs))]
-            [(define-syntaxes . _) e-form]
-            [(#%require . _) e-form]
-            [(#%provide . _) e-form]
-            [(#%declare . _) e-form]
-            [(module . _) e-form]
-            [(module* . _) e-form]
-            [(begin form ...)
-             #'(begin (begin-instrumented form) ...)]
-            [expr
-             #'(#%expression (begin-instrumented expr))]))])]
-    [(_ form ...)
-     #'(begin (begin-instrumented form) ...)]))
+;; (instrument-expr Expr[X]) : Expr[Addr -> X]
+(define-syntax (instrument-expr stx)
+  (case (syntax-local-context)
+    [(expression)
+     (syntax-parse stx
+       [(_ e:expr)
+        (define ee (local-expand #'e 'expression null))
+        (define tagged-ee (transform-TAG ee))
+        (analyze-FUN-EXP tagged-ee)
+        (analyze-CALLS-ERP tagged-ee)
+        (define-values (instr-code call-site-count)
+          (parameterize ((call-site-counter 0))
+            (define istx #`(#%plain-lambda (csbase)
+                             (syntax-parameterize ((CSBASE (make-rename-transformer
+                                                            (quote-syntax csbase))))
+                               (#%plain-lambda (addr)
+                                 (syntax-parameterize ((ADDR (make-rename-transformer
+                                                              (quote-syntax addr))))
+                                   (instrument #,tagged-ee))))))
+            (define-values (_instr-ee instr-code)
+              (syntax-local-expand-expression istx #t))
+            (values instr-code (call-site-counter))))
+        #`(#,instr-code (lift (allocate-call-sites (quote #,call-site-count))))])]
+    [else #`(#%expression #,stx)]))
 
-;; (instrument expanded-expr) : expr
-;; PRE: argument is fully-expanded expression
-;; PRE: the ADDR variable is bound to base/start address
+;; (instrument ExpandedExpr) : Expr
+;; PRE: argument is fully-expanded expression, tagged, and analyzed
+;; PRE: result is used in context of binding of ADDR and CALL-SITE-BASE
 (define-syntax (instrument istx)
   (syntax-parse istx
-    [(instrument form-to-instrument)
-     (define stx #'form-to-instrument)
-     (define instrumented
+    [(instrument-id ee)
+     (define stx #'ee)
+     (define result
        (syntax-parse stx
          #:literal-sets (kernel-literals)
          ;; Fully-Expanded Programs
          ;; Rewrite applications
-         [(#%plain-app) stx]
+         [(#%plain-app) #'ee]
          [(#%plain-app f e ...)
-          #`(instrument-app #,stx)]
-         ;; -- module body
-         [(#%plain-module-begin form ...)
-          #'(#%plain-module-begin (instrument form) ...)]
-         ;; -- module-level form
-         [(#%provide . _) stx]
-         [(begin-for-syntax . _) stx]
-         [(module . _) stx]
-         [(module* . _)
-          (raise-syntax-error #f "cannot instrument submodule" stx)]
-         [(#%declare . _) stx]
+          #'(instrument-app ee)]
          ;; -- general top-level form
          [(define-values ids e)
-          #`(instrument-definition #,stx)]
+          #'(instrument-definition ee)]
          [(define-syntaxes . _) stx]
-         [(#%require . _) stx]
          ;; -- expr
          [var:id #'var]
          [(#%plain-lambda formals e ...)
+          ;; Receive address using dynamic protocol
           #'(#%plain-lambda formals
-              (with-let-ADDR ADDR
-                (instrument e) ...))]
+              (with-get-ADDR addr
+                (syntax-parameterize ((ADDR (make-rename-transformer (quote-syntax addr))))
+                  (instrument e) ...)))]
          [(case-lambda [formals e ...] ...)
+          ;; Receive address using dynamic protocol
           #'(case-lambda
               [formals
-               (with-let-ADDR ADDR
-                 (instrument e) ...)]
+               (with-get-ADDR addr
+                 (syntax-parameterize ((ADDR (make-rename-transformer (quote-syntax addr))))
+                   (instrument e) ...))]
               ...)]
          [(if e1 e2 e3)
-          #'(if (instrument e1)
-                (instrument e2)
-                (instrument e3))]
+          #'(if (instrument e1) (instrument e2) (instrument e3))]
          [(begin e ...)
           #'(begin (instrument e) ...)]
          [(begin0 e0 e ...)
@@ -138,11 +137,6 @@
          [(letrec-values ([vars rhs] ...) body ...)
           #'(let ()
               (instrument (define-values vars rhs)) ...
-              (#%expression (instrument body)) ...)]
-         [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ...)
-          #'(let ()
-              (define-syntaxes svars srhs) ...
-              (instrument (define-values vvars vrhs)) ...
               (#%expression (instrument body)) ...)]
          [(set! var e)
           #'(set! var (instrument e))]
@@ -158,11 +152,8 @@
           #'(#%expression (instrument e))]
          [_ (raise-syntax-error #f "unhandled syntax in instrument" stx)]
          ))
-     ;; Rearm and track result
-     (let ([instrumented (relocate instrumented #'form-to-instrument)])
-       (if (eq? stx instrumented)
-           stx
-           (syntax-track-origin instrumented stx #'instrument)))]))
+     (let ([result (relocate result stx)])
+       (if (eq? result stx) result (syntax-track-origin result stx (stx-car istx))))]))
 
 (begin-for-syntax
   (define (relocate stx loc-stx)
@@ -172,46 +163,59 @@
 
 ;; ------------------------------------------------------------
 
+(begin-for-syntax
+  (define-syntax-class define-values-form
+    #:literals (define-values)
+    (pattern (kw:define-values (var:id ...) rhs:expr)))
+  (define-syntax-class define-1values-form
+    #:literals (define-values)
+    (pattern (kw:define-values (var:id) rhs:expr)))
+  (define-syntax-class plain-lambda-expr
+    #:literals (#%plain-lambda)
+    (pattern (kw:#%plain-lambda (var:id ...) body:expr ...)))
+  (define-syntax-class case-lambda-expr
+    #:literals (case-lambda)
+    (pattern (kw:case-lambda [(var:id ...) body:expr ...] ...))))
+
 (define-syntax (instrument-definition idstx)
   (syntax-parse idstx
-    #:literals (define-values #%plain-lambda case-lambda)
-    [(_ (define-values (f:id) (#%plain-lambda (arg:id ...) body ...)))
-     (with-syntax ([(fimpl) (generate-temporaries #'(f))]
-                   [arity (map length (syntax->datum #'((arg ...))))])
+    [(_ d:define-1values-form)
+     #:with rhs:plain-lambda-expr #'d.rhs
+     (with-syntax ([(fimpl) (generate-temporaries #'(d.var))]
+                   [arity (map length (syntax->datum #'((rhs.var ...))))])
        #'(begin (define-values (fimpl)
-                  (#%plain-lambda (addr arg ...)
-                    (with-ADDR addr (instrument body) ...)))
-                (define-values (f)
-                  (#%plain-lambda (arg ...)
-                    (with-let-ADDR addr (fimpl addr arg ...))))
-                (begin-for-syntax*
-                  (register-instrumented-fun! (quote-syntax f) (quote-syntax fimpl)
-                                              (quote arity)))))]
-    [(_ (define-values (var:id) (case-lambda [(arg ...) body ...] ...)))
-     (with-syntax ([(fimpl) (generate-temporaries #'(f))]
-                   [arity (map length (syntax->datum #'((arg ...) ...)))])
+                  (~track (#%plain-lambda (addr rhs.var ...)
+                            (syntax-parameterize ((ADDR (make-rename-transformer
+                                                         (quote-syntax addr))))
+                              (instrument rhs.body) ...))
+                          rhs rhs.kw))
+                (define-values (d.var)
+                  (#%plain-lambda (rhs.var ...)
+                    (with-get-ADDR addr (fimpl addr rhs.var ...))))
+                (declare-instrumented d.var fimpl arity)))]
+    [(_ d:define-1values-form)
+     #:with rhs:case-lambda-expr #'d.rhs
+     (with-syntax ([(fimpl) (generate-temporaries #'(d.var))]
+                   [arity (map length (syntax->datum #'((rhs.var ...) ...)))])
        #'(begin (define-values (fimpl)
+                  (~track (case-lambda
+                            [(addr rhs.var ...)
+                             (syntax-parameterize ((ADDR (make-rename-transformer
+                                                          (quote-syntax addr))))
+                               (instrument rhs.body) ...)]
+                            ...)
+                          rhs rhs.kw))
+                (define-values (d.var)
                   (case-lambda
-                    [(addr arg ...)
-                     (with-ADDR addr
-                       (instrument body) ...)]
+                    [(rhs.var ...) (with-get-ADDR addr (fimpl addr rhs.var ...))]
                     ...))
-                (define-values (f)
-                  (case-lambda
-                    [(arg ...)
-                     (with-let-ADDR addr
-                       (fimpl addr arg ...))]
-                    ...))
-                (begin-for-syntax*
-                  (register-instrumented-fun! (quote-syntax f) (quote-syntax fimpl)
-                                              (quote arity)))))]
-    [(_ (define-values vars e))
-     #'(define-values vars (instrument e))]))
+                (declare-instrumented d.var fimpl arity)))]
+    [(_ d:define-values-form)
+     #'(~track (define-values (d.var ...) (instrument d.rhs)) d d.kw)]))
 
-(define-syntax (begin-for-syntax* stx)
-  (syntax-case stx ()
-    [(_ expr ...)
-     #'(define-syntaxes () (begin expr ... (values)))]))
+(define-syntax-rule (declare-instrumented f fimpl arity)
+  (begin-for-syntax*
+    (register-instrumented! (quote-syntax f) (quote-syntax fimpl) (quote arity))))
 
 (begin-for-syntax
 
@@ -219,7 +223,7 @@
   (define instr-fun-table
     (make-free-id-table))
 
-  (define (register-instrumented-fun! id id* arity)
+  (define (register-instrumented! id id* arity)
     (free-id-table-set! instr-fun-table id (cons id* arity)))
 
   (define-syntax-class instr-fun
@@ -248,7 +252,8 @@
       ;; (log-instr-info "tooltip(~s) for ~s" (if (syntax-original? stx) 'Y 'N) stx)
       (when tt (set-box! ttb (cons tt (unbox ttb)))))))
 
-(define-syntax (instrument-app stx)
+(define-syntax (instrument-app istx)
+  (define stx (syntax-case istx () [(_ app) #'app]))
   (define f-stx (syntax-case stx (#%plain-app) [(#%plain-app f . _) #'f]))
   (define tooltips (box null))
   (define (log-app-type msg)
@@ -274,23 +279,24 @@
        #:when (member (length (syntax->list #'(e ...))) (attribute f.arity))
        (log-app-type "STATIC app (instrumented)")
        (tt-fun-type! "instrumented function")
-       (with-syntax ([c (lift-call-site stx)]
+       (with-syntax ([cs (next-call-site)]
                      [f-instr (syntax-property #'f.instr 'disappeared-use #'f)])
-         #'(#%plain-app f-instr (cons c ADDR) (instrument e) ...))]
+         #'(#%plain-app f-instr (addr-extend ADDR (+ CSBASE cs)) (instrument e) ...))]
       ;; unknown, function is varref => use dynamic protocol
       [(#%plain-app f:id e ...)
        (log-app-type "DYNAMIC app")
        (tt-fun-type! "uninstrumented function (passing address dynamically)")
-       (with-syntax ([c (lift-call-site stx)]
+       (with-syntax ([cs (next-call-site)]
                      [(tmp ...) (generate-temporaries #'(e ...))])
          #'(let-values ([(tmp) (instrument e)] ...)
-             (with-ADDR (cons c ADDR)
+             (with-put-ADDR (addr-extend ADDR (+ CSBASE cs))
                (#%plain-app f tmp ...))))]
       ;; unknown, function is expr => use dynamic protocol
       [(#%plain-app e ...)
-       (with-syntax ([c (lift-call-site stx)]
+       (with-syntax ([cs (next-call-site)]
                      [(tmp ...) (generate-temporaries #'(e ...))])
          #'(let-values ([(tmp) (instrument e)] ...)
-             (with-ADDR (cons c ADDR)
+             (with-put-ADDR (addr-extend ADDR (+ CSBASE cs))
                (#%plain-app tmp ...))))]))
-  (syntax-property result 'mouse-over-tooltips (unbox tooltips)))
+  (let ([result (syntax-track-origin result stx (stx-car stx))])
+    (syntax-property result 'mouse-over-tooltips (unbox tooltips))))

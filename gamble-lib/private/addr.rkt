@@ -1,13 +1,16 @@
 #lang racket/base
 (require racket/fixnum)
-(provide (all-defined-out))
+(provide with-put-ADDR
+         with-get-ADDR
+         addr-extend
+         init-addr)
 
 (define ADDR-mark (string->uninterned-symbol "ADDR"))
 
-(define-syntax-rule (with-ADDR addr body ...)
+(define-syntax-rule (with-put-ADDR addr body ...)
   (with-continuation-mark ADDR-mark addr (let () body ...)))
 
-(define-syntax-rule (with-let-ADDR x body ...)
+(define-syntax-rule (with-get-ADDR x body ...)
   (call-with-immediate-continuation-mark ADDR-mark (lambda (x) body ...)))
 
 (define-syntax-rule (addr-extend addr n)

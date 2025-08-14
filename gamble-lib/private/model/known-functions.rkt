@@ -3,25 +3,19 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base
-                     syntax/id-table)
+(require (for-syntax racket/base)
+         syntax/id-table
          racket/runtime-path)
 (provide (all-defined-out))
 
 ;; ============================================================
 ;; Non-random primitives
 
-(begin-for-syntax
-  ;; non-random-first-order-funs : free-id-table[ #t ]
-  (define non-random-first-order-funs (make-free-id-table))
+;; non-random-first-order-funs : free-id-table[ #t ]
+(define non-random-first-order-funs (make-free-id-table))
 
-  (define (register-non-random-first-order-fun! id)
-    (free-id-table-set! non-random-first-order-funs id #t)))
-
-(define-syntax-rule (declare-non-random-first-order f ...)
-  (begin-for-syntax
-    (register-non-random-first-order! (quote-syntax f))
-    ...))
+(define (register-non-random-first-order-fun! id)
+  (free-id-table-set! non-random-first-order-funs id #t))
 
 ;; ========================================
 
