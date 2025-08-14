@@ -339,31 +339,30 @@
 ;; ----------------------------------------
 ;; Implicit address support
 
-(define ADDR-mark (string->uninterned-symbol "ADDR"))
-
-(define (get-addr who)
-  (or (continuation-mark-set-first #f ADDR-mark)
-      (error who "no implicit address available")))
-
-;; Delimit implicit address tracking.
-(define (apply/delimit f [args null])
-  (with-continuation-mark ADDR-mark #f
-    (apply f args)))
-
 (define address-tracing-stochastic-ctx%
   (class tracing-stochastic-ctx%
     (super-new)
 
     (define/override (run thunk)
-      (super run (lambda () (apply/delimit thunk))))
+      (super run (lambda () (with-ADDR init-addr (thunk)))))
 
     (define/override (sample dist addr)
-      (super sample dist (or addr (get-addr 'sample))))
+      (if addr
+          (super sample dist addr)
+          (with-let-ADDR addr*
+            (super sample dist addr*))))
 
     (define/override (mem f)
-      (define addr (get-addr 'mem))
-      (super mem
-             (lambda args
-               (with-continuation-mark ADDR-mark (list (list 'mem args addr))
-                 (apply f args)))))
+      (with-let-ADDR addr
+        (define args=>code (make-hash))
+        (define next-counter -1)
+        (super mem
+               (lambda args
+                 (define code
+                   (hash-ref! args=>code args
+                              (lambda ()
+                                (begin0 next-counter
+                                  (set! next-counter (sub1 next-counter))))))
+                 (with-ADDR (addr-update addr code)
+                   (apply f args))))))
     ))
