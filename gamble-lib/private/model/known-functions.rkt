@@ -5,104 +5,113 @@
 #lang racket/base
 (require (for-syntax racket/base)
          syntax/id-table
+         racket/match
          racket/runtime-path)
-(provide (all-defined-out))
+(provide register-function!
+         function-may-call-erp?)
 
-;; ============================================================
-;; Non-random primitives
+;; FClass is one of
+;; - #f -- No stochastic effect is expected to occur within the dynamic extent
+;;         of a call to the function, under reasonable circumstances.
+;;         For example, `equal?` may trigger custom comparison functions, which
+;;         could have stochastic effects, but we classify `equal?` as effect-free.
+;; - (true value) -- Stochastic effects are possible.
 
-;; non-random-first-order-funs : free-id-table[ #t ]
-(define non-random-first-order-funs (make-free-id-table))
-
-(define (register-non-random-first-order-fun! id)
-  (free-id-table-set! non-random-first-order-funs id #t))
-
-;; ========================================
-
-;; Function classification wrt Address
-
-;; A function is non-random-first-order (NRFO) if no stochastic effect
-;; (sample, fail, mem, or observe-at) is ever executed in the dynamic
-;; extent of a call to that function. In practice, we relax that to
-;; "never under reasonable circumstances"---for example, calling
-;; 'equal?' can in principle call arbitrary code, but we assume that
-;; equality predicates will not call stochastic effects.
-
-;; If a function call is NRFO we can skip the dynamic protocol for
-;; address tracking and observation propagation.
+;; Stochastic effects are `sample` and `mem`. If a function call is effect-free,
+;; we can skip the dynamic protocol for address tracking.
 
 ;; TODO: add common non-kernel Racket functions
 ;; TODO: static analysis for locally-defined functions
 
-;; classify-function : id -> (U 'safe 'unsafe 'unknown)
-(define (classify-function f-id)
-  (if (function-non-random-first-order? f-id)
-      'non-random-first-order
-      'unsafe))
+;; function-table : free-id-table[ FClass ]
+(define function-table (make-free-id-table))
 
-(define-runtime-module-path-index mod:kernel ''#%kernel)
-(define-runtime-module-path-index mod:paramz ''#%paramz)
-(define-runtime-module-path-index mod:unsafe ''#%unsafe)
-(define-runtime-module-path-index mod:dist/univariate "../dist/univariate.rkt")
-(define-runtime-module-path-index mod:dist/discrete "../dist/discrete.rkt")
+(define (register-function! id fclass)
+  (free-id-table-set! function-table id fclass))
 
-(define (safe-modules-and-exceptions)
-  `([,mod:kernel ,HO-kernel-procedures]
-    [,mod:paramz ()]
-    [,mod:unsafe ()]
-    [,mod:dist/univariate ()]
-    [,mod:dist/discrete ()]))
-
+;; function-may-call-erp? : Identifier -> FClass
 ;; f-id must be a function identifier
-(define (function-non-random-first-order? f-id)
-  (let ([b (identifier-binding f-id)])
-    (and (list? b)
-         (let* ([def-mpi (car b)]
-                [def-name (cadr b)]
-                [resolved (module-path-index-resolve def-mpi)])
-           (for/or ([safe-mod+exceptions (in-list (safe-modules-and-exceptions))])
-             (and (equal? resolved (module-path-index-resolve (car safe-mod+exceptions)))
-                  (not (memq def-name (cadr safe-mod+exceptions)))))))))
+(define (function-may-call-erp? f-id)
+  (free-id-table-ref function-table f-id
+                     (lambda () (function-may-call-erp* f-id))))
+(define (function-may-call-erp* f-id)
+  (match (identifier-binding f-id)
+    [(list* def-mpi def-name _)
+     (define def-mod
+       (resolved-module-path-name
+        (module-path-index-resolve def-mpi)))
+     (cond [(equal? def-mod ''#%runtime)
+            (and (hash-ref runtime-info def-name #f) 'runtime)]
+           [else #f])]
+    [else 'unknown]))
 
-;; functions defined in kernel, known to be unsafe
-;; FIXME: double-check
-(define HO-kernel-procedures
-  '(;; omit indirect HO functions, like make-struct-type, chaperone-*, impersonate-*
-    apply
-    map
-    for-each
-    andmap
-    ormap
-    call-with-values
-    call-with-escape-continuation
-    call/ec
-    call-with-current-continuation
-    call/cc
-    call-with-continuation-barrier
-    call-with-continuation-prompt
-    call-with-composable-continuation
-    abort-current-continuation
-    call-with-semaphore
-    call-with-semaphore/enable-break
-    call-with-immediate-continuation-mark
-    time-apply
-    dynamic-wind
-    hash-map
-    hash-for-each
-    call-with-input-file
-    call-with-output-file
-    with-input-from-file
-    with-output-to-file
-    eval
-    eval-syntax
-    call-in-nested-thread
-    ))
+(define runtime-info
+  ((lambda (syms) (for/fold ([h (hasheq)]) ([sym (in-list syms)]) (hash-set h sym #t)))
+   '(abort-current-continuation
+     andmap
+     apply
+     assert-unreachable
+     byte-pregexp
+     byte-regexp
+     bytes-close-converter
+     bytes-convert
+     bytes-convert-end
+     bytes-open-converter
+     call-in-continuation
+     call-in-nested-thread
+     call-with-composable-continuation
+     call-with-continuation-barrier
+     call-with-continuation-prompt
+     call-with-current-continuation
+     call-with-escape-continuation
+     call-with-immediate-continuation-mark
+     call-with-input-file
+     call-with-output-file
+     call-with-semaphore
+     call-with-semaphore/enable-break
+     call-with-values
+     chaperone-box
+     chaperone-channel
+     chaperone-continuation-mark-key
+     chaperone-evt
+     chaperone-hash
+     chaperone-of?
+     chaperone-procedure
+     chaperone-procedure*
+     chaperone-prompt-tag
+     chaperone-struct
+     chaperone-struct-type
+     chaperone-vector
+     chaperone-vector*
+     checked-procedure-check-and-extract
+     dynamic-wind
+     for-each
+     hash-for-each
+     hash-map
+     ;hash-ref
+     ;hash-ref-key
+     map
+     ormap
+     ;pregexp
+     ;regexp
+     ;regexp-replace
+     ;regexp-replace*
+     ;stencil-vector-ref
+     stencil-vector-update
+     sync
+     sync/enable-break
+     sync/timeout
+     sync/timeout/enable-break
+     thread
+     time-apply
+     will-execute
+     will-try-execute
+     with-input-from-file
+     with-output-to-file
+     )))
 
 #|
-To get list of '#%kernel exports:
-(define (simplify e) (match e [`(just-meta ,n (rename '#%kernel ,x ,_)) x] [_ #f]))
-(define knames
-  (filter symbol?
-          (map simplify
-               (cdr (syntax->datum (expand '(require (rename-in '#%kernel))))))))
+To get list of '#%runtime exports:
+(let-values ([(vars stxs) (module->exports ''#%runtime)])
+  (map car (cdr (assoc 0 vars))))
 |#

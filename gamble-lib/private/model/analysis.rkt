@@ -363,9 +363,4 @@
   (cond [(FUN-EXP id #f)
          => (lambda (lam-tag)
               (hash-ref LAM-CALLS-ERP lam-tag #f))]
-        [else (imported-fun-calls-erp? id)]))
-
-(define (imported-fun-calls-erp? f-id)
-  (case (classify-function f-id)
-    [(non-random-first-order) #f]
-    [else #t]))
+        [else (function-may-call-erp? id)]))

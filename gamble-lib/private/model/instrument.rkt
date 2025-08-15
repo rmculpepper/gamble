@@ -226,21 +226,15 @@
   (define (register-instrumented! id id* arity)
     (free-id-table-set! instr-fun-table id (cons id* arity)))
 
-  (define-syntax-class instr-fun
-    #:attributes (instr arity)
-    (pattern f:id
-             #:do [(define p (free-id-table-ref instr-fun-table #'f #f))]
-             #:when p
-             #:with instr (car p)
-             #:attr arity (cdr p))))
+  (define (instrumented-impl f-id argn)
+    (cond [(free-id-table-ref instr-fun-table f-id #f)
+           => (lambda (fimpl+arity)
+                (and (member argn (cdr fimpl+arity)) (car fimpl+arity)))]
+          [else #f])))
 
 ;; ------------------------------------------------------------
 
 (begin-for-syntax
-  (define-syntax-class nrfo-fun
-    (pattern f:id
-             #:when (or (eq? (classify-function #'f) 'non-random-first-order)
-                        (free-id-table-ref non-random-first-order-funs #'f #f))))
   (define (add-app-tooltip! ttb stx msg)
     (when stx
       (define pos (syntax-position stx))
@@ -254,49 +248,44 @@
 
 (define-syntax (instrument-app istx)
   (define stx (syntax-case istx () [(_ app) #'app]))
-  (define f-stx (syntax-case stx (#%plain-app) [(#%plain-app f . _) #'f]))
-  (define tooltips (box null))
-  (define (log-app-type msg)
-    (log-instr-info (format "~a for ~s" msg f-stx)))
-  (define (tt-fun-type! msg)
-    (add-app-tooltip! tooltips f-stx msg))
-  (define result
-    (syntax-parse stx
-      #:literals (#%plain-app)
-      ;; non-random first-order non-instrumented => doesn't need address
-      [(#%plain-app f:nrfo-fun e ...)
-       (log-app-type "STATIC app (NRFO)")
-       (tt-fun-type! "non-random first-order function")
-       #'(#%plain-app f (instrument e) ...)]
-      ;; analysis says doesn't call ERP (superset of prev case) => doesn't need address
-      [(#%plain-app f:id e ...)
-       #:when (not (app-calls-erp? stx))
-       (log-app-type "STATIC app (!APP-CALLS-ERP)")
-       (tt-fun-type! "analyzed non-random function (not passing address)")
-       #'(#%plain-app f (instrument e) ...)]
-      ;; instrumented function with right arity => use static protocol
-      [(#%plain-app f:instr-fun e ...)
-       #:when (member (length (syntax->list #'(e ...))) (attribute f.arity))
-       (log-app-type "STATIC app (instrumented)")
-       (tt-fun-type! "instrumented function")
-       (with-syntax ([cs (next-call-site)]
-                     [f-instr (syntax-property #'f.instr 'disappeared-use #'f)])
-         #'(#%plain-app f-instr (addr-extend ADDR (+ CSBASE cs)) (instrument e) ...))]
-      ;; unknown, function is varref => use dynamic protocol
-      [(#%plain-app f:id e ...)
-       (log-app-type "DYNAMIC app")
-       (tt-fun-type! "uninstrumented function (passing address dynamically)")
-       (with-syntax ([cs (next-call-site)]
-                     [(tmp ...) (generate-temporaries #'(e ...))])
-         #'(let-values ([(tmp) (instrument e)] ...)
-             (with-put-ADDR (addr-extend ADDR (+ CSBASE cs))
-               (#%plain-app f tmp ...))))]
-      ;; unknown, function is expr => use dynamic protocol
-      [(#%plain-app e ...)
-       (with-syntax ([cs (next-call-site)]
-                     [(tmp ...) (generate-temporaries #'(e ...))])
-         #'(let-values ([(tmp) (instrument e)] ...)
-             (with-put-ADDR (addr-extend ADDR (+ CSBASE cs))
-               (#%plain-app tmp ...))))]))
-  (let ([result (syntax-track-origin result stx (stx-car stx))])
-    (syntax-property result 'mouse-over-tooltips (unbox tooltips))))
+  (syntax-parse stx
+    #:literals (#%plain-app)
+    [(#%plain-app fun:id arg ...)
+     (define tooltips (box null))
+     (define (log-app-type msg)
+       (log-instr-info "~a for ~s" msg #'fun))
+     (define (tt-fun-type! msg)
+       (add-app-tooltip! tooltips #'fun msg))
+     ;(log-instr-info "- class ~s for ~s" (function-may-call-erp? #'fun) #'fun)
+     ;(log-instr-info "- CALLS-ERP is ~s for ~s" (app-calls-erp? stx) stx)
+     (define result
+       (cond [(not (function-may-call-erp? #'fun))
+              ;; non-random first-order non-instrumented => doesn't need address
+              (log-app-type "STATIC app (NRFO)")
+              (tt-fun-type! "non-random first-order function")
+              #'(#%plain-app fun (instrument arg) ...)]
+             [(not (app-calls-erp? stx))
+              ;; analysis says doesn't call ERP (superset of prev case) => doesn't need address
+              (log-app-type "STATIC app (!APP-CALLS-ERP)")
+              (tt-fun-type! "analyzed non-random function (not passing address)")
+              #'(#%plain-app fun (instrument arg) ...)]
+             [(instrumented-impl #'fun (length (syntax->list #'(arg ...))))
+              => (lambda (fimpl)
+                   ;; instrumented function with right arity => use static protocol
+                   (log-app-type "STATIC app (instrumented)")
+                   (tt-fun-type! "instrumented function")
+                   (with-syntax ([cs (next-call-site)]
+                                 [fimpl (syntax-property fimpl 'disappeared-use #'fun)])
+                     #'(#%plain-app fimpl (addr-extend ADDR (+ CSBASE cs))
+                                    (instrument arg) ...)))]
+             [else
+              ;; unknown, function is varref => use dynamic protocol
+              (log-app-type "DYNAMIC app")
+              (tt-fun-type! "uninstrumented function (passing address dynamically)")
+              (with-syntax ([cs (next-call-site)]
+                            [(tmp ...) (generate-temporaries #'(arg ...))])
+                #'(let-values ([(tmp) (instrument arg)] ...)
+                    (with-put-ADDR (addr-extend ADDR (+ CSBASE cs))
+                      (#%plain-app fun tmp ...))))]))
+     (let ([result (syntax-track-origin result stx (stx-car stx))])
+       (syntax-property result 'mouse-over-tooltips (unbox tooltips)))]))
