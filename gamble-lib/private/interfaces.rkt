@@ -3,8 +3,11 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require racket/class
+(require (for-syntax racket/base)
+         racket/class
          racket/match
+         racket/stxparam
+         "addr.rkt"
          "util/density.rkt"
          (only-in "dist/base.rkt" dist-sample dist-density)
          (only-in "dist/discrete.rkt" for/discrete-dist))
@@ -86,24 +89,46 @@
   (send s generate-weighted-samples n))
 
 ;; ============================================================
+;; Stochastic models
+
+;; A (Model X) is one of
+;; - (model (StochasticCtx Addr -> X))
+;; - (-> X)
+
+(struct model (proc))
+
+;; ============================================================
 ;; Stochastic contexts
 
 (define stochastic-ctx<%>
   (interface ()
+    get-functions
+
     sample      ;; (Dist A) Label -> A
     observe     ;; Dist[X] X -> Void
     dscore      ;; Density -> Void
     lscore      ;; LogReal Nat -> Void
-    mem         ;; (X ... -> Y) -> (X ... -> Y)
-
-    run         ;; (-> A ...) -> (U (list A ...) #f)
     fail        ;; -> escapes
+    mem         ;; (X ... -> Y) -> (X ... -> Y)
+    run-model   ;; (Model A ...) -> (values A ...)
+
+    run         ;; (Model A ...) -> (U (list A ...) #f)
     ))
 
 (define plain-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
     (field [escape-prompt (make-continuation-prompt-tag)])
     (super-new)
+
+    (define/public (get-functions)
+      (define (ctx-sample dist [label #f]) (sample dist label))
+      (define (ctx-dscore dn) (dscore dn))
+      (define (ctx-lscore ll ddim) (lscore ll ddim))
+      (define (ctx-observe d v) (observe d v))
+      (define (ctx-fail [reason #f]) (fail reason))
+      (define (ctx-mem f) (mem f))
+      (define (ctx-run m) (run m))
+      (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run))
 
     (define/public (sample dist _label)
       (dist-sample dist))
@@ -115,6 +140,11 @@
       (dscore (density ll ddim #t)))
     (define/public (observe d v)
       (dscore (dist-density d v)))
+
+    (define/public (fail reason)
+      (unless (continuation-prompt-available? escape-prompt)
+        (error 'fail "called outside of sampling context"))
+      (abort-current-continuation escape-prompt (lambda () #f)))
 
     (define/public (mem f)
       (define memo-table (make-hash))
@@ -129,30 +159,67 @@
               [else 'memoized-function]))
       (procedure-reduce-arity mf (procedure-arity f) name))
 
-    (define/public (run thunk)
-      (parameterize ((current-stochastic-ctx this))
-        (call-with-continuation-prompt
-         (lambda () (call-with-values thunk list))
-         escape-prompt)))
+    (define/public (run-model m)
+      (match m
+        [(model proc)
+         (proc this #f)]
+        [(? procedure? proc)
+         (proc)]))
 
-    (define/public (fail reason)
-      (unless (continuation-prompt-available? escape-prompt)
-        (error 'fail "called outside of sampling context"))
-      (abort-current-continuation escape-prompt (lambda () #f)))
+    (define/public (run m)
+      (define go
+        (match m
+          [(model proc)
+           (lambda () (call-with-values (lambda () (proc this init-addr)) list))]
+          [(? procedure? proc)
+           (lambda () (call-with-values proc list))]))
+      (parameterize ((current-stochastic-ctx this))
+        (call-with-continuation-prompt go escape-prompt)))
     ))
 
 (define current-stochastic-ctx
   (make-parameter (new plain-stochastic-ctx%)))
 
+(define (ctx-get-functions ctx)
+  (send ctx get-functions))
+
 ;; ============================================================
 ;; Primitive operations
 
-(define (sample dist [label #f])
+(define (dynamic-sample dist [label #f])
   (send (current-stochastic-ctx) sample dist label))
 
-(define (dscore dn) (send (current-stochastic-ctx) dscore dn))
-(define (lscore ll) (send (current-stochastic-ctx) lscore ll))
-(define (observe dist val) (send (current-stochastic-ctx) observe dist val))
+(define (dynamic-dscore dn) (send (current-stochastic-ctx) dscore dn))
+(define (dynamic-lscore ll) (send (current-stochastic-ctx) lscore ll))
+(define (dynamic-observe dist val) (send (current-stochastic-ctx) observe dist val))
+(define (dynamic-fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 
-(define (mem f) (send (current-stochastic-ctx) mem f))
-(define (fail [reason #f]) (send (current-stochastic-ctx) fail reason))
+(define (dynamic-mem f) (send (current-stochastic-ctx) mem f))
+(define (dynamic-run m) (send (current-stochastic-ctx) run m))
+
+(define-syntax-parameter sample
+  (make-rename-transformer (quote-syntax dynamic-sample)))
+(define-syntax-parameter dscore
+  (make-rename-transformer (quote-syntax dynamic-dscore)))
+(define-syntax-parameter lscore
+  (make-rename-transformer (quote-syntax dynamic-lscore)))
+(define-syntax-parameter observe
+  (make-rename-transformer (quote-syntax dynamic-observe)))
+(define-syntax-parameter fail
+  (make-rename-transformer (quote-syntax dynamic-fail)))
+(define-syntax-parameter mem
+  (make-rename-transformer (quote-syntax dynamic-mem)))
+(define-syntax-parameter run-model
+  (make-rename-transformer (quote-syntax dynamic-run)))
+
+(define-syntax-rule (with-ctx ctx body ...)
+  (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run)
+                (ctx-get-functions ctx)])
+    (syntax-parameterize ([sample (make-rename-transformer (quote-syntax ctx-sample))]
+                          [dscore (make-rename-transformer (quote-syntax ctx-dscore))]
+                          [lscore (make-rename-transformer (quote-syntax ctx-lscore))]
+                          [observe (make-rename-transformer (quote-syntax ctx-observe))]
+                          [fail (make-rename-transformer (quote-syntax ctx-fail))]
+                          [mem (make-rename-transformer (quote-syntax ctx-mem))]
+                          [run-model (make-rename-transformer (quote-syntax ctx-run))])
+      body ...)))
