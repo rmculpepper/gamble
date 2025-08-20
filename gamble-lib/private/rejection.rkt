@@ -17,14 +17,7 @@
 (define rejection-sampler%
   (class sampler-base%
     (init-field mdl)
-    (field [successes 0]
-           [rejections 0])
     (super-new)
-
-    (define/public (info)
-      (printf "== Rejection sampler\n")
-      (printf "Samples produced: ~s\n" successes)
-      (printf "Rejections: ~s\n" rejections))
 
     (define/override (sample)
       (define ctx (new rejection-stochastic-ctx%))
