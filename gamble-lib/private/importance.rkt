@@ -13,12 +13,12 @@
 ;; ============================================================
 ;; Importance sampling
 
-(define (importance-sampler thunk)
-  (new importance-sampler% (thunk thunk)))
+(define (importance-sampler mdl)
+  (new importance-sampler% (mdl mdl)))
 
 (define importance-sampler%
   (class weighted-sampler-base%
-    (init-field thunk)
+    (init-field mdl)
     (field [successes 0]
            [rejections 0]
            [success-ddim #f]
@@ -39,7 +39,7 @@
         (error 'importance-sampler
                "invalid sampler; observation density dimension varies"))
       (define ctx (new importance-stochastic-ctx%))
-      (match (send ctx run thunk)
+      (match (send ctx run-top mdl)
         [(list v)
          (define obs-dn (send ctx get-observation-density))
          (define ddim (density-ddim obs-dn))

@@ -5,7 +5,8 @@
          addr-add-call
          addr-add-mem
          init-hash-addr
-         init-full-addr)
+         init-full-addr
+         current-init-addr)
 
 (struct auto-label (addr) #:prefab)
 
@@ -44,7 +45,7 @@
 (define init-full-addr '(0))
 (define init-hash-addr init-fxaddr)
 
-(define current-addr (make-parameter init-hash-addr))
+(define current-init-addr (make-parameter init-hash-addr))
 
 ;; Addresses are passed between procedures using the "dynamic addr protocol":
 ;; The caller puts the address in a continuation mark frame, and the callee

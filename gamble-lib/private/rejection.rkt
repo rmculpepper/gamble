@@ -11,12 +11,12 @@
 ;; ============================================================
 ;; Rejection sampling
 
-(define (rejection-sampler thunk)
-  (new rejection-sampler% (thunk thunk)))
+(define (rejection-sampler mdl)
+  (new rejection-sampler% (mdl mdl)))
 
 (define rejection-sampler%
   (class sampler-base%
-    (init-field thunk)
+    (init-field mdl)
     (field [successes 0]
            [rejections 0])
     (super-new)
@@ -28,8 +28,7 @@
 
     (define/override (sample)
       (define ctx (new rejection-stochastic-ctx%))
-      (define v (send ctx run thunk))
-      (match (send ctx run thunk)
+      (match (send ctx run-top mdl)
         [(list v) v]
         [#f (sample)]))
     ))

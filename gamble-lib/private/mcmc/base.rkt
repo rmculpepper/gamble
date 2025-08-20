@@ -304,7 +304,7 @@
         (super mem (procedure-reduce-arity af (procedure-arity f) 'memoized-function))))
 
     (define/override (run-top m)
-      (super run-top (lambda () (with-put-ADDR (current-addr) (run-model m)))))
+      (super run-top (lambda () (with-put-ADDR (current-init-addr) (run-model m)))))
 
     ;; ----------------------------------------
 

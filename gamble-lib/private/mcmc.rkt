@@ -49,14 +49,14 @@
 
 (define mcmc%
   (class object%
-    (init-field thunk
+    (init-field mdl
                 [last-trace init-trace])
     (super-new)
 
     ;; step : Transition -> (values Boolean Trace TxInfo)
     (define/public (step transition)
       (define-values (new-trace new-txinfo)
-        (send transition run thunk last-trace))
+        (send transition run-top mdl last-trace))
       (cond [new-trace
              (set! last-trace new-trace)
              (values #t new-trace new-txinfo)]
@@ -99,11 +99,11 @@
 
 (define mcmc-sampler%
   (class sampler-base%
-    (init-field thunk
+    (init-field mdl
                 transition)
     (super-new)
 
-    (define mcmc (new mcmc% (thunk thunk)))
+    (define mcmc (new mcmc% (mdl mdl)))
 
     (define/override (sample)
       (define-values (accepted? trace txinfo)
@@ -111,8 +111,8 @@
       (trace-value trace))
     ))
 
-(define (mcmc-sampler thunk
+(define (mcmc-sampler mdl
                       [transition (single-site-transition #:proposal (resample-proposal))])
-  (new mcmc-sampler% (thunk thunk) (transition transition)))
+  (new mcmc-sampler% (mdl mdl) (transition transition)))
 
 ;; ============================================================

@@ -12,9 +12,9 @@
          "util/real.rkt")
 (provide enumerate)
 
-(define (enumerate thunk)
+(define (enumerate mdl)
   (define ctx (new enumerate-stochastic-ctx%))
-  (define (init-thunk) (send ctx run thunk))
+  (define (init-thunk) (send ctx run-top mdl))
   (define-values (dh ddim)
     (let loop ([h (hash)] [ddim #f] [dn one-density] [thunk init-thunk])
       (match (thunk)
@@ -39,6 +39,7 @@
 
 (define enumerate-stochastic-ctx%
   (class plain-stochastic-ctx%
+    (inherit run-model)
     (super-new)
 
     (define memo-key (gensym))
@@ -60,8 +61,8 @@
        (lambda (k restore)
          null)))
 
-    (define/override (run thunk)
-      (call (hash) (lambda () (done (thunk)))))
+    (define/override (run-top mdl)
+      (call (hash) (lambda () (done (run-model mdl)))))
 
     (define/private (call memo-table thunk)
       (parameterize ((current-stochastic-ctx this))
