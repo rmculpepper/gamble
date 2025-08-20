@@ -166,12 +166,12 @@
            (proc)])))
 
     (define/public (run-top m)
-      (call-with-values
+      (call-with-continuation-prompt
        (lambda ()
-         (call-with-continuation-prompt
+         (call-with-values
           (lambda () (run-model m))
-          escape-prompt))
-       list))
+          list))
+       escape-prompt))
     ))
 
 (define current-stochastic-ctx
