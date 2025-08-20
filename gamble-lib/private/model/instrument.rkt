@@ -65,15 +65,16 @@
 
 (define-syntax (model* stx)
   (syntax-parse stx
-    [(_ #:auto-addr e:expr ...)
+    [(_ #:auto-label e:expr ...)
      #'(model
-        (lambda (ctx base-addr)
-          (with-ctx ctx
-            (let ([run (instrument-expr (let () e ...))])
-              (run base-addr)))))]
+        (lambda (ctx)
+          (with-get-ADDR base-addr
+            (with-ctx ctx
+              (let ([run (instrument-expr (let () e ...))])
+                (run base-addr))))))]
     [(_ e:expr ...)
      #'(model
-        (lambda (ctx base-addr)
+        (lambda (ctx)
           (with-ctx ctx
             (let () e ...))))]
     ))
@@ -296,7 +297,7 @@
                    (tt-fun-type! "instrumented function")
                    (with-syntax ([cs (next-call-site)]
                                  [fimpl (syntax-property fimpl 'disappeared-use #'fun)])
-                     #'(#%plain-app fimpl (addr-extend ADDR (+ CSBASE cs))
+                     #'(#%plain-app fimpl (addr-add-call ADDR (+ CSBASE cs))
                                     (instrument arg) ...)))]
              [else
               ;; unknown, function is varref => use dynamic protocol
@@ -305,7 +306,7 @@
               (with-syntax ([cs (next-call-site)]
                             [(tmp ...) (generate-temporaries #'(arg ...))])
                 #'(let-values ([(tmp) (instrument arg)] ...)
-                    (with-put-ADDR (addr-extend ADDR (+ CSBASE cs))
+                    (with-put-ADDR (addr-add-call ADDR (+ CSBASE cs))
                       (#%plain-app fun tmp ...))))]))
      (let ([result (syntax-track-origin result stx (stx-car stx))])
        (syntax-property result 'mouse-over-tooltips (unbox tooltips)))]))

@@ -6,6 +6,7 @@
 (require racket/class
          racket/list
          racket/match
+         "../addr.rkt"
          "../dist.rkt"
          "../interfaces.rkt"
          "../util/real.rkt"
@@ -223,7 +224,12 @@
     ;; if accepted, it typically becomes a new execution's prev-db.
 
     (define/override (sample dist addr)
-      (unless addr (error 'sample "missing address"))
+      (if addr
+          (sample* dist addr)
+          (with-get-ADDR addr (sample* dist addr))))
+
+    (define/private (sample* dist addr)
+      (unless addr (error 'sample "missing label, required for MCMC sampler"))
       (when (hash-ref current-db addr #f)
         (error 'sample "duplicate label\n  label: ~e" addr))
       (define delta-e (hash-ref delta-db addr #f))
@@ -290,6 +296,16 @@
       (set! obs-ddim (+ obs-ddim (density-ddim dn)))
       (when (logspace-zero? ll-obs) (fail 'dscore)))
 
+    (define/override (mem f)
+      (with-get-ADDR addr
+        (define (af . args)
+          (with-put-ADDR (addr-add-mem addr args)
+            (apply f args)))
+        (super mem (procedure-reduce-arity af (procedure-arity f) 'memoized-function))))
+
+    (define/override (run-top m)
+      (super run-top (lambda () (with-put-ADDR (current-addr) (run-model m)))))
+
     ;; ----------------------------------------
 
     ;; make-trace : Any -> Trace
@@ -334,35 +350,4 @@
          (hash-set! prev-db addr (entry dist value ll))
          (super sample dist addr)]
         [_ (super sample dist addr)]))
-    ))
-
-;; ----------------------------------------
-;; Implicit address support
-
-(define address-tracing-stochastic-ctx%
-  (class tracing-stochastic-ctx%
-    (super-new)
-
-    (define/override (run thunk)
-      (super run (lambda () (with-ADDR init-addr (thunk)))))
-
-    (define/override (sample dist addr)
-      (if addr
-          (super sample dist addr)
-          (with-let-ADDR addr*
-            (super sample dist addr*))))
-
-    (define/override (mem f)
-      (with-let-ADDR addr
-        (define args=>code (make-hash))
-        (define next-counter -1)
-        (super mem
-               (lambda args
-                 (define code
-                   (hash-ref! args=>code args
-                              (lambda ()
-                                (begin0 next-counter
-                                  (set! next-counter (sub1 next-counter))))))
-                 (with-ADDR (addr-update addr code)
-                   (apply f args))))))
     ))

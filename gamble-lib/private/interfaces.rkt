@@ -92,10 +92,13 @@
 ;; Stochastic models
 
 ;; A (Model X) is one of
-;; - (model (StochasticCtx Addr -> X))
+;; - (model (StochasticCtx -> X))
 ;; - (-> X)
 
+;; Addr is passed by dynamic protocol (continuation mark).
+
 (struct model (proc))
+
 
 ;; ============================================================
 ;; Stochastic contexts
@@ -112,7 +115,7 @@
     mem         ;; (X ... -> Y) -> (X ... -> Y)
     run-model   ;; (Model A ...) -> (values A ...)
 
-    run         ;; (Model A ...) -> (U (list A ...) #f)
+    run-top     ;; (Model A ...) -> (U (list A ...) #f)
     ))
 
 (define plain-stochastic-ctx%
@@ -127,13 +130,12 @@
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
       (define (ctx-mem f) (mem f))
-      (define (ctx-run m) (run m))
-      (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run))
+      (define (ctx-run-model m) (run-model m))
+      (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
 
     (define/public (sample dist _label)
       (dist-sample dist))
 
-    ;; No ambient weight to affect; just check likelihood is non-zero.
     (define/public (dscore dn)
       (error 'dscore "called outside of sampling context"))
     (define/public (lscore ll ddim)
@@ -149,32 +151,27 @@
     (define/public (mem f)
       (define memo-table (make-hash))
       (define (mf . args)
-        (unless (eq? (current-stochastic-ctx) this)
-          (error (or (object-name f) 'memoized-function)
-                 "called in different stochastic context"))
-        (hash-ref! memo-table args (lambda () (apply f args))))
-      (define fname (object-name f))
-      (define name
-        (cond [fname (string->symbol (format "memoized-~a" fname))]
-              [else 'memoized-function]))
-      (procedure-reduce-arity mf (procedure-arity f) name))
+        (hash-ref! memo-table args
+                   (lambda ()
+                     (parameterize ((current-stochastic-ctx this))
+                       (apply f args)))))
+      (procedure-reduce-arity mf (procedure-arity f) 'memoized-function))
 
     (define/public (run-model m)
-      (match m
-        [(model proc)
-         (proc this #f)]
-        [(? procedure? proc)
-         (proc)]))
-
-    (define/public (run m)
-      (define go
+      (parameterize ((current-stochastic-ctx this))
         (match m
           [(model proc)
-           (lambda () (call-with-values (lambda () (proc this init-addr)) list))]
+           (proc this)]
           [(? procedure? proc)
-           (lambda () (call-with-values proc list))]))
-      (parameterize ((current-stochastic-ctx this))
-        (call-with-continuation-prompt go escape-prompt)))
+           (proc)])))
+
+    (define/public (run-top m)
+      (call-with-values
+       (lambda ()
+         (call-with-continuation-prompt
+          (lambda () (run-model m))
+          escape-prompt))
+       list))
     ))
 
 (define current-stochastic-ctx
@@ -195,7 +192,7 @@
 (define (dynamic-fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 
 (define (dynamic-mem f) (send (current-stochastic-ctx) mem f))
-(define (dynamic-run m) (send (current-stochastic-ctx) run m))
+(define (dynamic-run-model m) (send (current-stochastic-ctx) run-model m))
 
 (define-syntax-parameter sample
   (make-rename-transformer (quote-syntax dynamic-sample)))
@@ -210,10 +207,10 @@
 (define-syntax-parameter mem
   (make-rename-transformer (quote-syntax dynamic-mem)))
 (define-syntax-parameter run-model
-  (make-rename-transformer (quote-syntax dynamic-run)))
+  (make-rename-transformer (quote-syntax dynamic-run-model)))
 
 (define-syntax-rule (with-ctx ctx body ...)
-  (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run)
+  (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model)
                 (ctx-get-functions ctx)])
     (syntax-parameterize ([sample (make-rename-transformer (quote-syntax ctx-sample))]
                           [dscore (make-rename-transformer (quote-syntax ctx-dscore))]
@@ -221,5 +218,5 @@
                           [observe (make-rename-transformer (quote-syntax ctx-observe))]
                           [fail (make-rename-transformer (quote-syntax ctx-fail))]
                           [mem (make-rename-transformer (quote-syntax ctx-mem))]
-                          [run-model (make-rename-transformer (quote-syntax ctx-run))])
+                          [run-model (make-rename-transformer (quote-syntax ctx-run-model))])
       body ...)))

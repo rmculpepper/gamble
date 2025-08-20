@@ -2,8 +2,54 @@
 (require racket/fixnum)
 (provide with-put-ADDR
          with-get-ADDR
-         addr-extend
-         init-addr)
+         addr-add-call
+         addr-add-mem
+         init-hash-addr
+         init-full-addr)
+
+(struct auto-label (addr) #:prefab)
+
+;; Addr is one of
+;; - HashAddr  -- compact, may introduce collisions
+;; - FullAddr  -- addrs grow, no artificial collisions
+
+;; HashAddr is one of
+;; - Fixnum
+;; - (cons (cons (list 'mem Any ...) HashAddr) Fixnum)
+
+;; FullAddr is one of
+;; - (cons Fixnum FullAddr/null)
+;; - (cons (list 'mem Any ...) FullAddr)
+
+;; addr-add-call : Addr/#f Fixnum -> Addr/#f
+(define (addr-add-call addr cs)
+  (cond [(eq? addr #f) #f]
+        ;; HashAddr cases:
+        [(fixnum? addr) (addr-fxupdate addr cs)]
+        [(and #;(pair? addr) (fixnum? (cdr addr)))
+         (cons (car addr) (addr-fxupdate (cdr addr) cs))]
+        ;; FullAddr cases:
+        [else (cons cs addr)]))
+
+;; addr-add-mem : Addr/#f List -> Addr/#f
+(define (addr-add-mem addr args)
+  (cond [(eq? addr #f) #f]
+        ;; HashAddr cases:
+        [(fixnum? addr) (cons (cons (cons 'mem args) addr) init-fxaddr)]
+        [(and #;(pair? addr) (fixnum? (cdr addr)))
+         (cons (cons (cons 'mem args) addr) init-fxaddr)]
+        ;; FullAddr cases:
+        [else (cons (cons 'mem args) addr)]))
+
+(define init-full-addr '(0))
+(define init-hash-addr init-fxaddr)
+
+(define current-addr (make-parameter init-hash-addr))
+
+;; Addresses are passed between procedures using the "dynamic addr protocol":
+;; The caller puts the address in a continuation mark frame, and the callee
+;; receives the address from the top frame. Thus intermediate uninstrumented
+;; frames lead to address loss.
 
 (define ADDR-mark (string->uninterned-symbol "ADDR"))
 
@@ -13,32 +59,17 @@
 (define-syntax-rule (with-get-ADDR x body ...)
   (call-with-immediate-continuation-mark ADDR-mark (lambda (x) body ...)))
 
-(define-syntax-rule (addr-extend addr n)
-  (and addr (addr-update addr n)))
-
 ;; TODO: differentiate
 ;;   1. ADDR lost because of unknown context frames
 ;;   2. no ADDR because called out of context
 
-;; ----------------------------------------
-;; Addr as list of call-site indexes
-
-(module cons-addr racket/base
-  (provide init-addr
-           addr-update
-           addr-final)
-  (define init-addr null)
-  (define (addr-update base n) (cons n base))
-  (define (addr-final addr) addr))
-
-;; ----------------------------------------
-;; Addr as hash-code
+;; ============================================================
 
 (module hash-addr racket/base
   (require racket/fixnum)
-  (provide init-addr
-           addr-update
-           addr-final)
+  (provide init-fxaddr
+           addr-fxupdate
+           addr-fxfinal)
 
   ;; Addr = NonnegativeFixnum
 
@@ -71,16 +102,16 @@
 
   ;; ----------------------------------------
 
-  ;; init-addr : Addr
-  (define init-addr (fx 987654321))
+  ;; init-fxaddr : Addr
+  (define init-fxaddr (fx 987654321))
 
-  ;; addr-update : Addr Integer -> Addr
-  (define (addr-update h v)
+  ;; addr-fxupdate : Addr Integer -> Addr
+  (define (addr-fxupdate h v)
     (let* ([h (fxxor h (fh-mix (fx v)))]
            [h (fx*/wraparound h fh-m)])
       h))
 
-  ;; addr-final : Addr -> Addr
-  (define (addr-final h)
+  ;; addr-fxfinal : Addr -> Addr
+  (define (addr-fxfinal h)
     (fh-mix h)))
 (require (submod "." hash-addr))
