@@ -5,7 +5,7 @@
 #lang racket/base
 (require racket/match
          racket/class
-         "interfaces.rkt")
+         "base.rkt")
 (provide (all-defined-out))
 
 ;; ============================================================

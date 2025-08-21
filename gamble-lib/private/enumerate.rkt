@@ -7,7 +7,7 @@
          racket/class
          "dist/base.rkt"
          "dist/discrete.rkt"
-         "interfaces.rkt"
+         "base.rkt"
          "util/density.rkt"
          "util/real.rkt")
 (provide enumerate)

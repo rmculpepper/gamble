@@ -7,7 +7,7 @@
          racket/list
          racket/match
          "../dist.rkt"
-         "../interfaces.rkt"
+         "../base.rkt"
          "../model/addr.rkt"
          "../util/real.rkt"
          "../util/density.rkt")

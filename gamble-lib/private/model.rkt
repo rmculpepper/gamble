@@ -4,7 +4,7 @@
 
 #lang racket/base
 (require (for-syntax racket/base syntax/parse)
-         "interfaces.rkt"
+         "base.rkt"
          "model/addr.rkt"
          "model/instrument.rkt")
 (provide model*)

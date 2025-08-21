@@ -1,6 +1,6 @@
 #lang racket/base
 (require "dist.rkt"
-         "private/interfaces.rkt"
+         "private/base.rkt"
          "private/model/addr.rkt"
          "private/model.rkt"
          "private/rejection.rkt"

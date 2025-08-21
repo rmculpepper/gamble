@@ -15,7 +15,7 @@
          racket/match
          racket/stxparam
          "addr.rkt"
-         "../interfaces.rkt")
+         "../base.rkt")
 (provide (all-defined-out))
 
 (begin-for-syntax

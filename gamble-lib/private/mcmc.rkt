@@ -5,7 +5,7 @@
 #lang racket/base
 (require racket/class
          racket/match
-         "interfaces.rkt"
+         "base.rkt"
          "mcmc/base.rkt"
          "mcmc/transitions.rkt"
          "util/real.rkt")

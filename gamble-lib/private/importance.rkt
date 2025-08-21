@@ -6,7 +6,7 @@
 (require racket/match
          racket/class
          "dist/base.rkt"
-         "interfaces.rkt"
+         "base.rkt"
          "util/density.rkt")
 (provide (all-defined-out))
 
