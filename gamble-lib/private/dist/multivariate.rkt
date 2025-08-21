@@ -29,7 +29,7 @@
      (-multinomial-pdf n ws x log?))
    (define (-density self x log?)
      (match-define (multinomial-dist n ws) self)
-     (density (-multinomial-pdf n ws x log?) 0 log?))
+     (density log? (-multinomial-pdf n ws x log?) #;0))
    ;; (define (-measure ms) #f)
    (define (-total-measure self) 1)]
   #|
@@ -112,7 +112,7 @@
      (-dirichlet-pdf alpha x log?))
    (define (-density self x log?)
      (match-define (dirichlet-dist alpha) self)
-     (density (-dirichlet-pdf alpha x log?) (vector-length alpha) log?))]
+     (density log? (-dirichlet-pdf alpha x log?) #;(vector-length alpha)))]
   #|
   ;; #:support ;; [0,1]^n, components sum to 1
   #:mean (let ([alphasum (vector-sum alpha)])

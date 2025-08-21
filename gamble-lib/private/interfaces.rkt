@@ -128,7 +128,7 @@
     (define/public (get-functions)
       (define (ctx-sample dist [label #f]) (sample dist label))
       (define (ctx-dscore dn) (dscore dn))
-      (define (ctx-lscore ll ddim) (lscore ll ddim))
+      (define (ctx-lscore ll) (lscore ll))
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
       (define (ctx-mem f) (mem f))
@@ -143,8 +143,8 @@
 
     (define/public (dscore dn)
       (-dscore 'dscore dn))
-    (define/public (lscore ll ddim)
-      (-dscore 'lscore (density ll ddim #t)))
+    (define/public (lscore ll)
+      (-dscore 'lscore (density #t ll)))
     (define/public (observe d v)
       (-dscore 'observe (dist-density d v)))
 

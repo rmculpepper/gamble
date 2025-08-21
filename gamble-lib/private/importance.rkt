@@ -41,6 +41,6 @@
     (define/public (get-observation-density) obs-dn)
 
     (define/override (-dscore who dn)
-      (when (density-zero? dn) (fail who))
-      (set! obs-dn (density* obs-dn dn)))
+      (set! obs-dn (density* obs-dn dn))
+      (when (density-zero? obs-dn) (fail who)))
     ))

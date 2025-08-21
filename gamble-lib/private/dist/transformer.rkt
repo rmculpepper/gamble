@@ -7,7 +7,6 @@
          "base.rkt"
          (submod "util.rkt" math)
          (submod "util.rkt" define)
-         "../util/density.rkt"
          "measurable.rkt"
          "discrete.rkt")
 (provide (all-defined-out))

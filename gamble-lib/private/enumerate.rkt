@@ -15,18 +15,15 @@
 (define (enumerate mdl)
   (define ctx (new enumerate-stochastic-ctx%))
   (define (init-thunk) (send ctx run-top mdl))
-  (define-values (dh ddim)
-    (let loop ([h (hash)] [ddim #f] [dn one-density] [thunk init-thunk])
+  (define-values (dh)
+    (let loop ([h (hash)] [dn one-density] [thunk init-thunk])
       (match (thunk)
         [(done v)
-         (when (and ddim (not (= ddim (density-ddim dn))))
-           (error 'enumerate "invalid program; observation density dimension varies"))
-         (values (hash-set h v (density+ dn (hash-ref h v #f)))
-                 (or ddim (density-ddim dn)))]
+         (hash-set h v (density+ dn (hash-ref h v #f)))]
         [(? list? wdn+continue-list)
-         (for/fold ([h h] [ddim ddim]) ([wdn+continue (in-list wdn+continue-list)])
+         (for/fold ([h h]) ([wdn+continue (in-list wdn+continue-list)])
            (match-define (cons wdn continue) wdn+continue)
-           (loop h ddim (density* wdn dn) continue))])))
+           (loop h (density* wdn dn) continue))])))
   (hash->discrete-dist (for/fold ([h (hash)]) ([(v dn) (in-hash dh)])
                          (hash-set h v (density->real dn)))))
 
@@ -49,7 +46,7 @@
       (call/restore
        (lambda (k restore)
          (for/list ([(v w) (in-dist dist)])
-           (cons (density w 0 #f) (lambda () (restore (lambda () (k v)))))))))
+           (cons (density #f w) (lambda () (restore (lambda () (k v)))))))))
 
     (define/override (-dscore who dn)
       (if (density-zero? dn)

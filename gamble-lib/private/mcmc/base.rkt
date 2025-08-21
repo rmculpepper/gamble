@@ -27,9 +27,9 @@
 ;; Trace, DB, Entry
 
 ;; A Trace is (trace Any DB Real Real Nat)
-(struct trace (value db ll-free ll-obs obs-ddim))
+(struct trace (value db ll-free ll-obs))
 
-(define init-trace (trace #f (hash) -inf.0 -inf.0 +inf.0))
+(define init-trace (trace #f (hash) -inf.0 -inf.0))
 
 ;; DB = (Hashof Label Entry)
 ;; DeltaDB = (Hashof Label (U Entry Proposal))
@@ -43,11 +43,7 @@
 
 ;; traces-obs-diff : Trace Trace -> Real
 (define (traces-obs-diff tr1 tr2)
-  (match-define (trace _ _ _ ll-obs1 obs-ddim1) tr1)
-  (match-define (trace _ _ _ ll-obs2 obs-ddim2) tr2)
-  (cond [(= obs-ddim1 obs-ddim2) (- ll-obs1 ll-obs2)]
-        [(< obs-ddim1 obs-ddim2) +inf.0]
-        [else -inf.0]))
+  (- (trace-ll-obs tr1) (trace-ll-obs tr2)))
 
 ;; traces-same-structure? : Trace Trace Boolean -> Boolean
 (define (traces-same-structure? prev-trace new-trace [quick? #f])
@@ -213,8 +209,7 @@
     (field [current-db (make-hash)] ;; DB, mutated
            [ll-free  0.0]     ;; sum of ll of all entries in current-db
            [ll-obs   0.0]     ;; sum of ll of all observations
-           [ll-diff  0.0]     ;; see get-ll-diff below
-           [obs-ddim   0])    ;; density dimension
+           [ll-diff  0.0])    ;; see get-ll-diff below
 
     (super-new)
 
@@ -294,7 +289,6 @@
 
     (define/override (-dscore who dn)
       (set! ll-obs (+ ll-obs (density->real dn #t)))
-      (set! obs-ddim (+ obs-ddim (density-ddim dn)))
       (when (logspace-zero? ll-obs) (fail who)))
 
     (define/override (mem f)
@@ -312,7 +306,7 @@
     ;; make-trace : Any -> Trace
     ;; Should only be called after run, once current-db has stopped changing.
     (define/public (make-trace value)
-      (trace value current-db ll-free ll-obs obs-ddim))
+      (trace value current-db ll-free ll-obs))
 
     ;; get-ll-diff : -> Real
     ;; ll-diff = SUM_{k in K} (- (entry-ll current-db[k]) (entry-ll prev-db[k]))

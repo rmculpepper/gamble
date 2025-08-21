@@ -69,7 +69,7 @@
   [(define (-sample self)
      (-discrete-sample self))
    (define (-density self x log?)
-     (density (-discrete-pdf self x log?) 0 log?))
+     (density log? (-discrete-pdf self x log?) #;0))
    (define (-pdf self x log?)
      (-discrete-pdf self x log?))
    (define (-measure self ms)
@@ -440,7 +440,7 @@
     (check-equal? (dist-pdf ed 'a #t) (log 1/2))
     (check-equal? (dist-pdf ed 'z #f) 0)
     (check-equal? (dist-pdf ed 'z #t) -inf.0)
-    (check-equal? (dist-density ed 'a) (density 1/2 0 #f))
+    (check-equal? (dist-density ed 'a) (density #f 1/2 #;0))
     (check-equal? (dist-measure ed (measurable (hash 'a #t 'c #t) null)) (+ 1/2 1/6))
     (check-equal? (dist-total-measure ed) 1)
     (check-equal? (for/hash ([v (in-vector (discrete-dist-values ed))]

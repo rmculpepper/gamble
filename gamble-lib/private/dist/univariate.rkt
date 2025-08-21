@@ -12,7 +12,6 @@
          (prefix-in m: math/special-functions)
          (prefix-in m: (only-in math/flonum flbinomial fllog-binomial))
          "base.rkt"
-         "../util/density.rkt"
          (submod "util.rkt" define)
          (submod "util.rkt" math)
          (submod "util.rkt" search)

@@ -7,8 +7,7 @@
          racket/match
          "base.rkt"
          "../dist.rkt"
-         "../util/real.rkt"
-         "../util/density.rkt")
+         "../util/real.rkt")
 (provide (all-defined-out))
 
 ;; ============================================================

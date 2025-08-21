@@ -26,9 +26,9 @@
   #:fallbacks
   [(define (-density self x log?)
      (cond [(continuous-dist? self)
-            (density (dist-pdf self x log?) 1 log?)]
+            (density log? (dist-pdf self x log?) #;1)]
            [(integer-dist? self)
-            (density (dist-pdf self x log?) 0 log?)]
+            (density log? (dist-pdf self x log?) #;0)]
            [else (raise-support-error 'dist-density self)]))
    (define (-measure self ms)
      (match-define (measurable atoms ivls) ms)
@@ -103,7 +103,6 @@
 
 (define-generics real-dist ;; extends dist; comprises {continuous,integer}-dist
   ;; Represents normalized real-valued distributions.
-  ;; If ddim = 1, continuous wrt Lebesgue measure.
   ;; type X = Real
   (-cdf real-dist x log? 1-p?)     ;; Dist X Boolean Boolean -> NNReal
   (-invcdf real-dist x log? 1-p?)  ;; Dist Real Bool Bool -> X
