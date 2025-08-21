@@ -45,8 +45,6 @@
 
 ;; ============================================================
 
-(define INIT-ITERS 10)
-
 (define mcmc%
   (class object%
     (init-field mdl
@@ -85,23 +83,6 @@
         (define-values (accepted? trace txinfo)
           (step transition))
         (if accepted? (void) (initialize transition))))
-
-    #|
-    ;; Note: {MAP,MLE}-estimate is argmax over *all* unconditioned variables.
-    ;; FIXME: figure out how to do subsets.
-    (define/public (MAP-estimate iters)
-      (*estimate iters trace-ll))
-    (define/public (MLE-estimate iters)
-      (*estimate iters trace-ll-obs))
-
-    (define/private (*estimate iters get-trace-ll)
-      (void (sample))
-      (define best-trace
-        (for/fold ([best-trace last-trace]) ([n (in-range iters)])
-          (void (sample))
-          (if (trace>? last-trace best-trace) last-trace best-trace)))
-      (trace-value best-trace))
-    |#
     ))
 
 (define mcmc-sampler%
