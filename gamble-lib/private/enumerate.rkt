@@ -45,16 +45,18 @@
     (define memo-key (gensym))
     (define ctag (make-continuation-prompt-tag))
 
-    (define/override (sample dist _id)
+    (define/override (sample dist label)
       (call/restore
        (lambda (k restore)
          (for/list ([(v w) (in-dist dist)])
            (cons (density w 0 #f) (lambda () (restore (lambda () (k v)))))))))
 
-    (define/override (dscore dn)
-      (call/restore
-       (lambda (k restore)
-         (list (cons dn (lambda () (restore (lambda () (k (void))))))))))
+    (define/override (-dscore who dn)
+      (if (density-zero? dn)
+          (fail who)
+          (call/restore
+           (lambda (k restore)
+             (list (cons dn (lambda () (restore (lambda () (k (void)))))))))))
 
     (define/override (fail reason)
       (call/restore

@@ -30,6 +30,6 @@
   (class plain-stochastic-ctx%
     (super-new)
 
-    (define/override (dscore dn)
-      (error 'dscore "not supported by rejection sampler"))
+    (define/override (-dscore who dn)
+      (error who "not supported by rejection sampler"))
     ))

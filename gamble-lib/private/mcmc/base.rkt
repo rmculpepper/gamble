@@ -31,8 +31,8 @@
 
 (define init-trace (trace #f (hash) -inf.0 -inf.0 +inf.0))
 
-;; DB = (Hashof Address Entry)
-;; DeltaDB = (Hashof Address (U Entry Proposal))
+;; DB = (Hashof Label Entry)
+;; DeltaDB = (Hashof Label (U Entry Proposal))
 
 ;; Entry = (entry Dist[X] X Real)
 (struct entry (dist value ll) #:prefab)
@@ -56,8 +56,8 @@
   (and (= (hash-count (trace-db prev-trace))
           (hash-count (trace-db new-trace)))
        (or quick?
-           (for/and ([addr (in-hash-keys prev-db)])
-             (hash-has-key? new-db addr)))))
+           (for/and ([label (in-hash-keys prev-db)])
+             (hash-has-key? new-db label)))))
 
 ;; hash-random-key : Hash[K => V] (K -> Boolean) -> K or #f
 (define (hash-random-key h [ok-key? #f])
@@ -105,12 +105,12 @@
 
 (define proposal<%>
   (interface ()
-    propose1    ;; Addr Dist[X] X -> (U #f (cons X Real))
+    propose1    ;; Label Dist[X] X -> (U #f (cons X Real))
     ;; Used for single-site proposal, or when adjusted variables are
     ;; known to be independent (dist parameters will not change from
     ;; previous values).
 
-    propose2    ;; Addr Dist[X] Dist[X] X -> (U #f (cons X Real))
+    propose2    ;; Label Dist[X] Dist[X] X -> (U #f (cons X Real))
     ;; Used for multi-site proposal, when change to one variable might
     ;; affect parameters of other proposal variables.
     ))
@@ -136,25 +136,25 @@
 
 (define proposal%
   (class* object% (proposal<%>)
-    (init-field propose1-proc   ;; Addr Dist[X] X -> (U #f (cons X Real) Proposal)
-                propose2-proc   ;; Addr Dist[X] Dist[X] X -> (U #f (cons X Real) Proposal)
-                propose-dist)   ;; Addr Dist[X] X -> (U #f Dist[X])
-    (define/public (propose1 addr dist prev-value)
-      (define r (propose1* addr dist prev-value))
-      (if (proposal? r) (send r propose1 addr dist prev-value) r))
-    (define/private (propose1* addr dist prev-value)
-      (or (and propose1-proc (propose1-proc addr dist prev-value))
-          (propose2* addr dist dist prev-value)))
-    (define/public (propose2 addr new-dist prev-dist prev-value)
-      (define r (propose2* addr new-dist prev-dist prev-value))
-      (if (proposal? r) (send r propose2 addr new-dist prev-dist prev-value) r))
-    (define/private (propose2* addr new-dist prev-dist prev-value)
-      (or (and propose2-proc (propose2-proc addr new-dist prev-dist prev-value))
+    (init-field propose1-proc   ;; Label Dist[X] X -> (U #f (cons X Real) Proposal)
+                propose2-proc   ;; Label Dist[X] Dist[X] X -> (U #f (cons X Real) Proposal)
+                propose-dist)   ;; Label Dist[X] X -> (U #f Dist[X])
+    (define/public (propose1 label dist prev-value)
+      (define r (propose1* label dist prev-value))
+      (if (proposal? r) (send r propose1 label dist prev-value) r))
+    (define/private (propose1* label dist prev-value)
+      (or (and propose1-proc (propose1-proc label dist prev-value))
+          (propose2* label dist dist prev-value)))
+    (define/public (propose2 label new-dist prev-dist prev-value)
+      (define r (propose2* label new-dist prev-dist prev-value))
+      (if (proposal? r) (send r propose2 label new-dist prev-dist prev-value) r))
+    (define/private (propose2* label new-dist prev-dist prev-value)
+      (or (and propose2-proc (propose2-proc label new-dist prev-dist prev-value))
           (and propose-dist
-               (cond [(propose-dist addr new-dist prev-value)
+               (cond [(propose-dist label new-dist prev-value)
                       => (lambda (fd)
                            (define new-value (dist-sample fd))
-                           (cond [(propose-dist addr prev-dist new-value)
+                           (cond [(propose-dist label prev-dist new-value)
                                   => (lambda (rd)
                                        (define lF (dist-pdf fd new-value #t))
                                        (define lR (dist-pdf rd prev-value #t))
@@ -166,23 +166,23 @@
 (define resample-proposal%
   (class* object% (proposal<%>)
     (super-new)
-    (define/public (propose1 addr dist value)
+    (define/public (propose1 label dist value)
       (propose1:resample dist value))
-    (define/public (propose2 addr new-dist prev-dist prev-value)
+    (define/public (propose2 label new-dist prev-dist prev-value)
       (propose2:resample new-dist prev-dist prev-value))
     ))
 
 (define drift-proposal%
   (class* object% (proposal<%>)
     (init-field params?     ;; Boolean
-                scale)      ;; PosReal or (Addr Dist -> PosReal)
+                scale)      ;; PosReal or (Label Dist -> PosReal)
     (super-new)
-    (define/public (propose1 addr dist value)
-      (dist-drift1 dist value params? (get-scale addr dist)))
-    (define/public (propose2 addr new-dist old-dist old-value)
-      (dist-drift2 new-dist old-dist old-value params? (get-scale addr new-dist)))
-    (define/private (get-scale addr dist)
-      (if (real? scale) scale (scale addr dist)))
+    (define/public (propose1 label dist value)
+      (dist-drift1 dist value params? (get-scale label dist)))
+    (define/public (propose2 label new-dist old-dist old-value)
+      (dist-drift2 new-dist old-dist old-value params? (get-scale label new-dist)))
+    (define/private (get-scale label dist)
+      (if (real? scale) scale (scale label dist)))
     ))
 
 (define (proposal #:propose1 [propose1 #f]
@@ -223,79 +223,79 @@
     ;; complete record of all random choices made by the program;
     ;; if accepted, it typically becomes a new execution's prev-db.
 
-    (define/override (sample dist addr)
-      (if addr
-          (sample* dist addr)
+    (define/override (sample dist label)
+      (if label
+          (sample* dist label)
           (with-get-ADDR addr
             (sample* dist (and addr (auto-label addr))))))
 
-    (define/private (sample* dist addr)
-      (unless addr (error 'sample "missing label, required for MCMC sampler"))
-      (when (hash-ref current-db addr #f)
-        (error 'sample "duplicate label\n  label: ~e" addr))
-      (define delta-e (hash-ref delta-db addr #f))
-      (define prev-e (hash-ref prev-db addr #f))
-      (cond [delta-e (sample/delta dist addr delta-e prev-e)]
-            [prev-e (sample/prev dist addr prev-e)]
-            [else (sample/new dist addr #f)]))
+    (define/public (sample* dist label)
+      (unless label (error 'sample "missing label, required for MCMC sampler"))
+      (when (hash-ref current-db label #f)
+        (error 'sample "duplicate label\n  label: ~e" label))
+      (define delta-e (hash-ref delta-db label #f))
+      (define prev-e (hash-ref prev-db label #f))
+      (cond [delta-e (sample/delta dist label delta-e prev-e)]
+            [prev-e (sample/prev dist label prev-e)]
+            [else (sample/new dist label #f)]))
 
-    (define/private (sample/delta dist addr delta-e prev-e)
+    (define/private (sample/delta dist label delta-e prev-e)
       (unless prev-e (error 'sample "internal error: in delta, not in previous"))
       (cond [(entry? delta-e)
-             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
+             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e" label
                             (entry-dist prev-e) (entry-value prev-e)
                             (entry-dist delta-e) (entry-value delta-e))
              (unless (equal? (entry-dist delta-e) dist)
                (error 'sample "internal error: delta has wrong dist"))
-             (db-add! addr delta-e prev-e)
+             (db-add! label delta-e prev-e)
              (entry-value delta-e)]
             [(proposal? proposal)
              (match-define (entry prev-dist prev-value _) prev-e)
              (match-define (cons new-value l-R/F)
-               (or (send proposal propose2 addr dist prev-dist prev-value)
+               (or (send proposal propose2 label dist prev-dist prev-value)
                    (begin (log-mcmc-info "Late proposal returned #f; resampling")
                           (propose2:resample dist prev-dist prev-value))))
-             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
+             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" label
                             prev-dist prev-value dist new-value (exp l-R/F))
              (define new-ll (dist-pdf dist new-value #t))
-             (db-add! addr (entry dist new-value new-ll) prev-e)
+             (db-add! label (entry dist new-value new-ll) prev-e)
              (set! ll-R/F (+ ll-R/F l-R/F))
              new-value]))
 
-    (define/private (sample/prev dist addr prev-e)
+    (define/private (sample/prev dist label prev-e)
       (cond [(equal? (entry-dist prev-e) dist)
-             (log-mcmc-info "REUSE ~s: ~e, ~e" addr dist (entry-value prev-e))
-             (db-add! addr prev-e)
+             (log-mcmc-info "REUSE ~s: ~e, ~e" label dist (entry-value prev-e))
+             (db-add! label prev-e)
              (entry-value prev-e)]
             [(eq? (dist-type (entry-dist prev-e)) (dist-type dist))
              (define new-ll (dist-pdf dist (entry-value prev-e) #t))
              (cond [(logspace-nonzero? new-ll)
                     (define value (entry-value prev-e))
                     (define new-e (entry dist value new-ll))
-                    (log-mcmc-info "RESCORE ~s: ~e, ~e" addr dist value)
-                    (db-add! addr new-e prev-e)
+                    (log-mcmc-info "RESCORE ~s: ~e, ~e" label dist value)
+                    (db-add! label new-e prev-e)
                     value]
                    [else (fail 'sample-rescore)])]
-            [else (sample/new dist addr prev-e)]))
+            [else (sample/new dist label prev-e)]))
 
-    (define/private (sample/new dist addr prev-e)
+    (define/private (sample/new dist label prev-e)
       (when disallow-new/who
         (error disallow-new/who
                "structural change (sampling new variable) not allowed"))
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
       (if prev-e
-          (log-mcmc-info "MISMATCH ~s: ~e, ~e => ~e, ~e" addr
+          (log-mcmc-info "MISMATCH ~s: ~e, ~e => ~e, ~e" label
                          (entry-dist prev-e) (entry-value prev-e)
                          dist value)
-          (log-mcmc-info "NEW ~s: ~e, ~e" addr dist value))
-      (db-add! addr (entry dist value ll) prev-e)
+          (log-mcmc-info "NEW ~s: ~e, ~e" label dist value))
+      (db-add! label (entry dist value ll) prev-e)
       value)
 
-    (define/override (dscore dn)
+    (define/override (-dscore who dn)
       (set! ll-obs (+ ll-obs (density->real dn #t)))
       (set! obs-ddim (+ obs-ddim (density-ddim dn)))
-      (when (logspace-zero? ll-obs) (fail 'dscore)))
+      (when (logspace-zero? ll-obs) (fail who)))
 
     (define/override (mem f)
       (with-get-ADDR addr
@@ -324,7 +324,7 @@
     ;; Mutated by late proposals, eg from multi-site MH.
     (define/public (get-ll-R/F) ll-R/F)
 
-    ;; db-add! : Address Entry (U #f Entry) -> Void
+    ;; db-add! : Label Entry (U #f Entry) -> Void
     ;; Add entry to current-db and update ll-free, ll-obs.
     ;; When prev-e is not #f, also update ll-diff.
     (define/private (db-add! context e [prev-e #f])
@@ -338,17 +338,17 @@
 
 (define initializing-tracing-stochastic-ctx%
   (class tracing-stochastic-ctx%
-    (init-field get-value)  ;; (Addr Dist[X] -> (U #f (list X)))
+    (init-field get-value)  ;; (Label Dist[X] -> (U #f (list X)))
     (inherit-field prev-db)
     (super-new [prev-db (make-hash)] ;; mutated
                [delta-db (hash)])
 
-    ;; Hack: override sample to add entries to prev-db on demand.
-    (define/override (sample dist addr)
-      (match (get-value addr dist)
+    ;; Hack: override sample* to add entries to prev-db on demand.
+    (define/override (sample* dist label)
+      (match (and label (get-value label dist))
         [(list value)
          (define ll (dist-pdf dist value #t))
-         (hash-set! prev-db addr (entry dist value ll))
-         (super sample dist addr)]
-        [_ (super sample dist addr)]))
+         (hash-set! prev-db label (entry dist value ll))]
+        [_ (void)])
+      (super sample* dist label))
     ))

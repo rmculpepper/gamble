@@ -101,11 +101,15 @@
 ;; ============================================================
 ;; Stochastic contexts
 
+;; A Label is one of
+;; - (auto-label Addr)  -- managed by model/instrument
+;; - Any (not false)    -- chosen by user
+
 (define stochastic-ctx<%>
   (interface ()
     get-functions
 
-    sample      ;; (Dist A) Label -> A
+    sample      ;; (Dist A) Label/#f -> A
     observe     ;; Dist[X] X -> Void
     dscore      ;; Density -> Void
     lscore      ;; LogReal Nat -> Void
@@ -131,15 +135,18 @@
       (define (ctx-run-model m) (run-model m))
       (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
 
-    (define/public (sample dist _label)
+    (define/public (sample dist label)
       (dist-sample dist))
 
+    (define/public (-dscore who dn)
+      (error who "called outside of sampling context"))
+
     (define/public (dscore dn)
-      (error 'dscore "called outside of sampling context"))
+      (-dscore 'dscore dn))
     (define/public (lscore ll ddim)
-      (dscore (density ll ddim #t)))
+      (-dscore 'lscore (density ll ddim #t)))
     (define/public (observe d v)
-      (dscore (dist-density d v)))
+      (-dscore 'observe (dist-density d v)))
 
     (define/public (fail reason)
       (unless (continuation-prompt-available? escape-prompt)

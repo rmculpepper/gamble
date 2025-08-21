@@ -15,32 +15,32 @@
 ;; ============================================================
 ;; Transitions
 
-(define (initialize-transition [get-value (lambda (addr dist) #f)]
+(define (initialize-transition [get-value (lambda (label dist) #f)]
                                #:hash [value-hash #f])
-  (define (get-value* addr dist)
-    (cond [(hash-has-key? value-hash addr)
-           (list (hash-ref value-hash addr))]
-          [else (get-value addr dist)]))
+  (define (get-value* label dist)
+    (cond [(hash-has-key? value-hash label)
+           (list (hash-ref value-hash label))]
+          [else (get-value label dist)]))
   (new initialize-transition% (get-value get-value*)))
 
 (define (single-site-transition #:proposal [proposal (resample-proposal)]
-                                #:any [ok-addr? #f])
-  (new single-site-transition% (ok-addr? ok-addr?) (proposal proposal)))
+                                #:any [ok-label? #f])
+  (new single-site-transition% (ok-label? ok-label?) (proposal proposal)))
 
 (define (multi-site-transition #:proposal proposal
-                               #:all [ok-addr? #f])
-  (new multi-site-transition% (ok-addr? ok-addr?) (proposal proposal)))
+                               #:all [ok-label? #f])
+  (new multi-site-transition% (ok-label? ok-label?) (proposal proposal)))
 
-(define (enumerative-gibbs-transition #:any [ok-addr? #f])
-  (new enumerative-gibbs-transition% (ok-addr? ok-addr?)))
+(define (enumerative-gibbs-transition #:any [ok-label? #f])
+  (new enumerative-gibbs-transition% (ok-label? ok-label?)))
 
 (define (slice-transition #:method [method 'double]
                           #:W [Wr 1.0]
                           #:Wi [Wi (exact (ceiling Wr))]
                           #:M [M +inf.0]
                           #:small-dist-limit [small-dist 10]
-                          #:any [ok-addr? #f])
-  (new slice-transition% (ok-addr? ok-addr?) (method method)
+                          #:any [ok-label? #f])
+  (new slice-transition% (ok-label? ok-label?) (method method)
        (Wr Wr) (Wi Wi) (M M) (small-dist small-dist)))
 
 ;; ============================================================

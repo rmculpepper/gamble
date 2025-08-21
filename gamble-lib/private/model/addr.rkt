@@ -1,5 +1,4 @@
 #lang racket/base
-(require racket/fixnum)
 (provide with-put-ADDR
          with-get-ADDR
          addr-add-call
@@ -8,6 +7,10 @@
          init-full-addr
          (struct-out auto-label)
          current-init-addr)
+
+;; Note: Label vs Addr
+;; - Label is any non-false value, includes (auto-label Addr)
+;; - Addr refers to addresses managed by instrumenter
 
 (struct auto-label (addr) #:prefab)
 
@@ -71,7 +74,7 @@
   (require racket/fixnum)
   (provide init-fxaddr
            addr-fxupdate
-           addr-fxfinal)
+           #;addr-fxfinal)
 
   ;; Addr = NonnegativeFixnum
 
@@ -113,6 +116,7 @@
            [h (fx*/wraparound h fh-m)])
       h))
 
+  #;
   ;; addr-fxfinal : Addr -> Addr
   (define (addr-fxfinal h)
     (fh-mix h)))
