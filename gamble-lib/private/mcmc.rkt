@@ -56,7 +56,7 @@
     ;; step : Transition -> (values Boolean Trace TxInfo)
     (define/public (step transition)
       (define-values (new-trace new-txinfo)
-        (send transition run-top mdl last-trace))
+        (send transition run mdl last-trace))
       (cond [new-trace
              (set! last-trace new-trace)
              (values #t new-trace new-txinfo)]

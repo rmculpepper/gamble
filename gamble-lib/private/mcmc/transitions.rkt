@@ -17,11 +17,11 @@
   (class* object% (mcmc-transition<%>)
     (super-new)
 
-    ;; run : (-> A) Trace -> (values Trace/#f TxInfo)
-    (define/public (run thunk prev-trace)
+    ;; run : (Model A) Trace -> (values Trace/#f TxInfo)
+    (define/public (run mdl prev-trace)
       (log-mh-info "Starting transition (~s)" (object-name this%))
       (define-values (laccept new-trace new-txinfo)
-        (run* thunk prev-trace))
+        (run* mdl prev-trace))
       (define u (log (random)))
       (cond [(< u laccept)
              (log-mh-info "Accepted MH step with threshold ~s" (exp laccept))
@@ -30,7 +30,7 @@
              (log-mh-info "Rejected MH step with threshold ~s" (exp laccept))
              (values #f new-txinfo)]))
 
-    ;; run* : (-> A) Trace -> (values Real Trace/#f TxInfo)
+    ;; run* : (Model A) Trace -> (values Real Trace/#f TxInfo)
     (abstract run*)
     ))
 
@@ -41,13 +41,13 @@
     (init-field get-value)  ;; (Addr Dist -> (or/c (list X) #f))
     (super-new)
 
-    ;; run : (-> A) #f -> (values Trace/#f TxInfo)
-    (define/public (run thunk prev-trace)
+    ;; run : (Model A) #f -> (values Trace/#f TxInfo)
+    (define/public (run mdl prev-trace)
       (log-mh-info "Starting transition (~s)" (object-name this%))
       (define ctx
         (new initializing-tracing-stochastic-ctx%
              (initializer get-value)))
-      (match (send ctx run thunk)
+      (match (send ctx run-top mdl)
         [(list new-value)
          (define new-trace (send ctx make-trace new-value))
          (values 0.0 new-trace 'initialize-transition)]
@@ -61,8 +61,8 @@
     (init-field [temperature 1.0])
     (super-new)
 
-    ;; run* : (-> A) Trace -> (values Real Trace/#f TxInfo)
-    (define/override (run* thunk prev-trace)
+    ;; run* : (Model A) Trace -> (values Real Trace/#f TxInfo)
+    (define/override (run* mdl prev-trace)
       (define prev-db (trace-db prev-trace))
       (define-values (delta-db delta-ll-R/F) (delta prev-trace))
       (define ctx
@@ -70,7 +70,7 @@
              (prev-db prev-db)
              (delta-db delta-db)
              (ll-R/F delta-ll-R/F)))
-      (match (send ctx run thunk)
+      (match (send ctx run-top mdl)
         [(list new-value)
          (define new-trace (send ctx make-trace new-value))
          (define ll-diff (send ctx get-ll-diff))
@@ -184,8 +184,8 @@
     (init-field ok-addr?)     ;; (Addr -> Boolean) or #f
     (super-new)
 
-    ;; run : (-> A) Trace -> (values (U Trace #f) TxInfo)
-    (define/public (run thunk prev-trace)
+    ;; run : (Model A) Trace -> (values (U Trace #f) TxInfo)
+    (define/public (run mdl prev-trace)
       (define who 'enumerative-gibbs-transition)
       (log-mh-info "Starting transition (~s)" (object-name this%))
       (define prev-db (trace-db prev-trace))
@@ -209,7 +209,7 @@
                                    (prev-db prev-db)
                                    (delta-db delta-db)
                                    (disallow-new/who who)))
-                  (match (send ctx run thunk)
+                  (match (send ctx run-top mdl)
                     [(list new-result)
                      (define new-trace (send ctx make-trace new-result))
                      (unless (traces-same-structure? prev-trace new-trace #t)
@@ -234,8 +234,8 @@
                 [small-dist 10]) ;; limit of small-dist optimization, 0 to disable
     (super-new)
 
-    ;; run : (-> A) Trace -> (cons (U Trace #f) TxInfo)
-    (define/public (run thunk prev-trace)
+    ;; run : (Model A) Trace -> (cons (U Trace #f) TxInfo)
+    (define/public (run mdl prev-trace)
       (define who 'slice-transition)
       (log-mh-info "Starting transition (~s)" (object-name this%))
       (define prev-db (trace-db prev-trace))
@@ -247,13 +247,13 @@
         (error who "distribution does not support slice sampling\n  dist: ~e" dist))
       (define slice
         (new slice% (method method) (Wi Wi) (Wr Wr) (M M) (small-dist small-dist)
-             (thunk thunk) (prev-trace prev-trace) (addr addr)))
+             (mdl mdl) (prev-trace prev-trace) (addr addr)))
       (values (send slice sample) (vector who addr)))
     ))
 
 (define slice%
   (class object%
-    (init-field method Wi Wr M small-dist thunk prev-trace addr)
+    (init-field method Wi Wr M small-dist mdl prev-trace addr)
     (super-new)
 
     (define prev-db (trace-db prev-trace))
@@ -290,7 +290,7 @@
                     (prev-db prev-db)
                     (delta-db delta-db)
                     (disallow-new/who 'slice)))
-             (match (send ctx run thunk)
+             (match (send ctx run-top mdl)
                [(list sample-value)
                 (define new-trace (send ctx make-trace sample-value))
                 (unless (traces-same-structure? new-trace prev-trace)

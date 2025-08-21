@@ -93,7 +93,7 @@
 (define mcmc-transition<%>
   (interface ()
     ;; type TxInfo
-    run  ;; (-> A) Trace -> (values (U Trace #f) TxInfo)
+    run  ;; (Model A) Trace -> (values (U Trace #f) TxInfo)
     ))
 
 
