@@ -19,15 +19,14 @@
 
     ;; run : (Model A) Trace -> (values Trace/#f TxInfo)
     (define/public (run mdl prev-trace)
-      (log-mh-info "Starting transition (~s)" (object-name this%))
       (define-values (laccept new-trace new-txinfo)
         (run* mdl prev-trace))
       (define u (log (random)))
       (cond [(< u laccept)
-             (log-mh-info "Accepted MH step with threshold ~s" (exp laccept))
+             (log-mcmc-info "Accepted MH step with threshold ~s" (exp laccept))
              (values new-trace new-txinfo)]
             [else
-             (log-mh-info "Rejected MH step with threshold ~s" (exp laccept))
+             (log-mcmc-info "Rejected MH step with threshold ~s" (exp laccept))
              (values #f new-txinfo)]))
 
     ;; run* : (Model A) Trace -> (values Real Trace/#f TxInfo)
@@ -43,7 +42,6 @@
 
     ;; run : (Model A) #f -> (values Trace/#f TxInfo)
     (define/public (run mdl prev-trace)
-      (log-mh-info "Starting transition (~s)" (object-name this%))
       (define ctx
         (new initializing-tracing-stochastic-ctx%
              (initializer get-value)))
@@ -113,7 +111,7 @@
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
       (cond [addr
-             (log-mh-info "Addr to change = ~s" addr)
+             (log-mcmc-info "Addr to change = ~s" addr)
              (match (hash-ref prev-db addr)
                [(entry prev-dist prev-value prev-ll)
                 (define-values (new-e ll-R/F)
@@ -129,13 +127,13 @@
     (define/public (delta-addr addr dist prev-value)
       (match-define (cons new-value ll-R/F)
         (or (send proposal propose1 addr dist prev-value)
-            (begin (log-mh-info "Proposal returned #f; resampling")
+            (begin (log-mcmc-info "Proposal returned #f; resampling")
                    (propose1:resample dist prev-value))))
-      (log-mh-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" addr dist
-                   prev-value new-value (exp ll-R/F))
+      (log-mcmc-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" addr dist
+                     prev-value new-value (exp ll-R/F))
       (define new-ll (dist-pdf dist new-value #t))
       (when (logspace-zero? new-ll)
-        (log-mh-info "proposed impossible value: ~e, ~e" dist new-value))
+        (log-mcmc-info "proposed impossible value: ~e, ~e" dist new-value))
       (values (entry dist new-value new-ll) ll-R/F))
 
     (define/override (accept-threshold* prev-trace new-trace)
@@ -187,11 +185,10 @@
     ;; run : (Model A) Trace -> (values (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
       (define who 'enumerative-gibbs-transition)
-      (log-mh-info "Starting transition (~s)" (object-name this%))
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key prev-db ok-addr?))
       (unless addr (error who "no suitable addr to change"))
-      (log-mh-info "Addr to change = ~s" addr)
+      (log-mcmc-info "Addr to change = ~s" addr)
       (match-define (entry dist prev-value _) (hash-ref prev-db addr))
       (unless (finite-dist? dist)
         (error who "distribution is not finite\n  addr: ~e\n  dist: ~e" addr dist))
@@ -237,11 +234,10 @@
     ;; run : (Model A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
       (define who 'slice-transition)
-      (log-mh-info "Starting transition (~s)" (object-name this%))
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key prev-db ok-addr?))
       (unless addr (error who "no suitable addr to change"))
-      (log-mh-info "Addr to change = ~s" addr)
+      (log-mcmc-info "Addr to change = ~s" addr)
       (match-define (entry dist prev-value _) (hash-ref prev-db addr))
       (unless (real-dist? dist)
         (error who "distribution does not support slice sampling\n  dist: ~e" dist))
@@ -263,9 +259,9 @@
 
     (define/public (sample)
       (define lthreshold (+ (log (random)) prev-ll))
-      (log-mh-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
+      (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
       (define-values (lo hi) (get-slice-bounds lthreshold))
-      (log-mh-info "Slice bounds = [~s,~s]" lo hi)
+      (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
       (select lo hi lthreshold))
 
     ;; ----------------------------------------

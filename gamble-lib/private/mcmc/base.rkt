@@ -13,7 +13,7 @@
          "../util/density.rkt")
 (provide (all-defined-out))
 
-(define-logger mh)
+(define-logger mcmc)
 
 ;; MCMC: sample X ~ f where f(x) is represented implicitly by program
 ;; - sample space is represented via `db` mapping "labels" to dist and value
@@ -241,9 +241,9 @@
     (define/private (sample/delta dist addr delta-e prev-e)
       (unless prev-e (error 'sample "internal error: in delta, not in previous"))
       (cond [(entry? delta-e)
-             (log-mh-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
-                          (entry-dist prev-e) (entry-value prev-e)
-                          (entry-dist delta-e) (entry-value delta-e))
+             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
+                            (entry-dist prev-e) (entry-value prev-e)
+                            (entry-dist delta-e) (entry-value delta-e))
              (unless (equal? (entry-dist delta-e) dist)
                (error 'sample "internal error: delta has wrong dist"))
              (db-add! addr delta-e prev-e)
@@ -252,10 +252,10 @@
              (match-define (entry prev-dist prev-value _) prev-e)
              (match-define (cons new-value l-R/F)
                (or (send proposal propose2 addr dist prev-dist prev-value)
-                   (begin (log-mh-info "Late proposal returned #f; resampling")
+                   (begin (log-mcmc-info "Late proposal returned #f; resampling")
                           (propose2:resample dist prev-dist prev-value))))
-             (log-mh-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
-                          prev-dist prev-value dist new-value (exp l-R/F))
+             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
+                            prev-dist prev-value dist new-value (exp l-R/F))
              (define new-ll (dist-pdf dist new-value #t))
              (db-add! addr (entry dist new-value new-ll) prev-e)
              (set! ll-R/F (+ ll-R/F l-R/F))
@@ -263,7 +263,7 @@
 
     (define/private (sample/prev dist addr prev-e)
       (cond [(equal? (entry-dist prev-e) dist)
-             (log-mh-info "REUSE ~s: ~e, ~e" addr dist (entry-value prev-e))
+             (log-mcmc-info "REUSE ~s: ~e, ~e" addr dist (entry-value prev-e))
              (db-add! addr prev-e)
              (entry-value prev-e)]
             [(eq? (dist-type (entry-dist prev-e)) (dist-type dist))
@@ -271,7 +271,7 @@
              (cond [(logspace-nonzero? new-ll)
                     (define value (entry-value prev-e))
                     (define new-e (entry dist value new-ll))
-                    (log-mh-info "RESCORE ~s: ~e, ~e" addr dist value)
+                    (log-mcmc-info "RESCORE ~s: ~e, ~e" addr dist value)
                     (db-add! addr new-e prev-e)
                     value]
                    [else (fail 'sample-rescore)])]
@@ -284,10 +284,10 @@
       (define value (dist-sample dist))
       (define ll (dist-pdf dist value #t))
       (if prev-e
-          (log-mh-info "MISMATCH ~s: ~e, ~e => ~e, ~e" addr
-                       (entry-dist prev-e) (entry-value prev-e)
-                       dist value)
-          (log-mh-info "NEW ~s: ~e, ~e" addr dist value))
+          (log-mcmc-info "MISMATCH ~s: ~e, ~e => ~e, ~e" addr
+                         (entry-dist prev-e) (entry-value prev-e)
+                         dist value)
+          (log-mcmc-info "NEW ~s: ~e, ~e" addr dist value))
       (db-add! addr (entry dist value ll) prev-e)
       value)
 
