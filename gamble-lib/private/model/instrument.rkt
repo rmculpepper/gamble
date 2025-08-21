@@ -14,7 +14,7 @@
                      "known-functions.rkt")
          racket/match
          racket/stxparam
-         "../addr.rkt"
+         "addr.rkt"
          "../interfaces.rkt")
 (provide (all-defined-out))
 
@@ -58,26 +58,6 @@
   (define (next-call-site)
     (let ([cs (call-site-counter)])
       (begin (call-site-counter (add1 cs)) cs))))
-
-
-;; ============================================================
-;; Model
-
-(define-syntax (model* stx)
-  (syntax-parse stx
-    [(_ #:auto-label e:expr ...)
-     #'(model
-        (lambda (ctx)
-          (with-get-ADDR base-addr
-            (with-ctx ctx
-              (let ([run (instrument-expr (let () e ...))])
-                (run base-addr))))))]
-    [(_ e:expr ...)
-     #'(model
-        (lambda (ctx)
-          (with-ctx ctx
-            (let () e ...))))]
-    ))
 
 
 ;; ============================================================

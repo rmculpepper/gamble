@@ -6,6 +6,7 @@
          addr-add-mem
          init-hash-addr
          init-full-addr
+         (struct-out auto-label)
          current-init-addr)
 
 (struct auto-label (addr) #:prefab)

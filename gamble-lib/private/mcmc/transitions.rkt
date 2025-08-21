@@ -113,7 +113,7 @@
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key (trace-db prev-trace) ok-addr?))
       (cond [addr
-             (log-mh-info "Addr to change = ~s\n" addr)
+             (log-mh-info "Addr to change = ~s" addr)
              (match (hash-ref prev-db addr)
                [(entry prev-dist prev-value prev-ll)
                 (define-values (new-e ll-R/F)

@@ -7,13 +7,23 @@
          racket/class
          racket/match
          racket/stxparam
-         "addr.rkt"
          "util/density.rkt"
          (only-in "dist/base.rkt" dist-sample dist-density)
          (only-in "dist/discrete.rkt" for/discrete-dist))
 (provide (all-defined-out))
 
 ;; Defines interfaces, base classes, and parameters.
+
+;; ============================================================
+;; Stochastic models
+
+;; A (Model X) is one of
+;; - (model (StochasticCtx -> X))
+;; - (-> X)
+
+;; Addr is passed by dynamic protocol (continuation mark).
+
+(struct model (proc))
 
 ;; ============================================================
 ;; Samplers
@@ -87,18 +97,6 @@
 (define (generate-weighted-samples s n #:burn [nburn 0])
   (send s burn nburn)
   (send s generate-weighted-samples n))
-
-;; ============================================================
-;; Stochastic models
-
-;; A (Model X) is one of
-;; - (model (StochasticCtx -> X))
-;; - (-> X)
-
-;; Addr is passed by dynamic protocol (continuation mark).
-
-(struct model (proc))
-
 
 ;; ============================================================
 ;; Stochastic contexts

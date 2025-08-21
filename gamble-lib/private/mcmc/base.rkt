@@ -6,9 +6,9 @@
 (require racket/class
          racket/list
          racket/match
-         "../addr.rkt"
          "../dist.rkt"
          "../interfaces.rkt"
+         "../model/addr.rkt"
          "../util/real.rkt"
          "../util/density.rkt")
 (provide (all-defined-out))

@@ -1,6 +1,8 @@
 #lang racket/base
 (require "dist.rkt"
          "private/interfaces.rkt"
+         "private/model/addr.rkt"
+         "private/model.rkt"
          "private/rejection.rkt"
          "private/importance.rkt"
          "private/mcmc.rkt"
@@ -8,21 +10,28 @@
          "private/samples.rkt")
 (provide (all-from-out "dist.rkt")
 
-         sample
-         observe
-         dscore
-         lscore
-         fail
-         mem
-
          weighted-sampler<%>
          sampler<%>
          weighted-sampler?
          sampler?
+         model?
 
          sampler->discrete-dist
          generate-samples
          generate-weighted-samples
+
+         sample
+         dscore
+         lscore
+         observe
+         fail
+         mem
+         run-model
+
+         (struct-out auto-label)
+         current-init-addr
+
+         (rename-out [model* model])
 
          rejection-sampler
          importance-sampler
