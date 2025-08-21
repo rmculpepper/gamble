@@ -23,7 +23,7 @@
           [else (get-value addr dist)]))
   (new initialize-transition% (get-value get-value*)))
 
-(define (single-site-transition #:proposal proposal
+(define (single-site-transition #:proposal [proposal (resample-transition)]
                                 #:any [ok-addr? #f])
   (new single-site-transition% (ok-addr? ok-addr?) (proposal proposal)))
 
@@ -80,6 +80,12 @@
              (vector-set! v i (collect accepted? trace txinfo))))))
       (or v (void)))
 
+    (define/public (initialize transition)
+      (when (eq? last-trace init-trace)
+        (define-values (accepted? trace txinfo)
+          (step transition))
+        (if accepted? (void) (initialize transition))))
+
     #|
     ;; Note: {MAP,MLE}-estimate is argmax over *all* unconditioned variables.
     ;; FIXME: figure out how to do subsets.
@@ -110,10 +116,15 @@
       (define-values (accepted? trace txinfo)
         (send mcmc step transition))
       (trace-value trace))
+
+    (define/public (initialize transition)
+      (send mcmc initialize transition))
     ))
 
 (define (mcmc-sampler mdl
-                      [transition (single-site-transition #:proposal (resample-proposal))])
-  (new mcmc-sampler% (mdl mdl) (transition transition)))
-
-;; ============================================================
+                      #:initialize [initialize (single-site-transition)]
+                      #:transition [transition (single-site-transition)])
+  (define s (new mcmc-sampler% (mdl mdl) (transition transition)))
+  (when initialize
+    (send s initialize initialize))
+  s)

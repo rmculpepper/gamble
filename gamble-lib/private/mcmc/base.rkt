@@ -226,7 +226,8 @@
     (define/override (sample dist addr)
       (if addr
           (sample* dist addr)
-          (with-get-ADDR addr (sample* dist addr))))
+          (with-get-ADDR addr
+            (sample* dist (and addr (auto-label addr))))))
 
     (define/private (sample* dist addr)
       (unless addr (error 'sample "missing label, required for MCMC sampler"))
