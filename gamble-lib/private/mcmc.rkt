@@ -23,7 +23,7 @@
           [else (get-value addr dist)]))
   (new initialize-transition% (get-value get-value*)))
 
-(define (single-site-transition #:proposal [proposal (resample-transition)]
+(define (single-site-transition #:proposal [proposal (resample-proposal)]
                                 #:any [ok-addr? #f])
   (new single-site-transition% (ok-addr? ok-addr?) (proposal proposal)))
 
