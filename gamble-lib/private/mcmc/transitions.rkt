@@ -237,8 +237,8 @@
       (define prev-db (trace-db prev-trace))
       (define addr (hash-random-key prev-db ok-addr?))
       (unless addr (error who "no suitable addr to change"))
-      (log-mcmc-info "Addr to change = ~s" addr)
       (match-define (entry dist prev-value _) (hash-ref prev-db addr))
+      (log-mcmc-info "Addr to change = ~s, ~e" addr prev-value)
       (unless (real-dist? dist)
         (error who "distribution does not support slice sampling\n  dist: ~e" dist))
       (define slice
@@ -253,7 +253,8 @@
     (super-new)
 
     (define prev-db (trace-db prev-trace))
-    (match-define (entry dist prev-value prev-ll) (hash-ref prev-db addr))
+    (define prev-ll (trace-ll prev-trace))
+    (match-define (entry dist prev-value _) (hash-ref prev-db addr))
 
     ;; ----------------------------------------
 
@@ -271,7 +272,8 @@
     (hash-set! trace-cache prev-value prev-trace)
 
     (define/private (eval-ll new-value)
-      (trace-ll (eval-trace new-value)))
+      (cond [(eval-trace new-value) => trace-ll]
+            [else -inf.0]))
 
     (define/private (eval-trace new-value)
       (hash-ref! trace-cache new-value (lambda () (eval-trace* new-value))))
