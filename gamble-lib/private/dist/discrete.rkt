@@ -87,42 +87,45 @@
 ;; ----------------------------------------
 ;; Constructor
 
-;; -discrete-intern-table : EphHashalw[Hash => DiscreteDist]
-;; Needs ephemeron, since dist contains hash. Use hashalw to avoid
-;; issues if hash has mutable keys.
-(define -discrete-intern-table (make-ephemeron-hashalw))
-
-(define (hash->discrete-dist h)
+(define (hash->discrete-dist h #:normalize? [normalize? #f])
   (define who 'hash->discrete-dist)
   (define (bad) (raise-argument-error who "(hash/c any/c (>=/c 0))" h))
-  (let loop ([h h])
-    (define (copy fl?)
-      (for/fold ([dh (hash)]) ([(v w) (in-hash h)] #:when (> w 0))
-        (hash-set dh v (if fl? (fl w) w))))
-    (cond [(hash-ref -discrete-intern-table h #f)
-           => values]
-          [(and (hash? h) (immutable? h) (not (impersonator? h))
-                (hash-equal? h) (hash-strong? h))
-           (define-values (wsum any-zero? any-exact?)
-             (for/fold ([s 0] [any-zero? #f] [any-exact? #f])
-                       ([w (in-hash-values h)])
-               (unless (and (rational? w) (>= w 0)) (bad))
-               (values (+ s w)
-                       (or any-zero? (zero? w))
-                       (or any-exact? (exact? w)))))
-           (cond [(and any-exact? (inexact? wsum))
-                  (loop (copy #t))]
-                 [any-zero?
-                  (loop (copy #f))]
-                 [else
-                  (define dist (discrete-dist h wsum))
-                  (hash-set! -discrete-intern-table h dist)
-                  dist])]
-          [(hash? h)
-           (loop (copy #f))]
-          [else (bad)])))
+  (cond [(and (hash? h) (immutable? h) (not (impersonator? h))
+              (hash-equal? h) (hash-strong? h))
+         (define-values (dh ws any-exact?)
+           (for/fold ([dh h] [ws 0] [any-exact? #f])
+                     ([(v w) (in-hash h)])
+             (unless (and (rational? w) (>= w 0)) (bad))
+             (values (if (zero? w) (hash-remove dh v) dh)
+                     (+ ws w)
+                     (or any-exact? (and (exact? w) (not (zero? w)))))))
+         (-hash->discrete-dist h ws any-exact? normalize?)]
+        [(hash? h)
+         (define-values (dh ws any-exact?)
+           (for/fold ([dh (hash)] [ws 0] [any-exact? #f])
+                     ([(v w) (in-hash h)])
+             (unless (and (rational? w) (>= w 0)) (bad))
+             (values (if (zero? w) dh (hash-set dh v (+ w (hash-ref dh v 0))))
+                     (+ ws w)
+                     (or any-exact? (and (exact? w) (not (zero? w)))))))
+         (-hash->discrete-dist h ws any-exact? normalize?)]
+        [else (bad)]))
 
-(define empty-discrete-dist (hash->discrete-dist '#hash()))
+(define (-hash->discrete-dist h wsum any-exact? normalize?)
+  (cond [(and any-exact? (inexact? wsum))
+         (define-values (dh ws)
+           (for/fold ([dh (hash)] [ws 0.0]) ([(v w) (in-hash h)])
+             (values (hash-set dh v (fl w)) (+ ws (fl w)))))
+         (-hash->discrete-dist dh ws #f normalize?)]
+        [(and normalize? (not (or (= wsum 1) (= wsum 0))))
+         (define-values (dh ws)
+           (for/fold ([dh (hash)] [ws 0]) ([(v w) (in-hash h)])
+             (define w* (/ w wsum))
+             (values (hash-set dh v w*) (+ ws w*))))
+         (discrete-dist h ws)]
+        [else (discrete-dist h wsum)]))
+
+(define empty-discrete-dist (discrete-dist '#hash() 0))
 
 (define (log-hash->normalized-discrete-dist lh)
   (define who 'log-hash->normalized-discrete-dist)
@@ -160,8 +163,6 @@
            (vector->immutable-vector ws)
            (vector->immutable-vector cws)))
   (hash-ref! -discrete-ext-table dist (lambda () (calc-ext))))
-
-(void (-discrete-ext empty-discrete-dist))
 
 ;; ----------------------------------------
 ;; More constructors
@@ -269,12 +270,17 @@
         [(for/dd clauses . body)
          (with-syntax ([for/derived for/derived])
            #`(for/derived #,stx
-                          ([dh (hash)] [wsum 0] #:result (discrete-dist dh wsum))
+                          ([dh (hash)]
+                           [wsum 0]
+                           [any-exact? #f]
+                           #:result (-hash->discrete-dist dh wsum any-exact? #f))
                           clauses
                (let-values ([(v w) (let () . body)])
                  (unless (and (rational? w) (>= w 0))
                    (for/dd-bad-weight 'for/dd v w))
-                 (values (for/dd-hash-add dh v w) (+ wsum w)))))]))
+                 (values (for/dd-hash-add dh v w)
+                         (+ wsum w)
+                         (or any-exact? (and (exact? w) (not (zero? w))))))))]))
     (values (transformer #'for/fold/derived)
             (transformer #'for*/fold/derived))))
 
