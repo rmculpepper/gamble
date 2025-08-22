@@ -44,44 +44,45 @@
 
     (define/override (sample dist label)
       (call/restore
-       (lambda (k restore)
+       (lambda (restore)
          (for/list ([(v w) (in-dist dist)])
-           (cons (density #f w) (lambda () (restore (lambda () (k v)))))))))
+           (cons (density #f w) (lambda () (restore v)))))))
 
     (define/override (-dscore who dn)
       (if (density-zero? dn)
           (fail who)
           (call/restore
-           (lambda (k restore)
-             (list (cons dn (lambda () (restore (lambda () (k (void)))))))))))
+           (lambda (restore)
+             (list (cons dn (lambda () (restore (void)))))))))
 
     (define/override (fail reason)
       (call/restore
-       (lambda (k restore)
+       (lambda (restore)
          null)))
 
     (define/override (run-top mdl)
       (call (hash) (lambda () (done (run-model mdl)))))
 
-    (define/private (call memo-table thunk)
-      (parameterize ((current-stochastic-ctx this))
-        (with-continuation-mark memo-key (box memo-table)
-          (call-with-continuation-prompt thunk ctag))))
+    (define/private (call memo-table proc)
+      (with-continuation-mark memo-key (box memo-table)
+        (call-with-continuation-prompt proc ctag)))
 
-    (define/private (call/restore proc)
+    (define/private (call/restore who proc)
+      (unless (continuation-prompt-available? ctag)
+        (error who "used out of enumerate context"))
       (define memo-table (unbox (continuation-mark-set-first #f memo-key)))
       (call-with-composable-continuation
        (lambda (k)
          (abort-current-continuation ctag
-          (lambda () (proc k (lambda (continue) (call memo-table continue))))))
+          (lambda () (proc (lambda (v) (call memo-table (lambda () (k v))))))))
        ctag))
 
     (define/override (mem f)
       (define f-key (gensym))
       (define (memoized-function . args)
         (unless (continuation-prompt-available? ctag)
-          (error 'mem
-                 (string-append "memoized function escaped its creating context"
+          (error 'memoized-function
+                 (string-append "used out of enumerate context"
                                 "\n  function: ~e\n  arguments: ~e\n")
                  f args))
         (define b (continuation-mark-set-first #f memo-key))
@@ -90,12 +91,10 @@
                (hash-ref (unbox b) key)]
               [else
                ;; Call with creating context; may be outer enumeration!
-               (define v
-                 (parameterize ((current-stochastic-ctx this))
-                   (apply f args)))
+               (define v (apply f args))
                ;; NOTE: outer b might be stale, if f called ERP!
                (define b (continuation-mark-set-first #f memo-key))
                (set-box! b (hash-set (unbox b) key v))
                v]))
-      memoized-function)
+      (procedure-reduce-arity memoized-function (procedure-arity f)))
     ))

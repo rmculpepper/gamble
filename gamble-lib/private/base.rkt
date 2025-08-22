@@ -122,7 +122,8 @@
 
 (define plain-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
-    (field [escape-prompt (make-continuation-prompt-tag)])
+    (field [escape-prompt (make-continuation-prompt-tag)]
+           [model-only? #f]) ;; mutated
     (super-new)
 
     (define/public (get-functions)
@@ -135,11 +136,14 @@
       (define (ctx-run-model m) (run-model m))
       (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
 
+    (define/public (-unsupported who)
+      (error who "called outside of sampling context"))
+
     (define/public (sample dist label)
       (dist-sample dist))
 
     (define/public (-dscore who dn)
-      (error who "called outside of sampling context"))
+      (-unsupported who))
 
     (define/public (dscore dn)
       (-dscore 'dscore dn))
@@ -150,27 +154,31 @@
 
     (define/public (fail reason)
       (unless (continuation-prompt-available? escape-prompt)
-        (error 'fail "called outside of sampling context"))
+        (-unsupported 'fail))
       (abort-current-continuation escape-prompt (lambda () #f)))
 
     (define/public (mem f)
       (define memo-table (make-hash))
       (define (mf . args)
         (hash-ref! memo-table args
-                   (lambda ()
-                     (parameterize ((current-stochastic-ctx this))
-                       (apply f args)))))
+                   (if model-only?
+                       (lambda () (apply f args))
+                       (lambda () (parameterize ((current-stochastic-ctx this))
+                                    (apply f args))))))
       (procedure-reduce-arity mf (procedure-arity f) 'memoized-function))
 
     (define/public (run-model m)
-      (parameterize ((current-stochastic-ctx this))
-        (match m
-          [(model proc)
-           (proc this)]
-          [(? procedure? proc)
-           (proc)])))
+      (match m
+        [(model proc)
+         (proc this)]
+        [(? procedure? proc)
+         (when model-only?
+           (error 'run-model "cannot run dynamic model within static model"))
+         (parameterize ((current-stochastic-ctx this))
+           (proc))]))
 
     (define/public (run-top m)
+      (when (model? m) (set! model-only? #t))
       (call-with-continuation-prompt
        (lambda ()
          (call-with-values
@@ -179,8 +187,20 @@
        escape-prompt))
     ))
 
+(define initial-stochastic-ctx%
+  (class plain-stochastic-ctx%
+    (inherit -unsupported)
+    (super-new)
+
+    (define/override (sample dist label)
+      (-unsupported 'sample))
+
+    (define/override (run-model m)
+      (send (new plain-stochastic-ctx%) run-top m))
+    ))
+
 (define current-stochastic-ctx
-  (make-parameter (new plain-stochastic-ctx%)))
+  (make-parameter (new initial-stochastic-ctx%)))
 
 (define (ctx-get-functions ctx)
   (send ctx get-functions))
