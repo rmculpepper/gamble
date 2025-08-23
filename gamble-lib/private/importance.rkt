@@ -13,16 +13,17 @@
 ;; ============================================================
 ;; Importance sampling
 
-(define (importance-sampler mdl)
-  (new importance-sampler% (mdl mdl)))
+(define (importance-sampler mdl
+                            #:propose [propose #f])
+  (new importance-sampler% (mdl mdl) (propose propose)))
 
 (define importance-sampler%
   (class weighted-sampler-base%
-    (init-field mdl)
+    (init-field mdl propose)
     (super-new)
 
     (define/override (sample/weight)
-      (define ctx (new importance-stochastic-ctx%))
+      (define ctx (new importance-stochastic-ctx% (propose propose)))
       (match (send ctx run-top mdl)
         [(list v)
          (define obs-dn (send ctx get-observation-density))
@@ -34,11 +35,22 @@
 
 (define importance-stochastic-ctx%
   (class plain-stochastic-ctx%
+    (init-field propose) ;; #f or (Label/#f Dist -> Dist/#f)
     (field [obs-dn one-density])
     (inherit fail)
     (super-new)
 
     (define/public (get-observation-density) obs-dn)
+
+    (define/override (sample dist label)
+      (cond [(and propose (propose label dist))
+             => (lambda (qdist)
+                  (define v (dist-sample qdist))
+                  (-dscore 'sample
+                           (density/ (dist-density dist v)
+                                     (dist-density qdist v)))
+                  v)]
+            [else (super sample dist label)]))
 
     (define/override (-dscore who dn)
       (set! obs-dn (density* obs-dn dn))

@@ -43,6 +43,16 @@
                     [log2? (+ (log (fl x1)) x2)]
                     [else (* x1 x2)]))]))
 
+;; density/ : Density Density -> Density
+(define (density/ d1 d2)
+  (match* [d1 d2]
+    [[(density log1? x1) (density log2? x2)]
+     (density (or log1? log2?)
+              (cond [(and log1? log2?) (- x1 x2)]
+                    [log1? (- x1 (log (fl x2)))]
+                    [log2? (- (log (fl x1)) x2)]
+                    [else (/ x1 x2)]))]))
+
 ;; density+ : Density Density/#f -> Density
 (define (density+ dn1 dn2)
   (match* [dn1 dn2]
