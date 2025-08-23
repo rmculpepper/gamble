@@ -34,11 +34,11 @@
          (define vs (discrete-dist-values dist))
          (define ws (discrete-dist-weights dist))
          (define-values (xmin xmax)
-           (for/fold ([xmin -inf.0]
-                      [xmax +inf.0]
-                      #:result (values (floor xmin) (ceiling xmax)))
+           (for/fold ([xmin +inf.0]
+                      [xmax -inf.0]
+                      #:result (round-minmax xmin xmax))
                      ([v (in-dist-values dist)])
-             (values (max xmin v) (min xmax v))))
+             (values (min xmin v) (max xmax v))))
          (define pdfp
            (let-values ([(kde1 _xmin1 _xmax1) (kde vs ws 0.5)]
                         [(kde2 _xmin2 _xmax2) (kde vs ws 1.0)]
@@ -76,3 +76,12 @@
    #:height (* ITEM-HEIGHT (length vws))
    #:x-max maxw #:y-min 0 #:x-label #f #:y-label #f
    (discrete-histogram vws #:invert? #t)))
+
+(define (round-minmax xmin xmax)
+  (define xdiff (- xmax xmin))
+  (cond [(>= xdiff 3)
+         (values (floor xmin) (ceiling xmax))]
+        [(>= xdiff 0.5)
+         (values (* 0.1 (floor (* xmin 10)))
+                 (* 0.1 (ceiling (* xmax 10))))]
+        [else (values xmin xmax)]))
