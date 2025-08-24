@@ -18,8 +18,9 @@
          inc-mod-counter!
          hash-set/mod!
 
-         transform-TAG
+         transform-TAG+CS
          TAG
+         CALL-SITE
          syntax-summary
 
          analyze-FUN-EXP
@@ -92,12 +93,29 @@
      (or (syntax-property stx 'tag)
          (if (procedure? default) (default) default))]))
 
-;; transform-TAG : Syntax -> Syntax
+(define call-site-counter (make-parameter #f))
+
+;; next-call-site : -> Nat
+(define (next-call-site)
+  (let ([cs (call-site-counter)])
+    (begin (call-site-counter (add1 cs)) cs)))
+
+(define (CALL-SITE stx)
+  (or (syntax-property stx 'call-site)
+      (raise-syntax-error #f "internal error: missing call-site index" stx)))
+
+;; transform-TAG+CS : Syntax -> (U Syntax Nat)
 ;; Add unique tags to all forms under 'tag syntax-property.
+;; Add index to every call site under 'call-site syntax-property.
 ;; Also introduce names for all expressions in operator position.
-(define (transform-TAG stx)
+(define (transform-TAG+CS stx)
+  (parameterize ((call-site-counter 0))
+    (values (transform-TAG+CS* stx)
+            (call-site-counter))))
+
+(define (transform-TAG+CS* stx)
   (define-template-metafunction recur
-    (syntax-parser [(recur e) (transform-TAG #'e)]))
+    (syntax-parser [(recur e) (transform-TAG+CS* #'e)]))
   (define-syntax-rule (T tmpl)
     (relocate (template tmpl) stx))
   (define the-tag (new-tag stx))
@@ -137,9 +155,6 @@
       [(letrec-values ([vars rhs] ...) body ...)
        (T (letrec-values ([vars (recur rhs)] ...)
             (recur body) ...))]
-      [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ...)
-       (T (letrec-syntaxes+values ([svars srhs] ...) ([vvars (recur vrhs)] ...)
-            (recur body) ...))]
       [(set! var e)
        (T (set! var (recur e)))]
       [(quote d) stx]
@@ -147,20 +162,22 @@
       [(with-continuation-mark e1 e2 e3)
        (T (with-continuation-mark (recur e1) (recur e2) (recur e3)))]
       [(#%plain-app f:id e ...)
-       (T (#%plain-app (recur f) (recur e) ...))]
+       (define cs (next-call-site))
+       (syntax-property (T (#%plain-app (recur f) (recur e) ...))
+                        'call-site cs)]
       [(#%plain-app f e ...)
+       (define cs (next-call-site))
        (with-syntax ([(ftmp) (generate-temporaries #'(ftmp))])
-         (T (recur (let-values ([(ftmp) f]) (#%plain-app ftmp e ...)))))]
+         (syntax-property (T (recur (let-values ([(ftmp) f]) (#%plain-app ftmp e ...))))
+                          'call-site cs))]
       [(#%top . _) stx]
       [(#%variable-reference . _) stx]
       [(#%expression e)
        (T (#%expression (recur e)))]
       [_ (raise-syntax-error #f "unhandled syntax in transform-TAG" stx)]
       ))
-  ;; Rearm and track result
-  (syntax-property
-   (syntax-property processed-stx 'tag the-tag)
-   'original-for-check-syntax #t))
+  (syntax-property (syntax-property processed-stx 'tag the-tag)
+                   'original-for-check-syntax #t))
 
 (define (relocate stx loc-stx)
   (datum->syntax stx (syntax-e stx) loc-stx loc-stx))

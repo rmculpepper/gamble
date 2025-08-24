@@ -50,16 +50,6 @@
 (define-syntax-parameter ADDR
   (lambda (stx) (wrong-syntax stx "used out of context")))
 
-(begin-for-syntax
-  ;; call-site-counter : (Parameterof Nat)
-  (define call-site-counter (make-parameter 'uninitialized))
-
-  ;; next-call-site : -> Nat
-  (define (next-call-site)
-    (let ([cs (call-site-counter)])
-      (begin (call-site-counter (add1 cs)) cs))))
-
-
 ;; ============================================================
 ;; Instrumenter
 
@@ -70,22 +60,16 @@
      (syntax-parse stx
        [(_ e:expr)
         (define ee (local-expand #'e 'expression null))
-        (define tagged-ee (transform-TAG ee))
+        (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
         (analyze-FUN-EXP tagged-ee)
         (analyze-CALLS-ERP tagged-ee)
-        (define-values (instr-code call-site-count)
-          (parameterize ((call-site-counter 0))
-            (define istx #`(#%plain-lambda (csbase)
-                             (syntax-parameterize ((CSBASE (make-rename-transformer
-                                                            (quote-syntax csbase))))
-                               (#%plain-lambda (addr)
-                                 (syntax-parameterize ((ADDR (make-rename-transformer
-                                                              (quote-syntax addr))))
-                                   (instrument #,tagged-ee))))))
-            (define-values (_instr-ee instr-code)
-              (syntax-local-expand-expression istx #t))
-            (values instr-code (call-site-counter))))
-        #`(#,instr-code (lift (allocate-call-sites (quote #,call-site-count))))])]
+        #`(let-values ([(csbase) (lift (allocate-call-sites (quote #,call-site-count)))])
+            (syntax-parameterize ((CSBASE (make-rename-transformer
+                                           (quote-syntax csbase))))
+              (#%plain-lambda (addr)
+                (syntax-parameterize ((ADDR (make-rename-transformer
+                                             (quote-syntax addr))))
+                  (instrument #,tagged-ee)))))])]
     [else #`(#%expression #,stx)]))
 
 ;; (instrument ExpandedExpr) : Expr
@@ -275,7 +259,7 @@
                    ;; instrumented function with right arity => use static protocol
                    (log-app-type "STATIC app (instrumented)")
                    (tt-fun-type! "instrumented function")
-                   (with-syntax ([cs (next-call-site)]
+                   (with-syntax ([cs (CALL-SITE stx)]
                                  [fimpl (syntax-property fimpl 'disappeared-use #'fun)])
                      #'(#%plain-app fimpl (addr-add-call ADDR (+ CSBASE cs))
                                     (instrument arg) ...)))]
@@ -283,7 +267,7 @@
               ;; unknown, function is varref => use dynamic protocol
               (log-app-type "DYNAMIC app")
               (tt-fun-type! "uninstrumented function (passing address dynamically)")
-              (with-syntax ([cs (next-call-site)]
+              (with-syntax ([cs (CALL-SITE stx)]
                             [(tmp ...) (generate-temporaries #'(arg ...))])
                 #'(let-values ([(tmp) (instrument arg)] ...)
                     (with-put-ADDR (addr-add-call ADDR (+ CSBASE cs))
