@@ -63,7 +63,7 @@ collect them as an @emph{unnormalized} discrete distribution:
       (define A (sample (boolean-dist 1/2)))
       (define B (sample (boolean-dist 1/2)))
       (or A B))))
-(sampler->discrete-dist s-or2flips 10)
+(sampler->discrete-dist s-or2flips 100)
 ]
 
 In addition to sampling from random distributions, programs can also
@@ -79,7 +79,7 @@ until it generates a sample satisfying the given condition.
       (define B (sample (boolean-dist 1/2)))
       (unless (or A B) (fail))
       A)))
-(sampler->discrete-dist s-A-given-AorB 10)
+(sampler->discrete-dist s-A-given-AorB 100)
 ]
 
 Probability distributions can be visualized with the simple
@@ -104,7 +104,21 @@ normalize the resulting distribution.
       (observe (normal-dist x 1) 8.0)
       x)))
 (define isd (sampler->discrete-dist is 1000))
-(dist->pict (dist-rescore isd))
+(dist->pict isd)
+]
+
+
+@interaction[#:eval the-eval
+(define is
+  (importance-sampler
+    (lambda ()
+      (define x (sample (normal-dist 10 2)))
+      (observe (normal-dist x 1) 8.0)
+      x)
+    #:propose (lambda (label dist)
+                (uniform-dist 5 15))))
+(define isd (sampler->discrete-dist is 1000))
+(dist->pict isd)
 ]
 
 
@@ -125,7 +139,7 @@ Here is a simple model
       (observe (normal-dist x 1) 7.3)
       x)))
 #;(sampler->discrete-dist s-obs 10)
-(dist->pict (sampler->discrete-dist s-obs 1000))
+(dist->pict (sampler->discrete-dist s-obs 1000 #:burn 100))
 (dist->pict (dist-rescore (sampler->discrete-dist s-obs 1000)))
 ]
 
