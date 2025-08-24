@@ -115,7 +115,7 @@
     lscore      ;; LogReal Nat -> Void
     fail        ;; -> escapes
     mem         ;; (X ... -> Y) -> (X ... -> Y)
-    run-model   ;; (Model A ...) -> (values A ...)
+    run-model   ;; (Model A ...) Boolean -> (values A ...)
 
     run-top     ;; (Model A ...) -> (U (list A ...) #f)
     ))
@@ -133,7 +133,7 @@
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
       (define (ctx-mem f) (mem f))
-      (define (ctx-run-model m) (run-model m))
+      (define (ctx-run-model m) (run-model m #f))
       (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
 
     (define/public (-unsupported who)
@@ -167,7 +167,7 @@
                                     (apply f args))))))
       (procedure-reduce-arity mf (procedure-arity f) 'memoized-function))
 
-    (define/public (run-model m)
+    (define/public (run-model m top?)
       (match m
         [(model proc)
          (proc this)]
@@ -182,7 +182,7 @@
       (call-with-continuation-prompt
        (lambda ()
          (call-with-values
-          (lambda () (run-model m))
+          (lambda () (run-model m #t))
           list))
        escape-prompt))
     ))
@@ -195,7 +195,7 @@
     (define/override (sample dist label)
       (-unsupported 'sample))
 
-    (define/override (run-model m)
+    (define/override (run-model m top?)
       (send (new plain-stochastic-ctx%) run-top m))
     ))
 
@@ -217,7 +217,7 @@
 (define (dynamic-fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 
 (define (dynamic-mem f) (send (current-stochastic-ctx) mem f))
-(define (dynamic-run-model m) (send (current-stochastic-ctx) run-model m))
+(define (dynamic-run-model m) (send (current-stochastic-ctx) run-model m #f))
 
 (define-syntax-parameter sample
   (make-rename-transformer (quote-syntax dynamic-sample)))

@@ -202,6 +202,7 @@
 (define tracing-stochastic-ctx%
   (class plain-stochastic-ctx%
     (inherit fail)
+    (inherit-field escape-prompt)
     (init-field prev-db       ;; DB, not mutated
                 delta-db      ;; DB, not mutated
                 [ll-R/F 0.0]  ;; real, mutated
@@ -225,7 +226,12 @@
             (sample* dist (and addr (auto-label addr))))))
 
     (define/public (sample* dist label)
-      (unless label (error 'sample "missing label, required for MCMC sampler"))
+      (unless label
+        (error 'sample "missing label, required for MCMC sampler~a\n  dist: ~e"
+               (if (context-has-ADDR? escape-prompt)
+                   ";\n auto-label management failed because of uninstrumented code"
+                   "")
+               dist))
       (when (hash-ref current-db label #f)
         (error 'sample "duplicate label\n  label: ~e" label))
       (define delta-e (hash-ref delta-db label #f))
@@ -298,8 +304,10 @@
             (apply f args)))
         (super mem (procedure-reduce-arity af (procedure-arity f) 'memoized-function))))
 
-    (define/override (run-top m)
-      (super run-top (lambda () (with-put-ADDR (current-init-addr) (run-model m)))))
+    (define/override (run-model m top?)
+      (if top?
+          (with-put-ADDR (current-init-addr) (super run-model m top?))
+          (super run-model m top?)))
 
     ;; ----------------------------------------
 

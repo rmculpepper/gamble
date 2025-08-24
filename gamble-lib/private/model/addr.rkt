@@ -1,6 +1,7 @@
 #lang racket/base
 (provide with-put-ADDR
          with-get-ADDR
+         context-has-ADDR?
          addr-add-call
          addr-add-mem
          init-hash-addr
@@ -63,6 +64,9 @@
 
 (define-syntax-rule (with-get-ADDR x body ...)
   (call-with-immediate-continuation-mark ADDR-mark (lambda (x) body ...)))
+
+(define (context-has-ADDR? ctag)
+  (and (ormap values (continuation-mark-set->list #f ADDR-mark ctag)) #t))
 
 ;; TODO: differentiate
 ;;   1. ADDR lost because of unknown context frames

@@ -61,7 +61,7 @@
          null)))
 
     (define/override (run-top mdl)
-      (call (hash) (lambda () (done (run-model mdl)))))
+      (call (hash) (lambda () (done (run-model mdl #t)))))
 
     (define/private (call memo-table proc)
       (with-continuation-mark memo-key (box memo-table)
