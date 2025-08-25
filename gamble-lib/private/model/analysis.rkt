@@ -411,7 +411,9 @@
        (loop #'e3)]
       ;; --------------------
       [var:id
-       (cond [(free-id-table-ref lenv #'var #f)
+       (cond [(free-id-table-ref special-env #'var #f)
+              (raise-syntax-error #f "special operation used as variable" #'var)]
+             [(free-id-table-ref lenv #'var #f)
               => (lambda (index) (ast:lvar index))]
              [else
               (define index (free-id-table-ref! ctxenv #'var (lambda () (next-ctxvar))))
@@ -497,7 +499,7 @@
                         ctx-mem
                         ctx-run-model)
                        (#%plain-app (~datum ctx-get-functions) ctx2:id)])
-           body:expr ...))
+           body:expr))
        #:when (free-identifier=? #'ctx #'ctx2)
        (free-id-table-set! special-env #'ctx-sample 'sample)
        (free-id-table-set! special-env #'ctx-dscore 'dscore)
@@ -506,7 +508,7 @@
        (free-id-table-set! special-env #'ctx-fail 'fail)
        (free-id-table-set! special-env #'ctx-mem 'mem)
        (free-id-table-set! special-env #'ctx-run-model 'run-model)
-       (loop stx)]))
+       (loop #'body)]))
   (values (top stx)
           (let ([v (make-vector ctxvar-counter)])
             (for ([(var index) (in-free-id-table ctxenv)])

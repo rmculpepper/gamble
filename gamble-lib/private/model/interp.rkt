@@ -308,7 +308,7 @@
 
     (define/public (eval-model mdl)
       (match-define (model _ ast ctxenv) mdl)
-      (eval (ast:app 0 ast (list (ast:quote (current-stochastic-ctx)))) ctxenv))
+      (eval ast ctxenv))
 
     (define/public (eval ast ctxenv)
       (define result (init-eval ast ctxenv (hasheqv) 1))
