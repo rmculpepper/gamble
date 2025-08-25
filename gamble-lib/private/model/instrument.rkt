@@ -53,25 +53,6 @@
 ;; ============================================================
 ;; Instrumenter
 
-;; (instrument-expr Expr[X]) : Expr[Addr -> X]
-(define-syntax (instrument-expr stx)
-  (case (syntax-local-context)
-    [(expression)
-     (syntax-parse stx
-       [(_ e:expr)
-        (define ee (local-expand #'e 'expression null))
-        (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
-        (analyze-FUN-EXP tagged-ee)
-        (analyze-CALLS-ERP tagged-ee)
-        #`(let-values ([(csbase) (lift (allocate-call-sites (quote #,call-site-count)))])
-            (syntax-parameterize ((CSBASE (make-rename-transformer
-                                           (quote-syntax csbase))))
-              (#%plain-lambda (addr)
-                (syntax-parameterize ((ADDR (make-rename-transformer
-                                             (quote-syntax addr))))
-                  (instrument #,tagged-ee)))))])]
-    [else #`(#%expression #,stx)]))
-
 ;; (instrument ExpandedExpr) : Expr
 ;; PRE: argument is fully-expanded expression, tagged, and analyzed
 ;; PRE: result is used in context of binding of ADDR and CALL-SITE-BASE

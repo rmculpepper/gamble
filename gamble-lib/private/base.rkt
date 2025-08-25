@@ -23,7 +23,12 @@
 
 ;; Addr is passed by dynamic protocol (continuation mark).
 
-(struct model (proc))
+(struct model (proc ast ast-env) #:transparent)
+
+(require "model/ast.rkt")
+(define (model-eval-ast m)
+  (match-define (model _ ast ctxenv) m)
+  (init-eval (ast:app 0 ast (list (ast:quote (current-stochastic-ctx)))) ctxenv (hash) 1))
 
 ;; ============================================================
 ;; Samplers
@@ -169,8 +174,8 @@
 
     (define/public (run-model m top?)
       (match m
-        [(model proc)
-         (proc this)]
+        [(? model?)
+         ((model-proc m) this)]
         [(? procedure? proc)
          (when model-only?
            (error 'run-model "cannot run dynamic model within static model"))
