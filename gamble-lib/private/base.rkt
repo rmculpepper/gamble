@@ -25,11 +25,6 @@
 
 (struct model (proc ast ast-env) #:transparent)
 
-(require "model/ast.rkt")
-(define (model-eval-ast m)
-  (match-define (model _ ast ctxenv) m)
-  (init-eval (ast:app 0 ast (list (ast:quote (current-stochastic-ctx)))) ctxenv (hash) 1))
-
 ;; ============================================================
 ;; Samplers
 
