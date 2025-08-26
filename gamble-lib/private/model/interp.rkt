@@ -61,23 +61,29 @@
 ;; NodeID = Nat
 
 ;; A Node is one of
-;; - (node:if Boolean Location)                     -- enforce same branch
-;; - (node:op Any Location)                         -- enforce same proc/closure
+;; - (node:same-if Boolean Location)                -- enforce same branch
+;; - (node:same Symbol Any Location)                -- enforce same proc/closure/etc
 ;; - (node:store Location Result)                   -- single var binding
 ;; - (node:stores (Listof Location) Result)         -- multiple var binding
 ;; - (node:apply (Listof Location) (Listof Result)) -- create lambda env
 ;; - (node:apply-tail Location (Listof Result))     -- create lambda rest arg binding
 ;; - (node:apply-prim CallSite Location Procedure (Listof Result) MultiValueMode)
-(struct node:if (branch testloc) #:prefab)
-(struct node:op (fun loc) #:prefab)
+(struct node:same-if (branch testloc) #:prefab)
+(struct node:same (kind val loc) #:prefab)
 (struct node:store (varloc result) #:prefab)
 (struct node:stores (varlocs result) #:prefab)
 (struct node:apply (varlocs argrs) #:prefab)
 (struct node:apply-tail (varloc argrs) #:prefab)
 (struct node:apply-prim (cs loc proc argrs mv) #:prefab)
+(struct node:sample (loc distr labelr) #:prefab)
+(struct node:dscore (argr) #:prefab)
+(struct node:lscore (argr) #:prefab)
+(struct node:observe (distr valr) #:prefab)
+(struct node:fail (argr) #:prefab)
+(struct node:mem (loc argr) #:prefab)
 
 ;; node->expr : Node (Hash Location Symbol) -> Expr
-(define (node->expr node loc=>name)
+(define (node->expr node [loc=>name (hasheqv)])
   (define (loc-ref loc)
     (cond [(hash-ref loc=>name loc #f) => values]
           [else `(fetch (quote ,loc))]))
@@ -89,12 +95,12 @@
       [(result:location loc) (loc-ref loc)]
       [(result:value val) `(quote ,val)]))
   (match node
-    [(node:if branch testloc)
+    [(node:same-if branch testloc)
      `(unless (eq? (quote ,branch) (and ,(loc-ref testloc) #t))
-        (error 'interpret "branch changed"))]
-    [(node:op fun loc)
-     `(unless (equal? (quote ,fun) ,(loc-ref loc))
-        (error 'interpret "application operator changed"))]
+        (error 'interpret "structural change (if branch)"))]
+    [(node:same kind val loc)
+     `(unless (equal? (quote ,val) ,(loc-ref loc))
+        (error 'interpret "structural change (~a)" ,kind))]
     [(node:store varloc (result:location rloc))
      (loc-set! varloc (loc-ref rloc))]
     [(node:stores varlocs (result:location rloc))
@@ -107,20 +113,34 @@
      (loc-set! varloc `(list ,@(map result->expr argrs)))]
     [(node:apply-prim cs loc proc argrs mv)
      (case mv
-       [(1) (loc-set! loc `(,proc ,@(map result->expr argrs)))]
-       [(#f) `(,proc ,@(map result->expr argrs))]
+       [(1) (loc-set! loc `(#%plain-app ,proc ,@(map result->expr argrs)))]
+       [(#f) `(#%plain-app ,proc ,@(map result->expr argrs))]
        [else (loc-set! loc `(call-with-values
-                             (lambda () (,proc ,@(map result->expr argrs)))
+                             (lambda () (#%plain-app ,proc ,@(map result->expr argrs)))
                              list))])]
+    [(node:sample loc distr labelr)
+     (loc-set! loc `(ctx-sample ,(result->expr distr) ,(result->expr labelr)))]
+    [(node:dscore argr)
+     `(ctx-dscore ,(result->expr argr))]
+    [(node:lscore argr)
+     `(ctx-lscore ,(result->expr argr))]
+    [(node:observe distr valr)
+     `(ctx-observe ,(result->expr distr) ,(result->expr valr))]
+    [(node:fail argr)
+     `(ctx-fail ,(result->expr argr))]
+    ;[(node:mem loc argr) _]
     ))
 
 ;; node-locations : Node -> (values (Listof Location) (Listof Location))
 ;; Returns reads-locations and writes-locations.
 (define (node-locations node)
+  (define (get-locs rs)
+    (for/list ([r (in-list rs)] #:when (result:location? r))
+      (result:location-location r)))
   (match node
-    [(node:if branch testloc)
+    [(node:same-if branch testloc)
      (values (list testloc) null)]
-    [(node:op fun loc)
+    [(node:same kind val loc)
      (values (list loc) null)]
     [(node:store varloc (result:location rloc))
      (values (list rloc) (list varloc))]
@@ -134,13 +154,15 @@
          (cons varloc (result:location-location argr))))
      (values (map cdr v+a-list) (map car v+a-list))]
     [(node:apply varloc argrs)
-     (values (for/list ([argr (in-list argrs)] #:when (result:location? argr))
-               (result:location-location argr))
-             (list varloc))]
+     (values (get-locs argrs) (list varloc))]
     [(node:apply-prim cs loc proc argrs mv)
-     (values (for/list ([argr (in-list argrs)] #:when (result:location? argr))
-               (result:location-location argr))
-             (list loc))]
+     (values (get-locs argrs) (list loc))]
+    [(node:sample loc distr labelr) (values (get-locs (list distr labelr)) (list loc))]
+    [(node:dscore argr) (values (get-locs (list argr)) null)]
+    [(node:lscore argr) (values (get-locs (list argr)) null)]
+    [(node:observe distr valr) (values (get-locs (list distr valr)) null)]
+    [(node:fail argr) (values (get-locs argr) null)]
+    [(node:mem loc argr) (values (get-locs argr) null)]
     ))
 
 ;; ============================================================
@@ -176,14 +198,14 @@
 
 (define interpreter%
   (class object%
-    (init-field)
+    (init-field ctx)
     (super-new)
 
     (define the-store (make-hasheqv))       ;; Location => Any
     (define the-store-deps (make-hasheqv))  ;; Location => (Listof NodeID)
     (define node-trace (make-hasheqv))      ;; NodeID => Node
 
-    (define/public (show)
+    (define/public (show [expr? #t])
       (printf "Store:\n")
       (for ([loc (in-range 0 location-counter)])
         (when (hash-has-key? the-store loc)
@@ -191,7 +213,8 @@
       (printf "Node trace:\n")
       (for ([nodeid (in-range 0 nodeid-counter)])
         (when (hash-has-key? node-trace nodeid)
-          (printf "  ~s : ~e\n" nodeid (hash-ref node-trace nodeid)))))
+          (define node (hash-ref node-trace nodeid))
+          (printf "  ~s : ~e\n" nodeid (if expr? (node->expr node) node)))))
 
     ;; ----------------------------------------
     ;; Store
@@ -241,8 +264,8 @@
         (define nodeid (next-nodeid))
         (begin (add-node! nodeid node) (exec-node! node)))
       (match node
-        [(node:if branch testloc) (add-and-exec!)]
-        [(node:op fun loc) (add-and-exec!)]
+        [(node:same-if branch testloc) (add-and-exec!)]
+        [(node:same kind fun loc) (add-and-exec!)]
         [(node:store varloc result)
          (match result
            [(result:location rloc) (add-and-exec!)]
@@ -267,21 +290,28 @@
          (cond [(andmap result:value? argrs)
                 (store! varloc (map result:value-value argrs))]
                [else (add-and-exec!)])]
-        [(node:apply-prim cs loc proc argrs mv) (add-and-exec!)]))
+        [(node:apply-prim cs loc proc argrs mv) (add-and-exec!)]
+        [(node:sample loc distr labelr) (add-and-exec!)]
+        [(node:dscore argr) (add-and-exec!)]
+        [(node:lscore argr) (add-and-exec!)]
+        [(node:observe distr valr) (add-and-exec!)]
+        [(node:fail argr) (add-and-exec!)]
+        [(node:mem loc argr) (add-and-exec!)]
+        ))
 
     ;; exec-node! : Node -> Void
     ;; Perform node effect.
     (define/private (exec-node! node)
       ;; (eprintf "exec! ~e\n" node)
       (match node
-        [(node:if branch testloc)
+        [(node:same-if branch testloc)
          (define new-branch (and (fetch testloc) #t))
          (unless (eq? new-branch branch)
-           (error 'interpret "branch changed"))]
-        [(node:op fun loc)
-         (define new-fun (fetch loc))
-         (unless (equal? new-fun fun)
-           (error 'interpret "application operator changed"))]
+           (error 'interpret "structural change (if branch)"))]
+        [(node:same kind val loc)
+         (define new-val (fetch loc))
+         (unless (equal? new-val val)
+           (error 'interpret "structural change (~a)" kind))]
         [(node:store varloc (result:location rloc))
          (store! varloc (fetch rloc))]
         [(node:stores varlocs (result:location rloc))
@@ -301,6 +331,17 @@
            [else (call-with-values
                   (lambda () (apply proc (results->values argrs)))
                   (lambda vals (store! loc vals)))])]
+        [(node:sample loc distr labelr)
+         (store! loc (send ctx sample (result->value distr) (result->value labelr)))]
+        [(node:dscore argr)
+         (send ctx dscore (result->value argr))]
+        [(node:lscore argr)
+         (send ctx lscore (result->value argr))]
+        [(node:observe distr valr)
+         (send ctx observe (result->value distr) (result->value valr))]
+        [(node:fail argr)
+         (send ctx fail (result->value argr))]
+        ;[(node:mem argr) _]
         ))
 
     ;; ----------------------------------------
@@ -337,10 +378,10 @@
            [(result:location loc)
             (match (fetch loc)
               [(? values)
-               (do! (node:if #t loc))
+               (do! (node:same-if #t loc))
                (recur e2)]
               [#f
-               (do! (node:if #f loc))
+               (do! (node:same-if #f loc))
                (recur e3)])]
            [(result:value (? values))
             (recur e2)]
@@ -381,11 +422,23 @@
         ;[(ast:wcm e1 e2 e3) _]
         [(ast:app cs fun args)
          (init-apply cs (recur1 fun) (map recur1 args) mv)]
-        ;[(ast:sample cs dist label) _]
-        ;[(ast:dscore arg) _]
-        ;[(ast:lscore arg) _]
-        ;[(ast:observe dist value) _]
-        ;[(ast:fail arg) _]
+        ;; ----------------------------------------
+        [(ast:sample cs dist label)
+         (define loc (next-location))
+         (do! (node:sample loc (recur1 dist) (recur1 label)))
+         (one (result:location loc))]
+        [(ast:dscore arg)
+         (do! (node:dscore (recur1 arg)))
+         (one (result:value (void)))]
+        [(ast:lscore arg)
+         (do! (node:lscore (recur1 arg)))
+         (one (result:value (void)))]
+        [(ast:observe dist value)
+         (do! (node:observe (recur1 dist) (recur1 value)))
+         (one (result:value (void)))]
+        [(ast:fail arg)
+         (do! (node:fail (recur1 arg)))
+         (one (result:value (void)))]
         ;[(ast:mem cs arg) _]
         ;[(ast:run-model arg) _]
         ))
@@ -395,7 +448,7 @@
         (match funr
           [(result:location funloc)
            (define funval (fetch funloc))
-           (do! (node:op funval funloc))
+           (do! (node:same 'application funval funloc))
            funval]
           [(result:value funval) funval]))
       (match funval
