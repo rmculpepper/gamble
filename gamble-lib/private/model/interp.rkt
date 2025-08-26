@@ -97,10 +97,10 @@
   (match node
     [(node:same-if branch testloc)
      `(unless (eq? (quote ,branch) (and ,(loc-ref testloc) #t))
-        (error 'interpret "structural change (if branch)"))]
+        (raise-structural-change "if branch"))]
     [(node:same kind val loc)
      `(unless (equal? (quote ,val) ,(loc-ref loc))
-        (error 'interpret "structural change (~a)" ,kind))]
+        (raise-structural-change (quote ,kind)))]
     [(node:store varloc (result:location rloc))
      (loc-set! varloc (loc-ref rloc))]
     [(node:stores varlocs (result:location rloc))
@@ -214,7 +214,9 @@
       (for ([nodeid (in-range 0 nodeid-counter)])
         (when (hash-has-key? node-trace nodeid)
           (define node (hash-ref node-trace nodeid))
-          (printf "  ~s : ~e\n" nodeid (if expr? (node->expr node) node)))))
+          (if expr?
+              (printf "  ~s : ~v\n" nodeid (node->expr node))
+              (printf "  ~s : ~e\n" nodeid node)))))
 
     ;; ----------------------------------------
     ;; Store
@@ -488,7 +490,7 @@
     (define/private (re-trace init-locs init-nodeids make-names?)
       (define wl (new-worklist))
       (define update-locs (make-hasheqv))
-      (define (make-name loc) (string->uninterned-symbol (format "loc~s" loc)))
+      (define (make-name loc) (string->uninterned-symbol (format "a_~s" loc)))
       (define (add-nodeids! nodeids)
         (for ([nodeid (in-list nodeids)])
           (worklist-add! wl nodeid)))
@@ -524,8 +526,7 @@
       `(let-values ()
          ,@(for/list ([node (in-list nodes)])
              (node->expr node update-locs))
-         (lambda ()
-           ,@(for/list ([(loc name) (in-hash update-locs)])
-               `(store! (quote ,loc) ,name)))))
-
+         ,(let ([loc+name-list (hash-map update-locs cons #t)])
+            `(cons (quote ,(list->vector (map car loc+name-list)))
+                   (vector ,@(map cdr loc+name-list))))))
     ))
