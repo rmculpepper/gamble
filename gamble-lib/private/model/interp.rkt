@@ -28,7 +28,7 @@
 ;; ============================================================
 ;; Environments
 
-;; CtxEnv = (Vectorof Any)
+;; CtxEnv = (cons (Vectorof Any) (Vectorof Identifier))
 ;; LEnv = (ImmHash LVar Location)
 
 ;; lenv-lookup : LEnv Var -> Location
@@ -53,6 +53,7 @@
 ;; - (result:value Any)         -- constant given branch choices
 (struct result:location (location) #:prefab)
 (struct result:value (value) #:prefab)
+(struct result:value+id result:value (id) #:prefab)
 
 ;; ============================================================
 ;; Node traces
@@ -67,14 +68,14 @@
 ;; - (node:stores (Listof Location) Result)         -- multiple var binding
 ;; - (node:apply (Listof Location) (Listof Result)) -- create lambda env
 ;; - (node:apply-tail Location (Listof Result))     -- create lambda rest arg binding
-;; - (node:apply-prim CallSite Location Procedure (Listof Result) MultiValueMode)
+;; - (node:apply-prim CallSite Location Procedure Identifier/#f (Listof Result) MultiValueMode)
 (struct node:same-if (branch testloc) #:prefab)
 (struct node:same (kind val loc) #:prefab)
 (struct node:store (varloc result) #:prefab)
 (struct node:stores (varlocs result) #:prefab)
 (struct node:apply (varlocs argrs) #:prefab)
 (struct node:apply-tail (varloc argrs) #:prefab)
-(struct node:apply-prim (cs loc proc argrs mv) #:prefab)
+(struct node:apply-prim (cs loc proc funid argrs mv) #:prefab)
 (struct node:sample (loc distr labelr) #:prefab)
 (struct node:dscore (argr) #:prefab)
 (struct node:lscore (argr) #:prefab)
@@ -111,13 +112,15 @@
                  (loc-set! varloc (loc-ref (result:location-location argr)))))]
     [(node:apply-tail varloc argrs)
      (loc-set! varloc `(list ,@(map result->expr argrs)))]
-    [(node:apply-prim cs loc proc argrs mv)
-     (case mv
-       [(1) (loc-set! loc `(#%plain-app ,proc ,@(map result->expr argrs)))]
-       [(#f) `(#%plain-app ,proc ,@(map result->expr argrs))]
-       [else (loc-set! loc `(call-with-values
-                             (lambda () (#%plain-app ,proc ,@(map result->expr argrs)))
-                             list))])]
+    [(node:apply-prim cs loc proc funid argrs mv)
+     (let ([proc-expr (or funid `(quote ,proc))]
+           [arg-exprs (map result->expr argrs)])
+       (case mv
+         [(1) (loc-set! loc `(#%plain-app ,proc-expr ,@arg-exprs))]
+         [(#f) `(#%plain-app ,proc-expr ,@arg-exprs)]
+         [else (loc-set! loc `(call-with-values
+                               (lambda () (#%plain-app ,proc-expr ,@arg-exprs))
+                               list))]))]
     [(node:sample loc distr labelr)
      (loc-set! loc `(ctx-sample ,(result->expr distr) ,(result->expr labelr)))]
     [(node:dscore argr)
@@ -155,7 +158,7 @@
      (values (map cdr v+a-list) (map car v+a-list))]
     [(node:apply varloc argrs)
      (values (get-locs argrs) (list varloc))]
-    [(node:apply-prim cs loc proc argrs mv)
+    [(node:apply-prim cs loc proc funid argrs mv)
      (values (get-locs argrs) (list loc))]
     [(node:sample loc distr labelr) (values (get-locs (list distr labelr)) (list loc))]
     [(node:dscore argr) (values (get-locs (list argr)) null)]
@@ -292,7 +295,7 @@
          (cond [(andmap result:value? argrs)
                 (store! varloc (map result:value-value argrs))]
                [else (add-and-exec!)])]
-        [(node:apply-prim cs loc proc argrs mv) (add-and-exec!)]
+        [(node:apply-prim cs loc proc funid argrs mv) (add-and-exec!)]
         [(node:sample loc distr labelr) (add-and-exec!)]
         [(node:dscore argr) (add-and-exec!)]
         [(node:lscore argr) (add-and-exec!)]
@@ -326,7 +329,7 @@
            (store! varloc (result->value argr)))]
         [(node:apply-tail varloc argrs)
          (store! varloc (results->values argrs))]
-        [(node:apply-prim cs loc proc argrs mv)
+        [(node:apply-prim cs loc proc funid argrs mv)
          (case mv
            [(1) (store! loc (apply proc (results->values argrs)))]
            [(#f) (begin0 (void) (apply proc (results->values argrs)))]
@@ -350,7 +353,7 @@
     ;; Initial evaluation
 
     (define/public (eval-model mdl)
-      (match-define (model _ ast ctxenv) mdl)
+      (match-define (model/ast _ ast ctxenv) mdl)
       (eval ast ctxenv))
 
     (define/public (eval ast ctxenv)
@@ -370,7 +373,8 @@
         [(ast:lvar index)
          (one (result:location (hash-ref lenv index)))]
         [(ast:ctxvar index)
-         (one (result:value (vector-ref ctxenv index)))]
+         (one (result:value+id (vector-ref (car ctxenv) index)
+                               (vector-ref (cdr ctxenv) index)))]
         [(ast:lambda args restarg body)
          (one (result:value (closure (list ast) ctxenv lenv)))]
         [(ast:case-lambda lambdas)
@@ -446,13 +450,14 @@
         ))
 
     (define/private (init-apply cs funr argrs mv)
-      (define funval
+      (define-values (funval funid)
         (match funr
           [(result:location funloc)
            (define funval (fetch funloc))
            (do! (node:same 'application funval funloc))
-           funval]
-          [(result:value funval) funval]))
+           (values funval #f)]
+          [(result:value+id funval funid) (values funval funid)]
+          [(result:value funval) (values funval #f)]))
       (match funval
         [(closure lams ctxenv lenv)
          (define argc (length argrs))
@@ -478,7 +483,9 @@
                       funval argrs)])]
         [(? procedure? proc)
          (define loc (next-location))
-         (do! (node:apply-prim cs loc proc argrs mv))
+         ;; can't `eval` local var ref, so only use funid if bound at module-level
+         (let ([funid (and funid (list? (identifier-binding funid)) funid)])
+           (do! (node:apply-prim cs loc proc funid argrs mv)))
          (result:location loc)]
         ))
 

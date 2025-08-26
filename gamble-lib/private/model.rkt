@@ -21,7 +21,9 @@
                         #'(#%plain-lambda (ctx)
                             (with-ctx ctx
                               (let-values () e ...))))])
-          #'(model proc (quote ast) (vector ast-fv ...)))])]
+          #'(model/ast proc (quote ast)
+                       (cons (vector ast-fv ...)
+                             (list->vector (syntax->list #'(ast-fv ...))))))])]
     [else #`(#%expression #,stx)]))
 
 (begin-for-syntax
