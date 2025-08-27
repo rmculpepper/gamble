@@ -13,7 +13,6 @@
 ;; - coalesce copies
 ;; - support `set!` ?
 ;; - support `mem`
-;; - support `run-model`
 
 ;; IDEA: track `box` contents by location
 ;;   (define vs (for/list ([i 10]) (box (sample (uniform-dist 0 1)))))
@@ -465,7 +464,16 @@
          (do! (node:fail (recur1 arg)))
          (one (result:value (void)))]
         ;[(ast:mem cs arg) _]
-        ;[(ast:run-model arg) _]
+        [(ast:run-model arg)
+         (define result (recur1 arg))
+         (match result
+           [(result:location rloc)
+            (do! (node:same "model" (fetch rloc) rloc))]
+           [(result:value _) (void)])
+         (match (result->value result)
+           [(? model/ast? m)
+            (define ast (model/ast-ast m))
+            (init-eval ast m (hasheqv) mv addr)])]
         ))
 
     (define/private (init-apply funr argrs mv addr)
