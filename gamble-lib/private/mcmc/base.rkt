@@ -202,7 +202,7 @@
 ;; Tracing stochastic context
 
 (define tracing-stochastic-ctx%
-  (class plain-stochastic-ctx%
+  (class base-stochastic-ctx%
     (inherit fail)
     (inherit-field escape-prompt)
     (init-field prev-db       ;; DB, not mutated
@@ -223,11 +223,10 @@
 
     (define/override (sample dist label)
       (if label
-          (sample* dist label)
-          (with-get-ADDR addr
-            (sample* dist (and addr (auto-label addr))))))
+          (super sample dist label)
+          (with-get-ADDR addr (super sample dist (and addr (auto-label addr))))))
 
-    (define/public (sample* dist label)
+    (define/override (-sample dist label)
       (unless label
         (error 'sample "missing label, required for MCMC sampler~a\n  dist: ~e"
                (if (context-has-ADDR? escape-prompt)
@@ -306,10 +305,16 @@
             (apply f args)))
         (super mem (procedure-reduce-arity af (procedure-arity f) 'memoized-function))))
 
-    (define/override (run-model m top?)
-      (if top?
-          (with-put-ADDR (current-init-addr) (super run-model m top?))
-          (super run-model m top?)))
+    (define/override (run-model m addr)
+      (if addr
+          (super run-model m addr)
+          (with-get-ADDR addr (super run-model m addr))))
+
+    (define/override (run-top top)
+      (match top
+        [(? model? m)
+         (super run-top (lambda () (run-top m (current-init-addr))))]
+        [_ (super run-top top)]))
 
     ;; ----------------------------------------
 
@@ -347,12 +352,12 @@
     (super-new [prev-db (make-hash)] ;; mutated
                [delta-db (hash)])
 
-    ;; Hack: override sample* to add entries to prev-db on demand.
-    (define/override (sample* dist label)
-      (match (and label (get-value label dist))
+    ;; Hack: override -sample to add entries to prev-db on demand.
+    (define/override (-sample dist label)
+      (match (and label (get-value (label-view label) dist))
         [(list value)
          (define ll (dist-pdf dist value #t))
          (hash-set! prev-db label (entry dist value ll))]
         [_ (void)])
-      (super sample* dist label))
+      (super -sample dist label))
     ))

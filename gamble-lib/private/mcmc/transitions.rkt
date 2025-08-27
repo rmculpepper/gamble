@@ -7,6 +7,7 @@
          racket/match
          "base.rkt"
          "../dist.rkt"
+         "../model/addr.rkt"
          "../util/real.rkt")
 (provide (all-defined-out))
 
@@ -43,7 +44,7 @@
     (define/public (run mdl prev-trace)
       (define ctx
         (new initializing-tracing-stochastic-ctx%
-             (initializer get-value)))
+             (get-value (lambda (label dist) (get-value (label-view label) dist)))))
       (match (send ctx run-top mdl)
         [(list new-value)
          (define new-trace (send ctx make-trace new-value))

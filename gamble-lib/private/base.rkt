@@ -8,7 +8,7 @@
          racket/match
          racket/stxparam
          "util/density.rkt"
-         (only-in "dist/base.rkt" dist-sample dist-density)
+         (only-in "dist/base.rkt" dist? dist-sample dist-density)
          (only-in "dist/discrete.rkt" for/discrete-dist))
 (provide (all-defined-out))
 
@@ -17,14 +17,10 @@
 ;; ============================================================
 ;; Stochastic models
 
-;; A (Model X) is one of
-;; - (model (StochasticCtx -> X))
-;; - (-> X)
-
-;; Addr is passed by dynamic protocol (continuation mark).
+;; (Model X) = (model (StochasticCtx Addr -> X))
 
 (struct model (proc))
-(struct model/ast model (ast env envids csbase) #:transparent)
+(struct model/ast model (ast env envids csbase))
 
 ;; ============================================================
 ;; Samplers
@@ -116,15 +112,14 @@
     lscore      ;; LogReal Nat -> Void
     fail        ;; -> escapes
     mem         ;; (X ... -> Y) -> (X ... -> Y)
-    run-model   ;; (Model A ...) Boolean -> (values A ...)
+    run-model   ;; (Model A ...) Addr/#f -> (values A ...)
 
-    run-top     ;; (Model A ...) -> (U (list A ...) #f)
+    ;; run-top  ;; varies, but often: (-> (values A ...)) -> (U (list A ...) #f)
     ))
 
-(define plain-stochastic-ctx%
+(define base-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
-    (field [escape-prompt (make-continuation-prompt-tag)]
-           [model-only? #f]) ;; mutated
+    (field [escape-prompt (make-continuation-prompt-tag)])
     (super-new)
 
     (define/public (get-functions)
@@ -134,24 +129,31 @@
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
       (define (ctx-mem f) (mem f))
-      (define (ctx-run-model m) (run-model m #f))
+      (define (ctx-run-model m [addr #f]) (run-model m addr)) ;; 2nd arg for internal use only
       (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
 
     (define/public (-unsupported who)
       (error who "called outside of sampling context"))
 
     (define/public (sample dist label)
+      (unless (dist? dist) (raise-argument-error 'sample "dist?" dist))
+      (-sample dist label))
+
+    (define/public (-sample dist label)
       (dist-sample dist))
 
     (define/public (-dscore who dn)
       (-unsupported who))
 
     (define/public (dscore dn)
+      (unless (density? dn) (raise-argument-error 'dscore "density?" dn))
       (-dscore 'dscore dn))
     (define/public (lscore ll)
+      (unless (real? ll) (raise-argument-error 'lscore "real?" ll))
       (-dscore 'lscore (density #t ll)))
-    (define/public (observe d v)
-      (-dscore 'observe (dist-density d v)))
+    (define/public (observe dist value)
+      (unless (dist? dist) (raise-argument-error 'observe "dist?" dist))
+      (-dscore 'observe (dist-density dist value)))
 
     (define/public (fail reason)
       (unless (continuation-prompt-available? escape-prompt)
@@ -161,43 +163,55 @@
     (define/public (mem f)
       (define memo-table (make-hash))
       (define (mf . args)
-        (hash-ref! memo-table args
-                   (if model-only?
-                       (lambda () (apply f args))
-                       (lambda () (parameterize ((current-stochastic-ctx this))
-                                    (apply f args))))))
+        (hash-ref! memo-table args (lambda () (apply f args))))
       (procedure-reduce-arity mf (procedure-arity f) 'memoized-function))
 
-    (define/public (run-model m top?)
-      (match m
-        [(? model?)
-         ((model-proc m) this)]
-        [(? procedure? proc)
-         (when model-only?
-           (error 'run-model "cannot run dynamic model within static model"))
-         (parameterize ((current-stochastic-ctx this))
-           (proc))]))
+    (define/public (run-model m addr)
+      (unless (model? m) (raise-argument-error 'run-model "model?" m))
+      ((model-proc m) this addr))
 
-    (define/public (run-top m)
-      (when (model? m) (set! model-only? #t))
-      (call-with-continuation-prompt
-       (lambda ()
-         (call-with-values
-          (lambda () (run-model m #t))
-          list))
-       escape-prompt))
+    (define/public (run-top top)
+      (match top
+        [(? procedure? proc)
+         (call-with-continuation-prompt
+          (lambda () (call-with-values proc list))
+          escape-prompt)]
+        [(? model? m)
+         (run-top (lambda () (run-model m #f)))]))
+    ))
+
+(define scoring-stochastic-ctx%
+  (class base-stochastic-ctx%
+    (field [obs-dn one-density])
+    (super-new)
+
+    (define/public (get-observation-density) obs-dn)
+
+    (define/override (-dscore who dn)
+      (set! obs-dn (density* obs-dn dn))
+      (when (density-zero? obs-dn) (fail who)))
     ))
 
 (define initial-stochastic-ctx%
-  (class plain-stochastic-ctx%
+  (class base-stochastic-ctx%
     (inherit -unsupported)
     (super-new)
 
-    (define/override (sample dist label)
+    (define/override (-sample dist label)
       (-unsupported 'sample))
 
-    (define/override (run-model m top?)
-      (send (new plain-stochastic-ctx%) run-top m))
+    (define/override (run-model m addr)
+      (define subctx (new scoring-stochastic-ctx%))
+      (define result
+        (parameterize ((current-stochastic-ctx subctx))
+          (send subctx run-top m)))
+      (cond [(list? result)
+             (printf "[run-model] log likelihood = ~s\n"
+                     (density->real (send subctx get-observation-density) #t))
+             (apply values result)]
+            [else
+             (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)
+             (void)]))
     ))
 
 (define current-stochastic-ctx

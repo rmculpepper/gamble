@@ -13,6 +13,7 @@
 (provide enumerate)
 
 (define (enumerate mdl)
+  (unless (model? mdl) (raise-argument-error 'enumerate "model?" mdl))
   (define ctx (new enumerate-stochastic-ctx%))
   (define (init-thunk) (send ctx run-top mdl))
   (define-values (dh)
@@ -35,14 +36,14 @@
 ;; ============================================================
 
 (define enumerate-stochastic-ctx%
-  (class plain-stochastic-ctx%
+  (class base-stochastic-ctx%
     (inherit run-model)
     (super-new)
 
     (define memo-key (gensym))
     (define ctag (make-continuation-prompt-tag))
 
-    (define/override (sample dist label)
+    (define/override (-sample dist label)
       (call/restore
        (lambda (restore)
          (for/list ([(v w) (in-dist dist)])

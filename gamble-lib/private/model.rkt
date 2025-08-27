@@ -17,10 +17,7 @@
      (syntax-parse stx
        [(_ e:expr ...)
         (with-syntax ([(proc ast (ast-fv ...) csbase)
-                       (instrument-model
-                        #'(#%plain-lambda (ctx)
-                            (with-ctx ctx
-                              (let-values () e ...))))])
+                       (instrument-model #'(let-values () e ...))])
           #'(model/ast proc (quote ast)
                        (vector ast-fv ...)
                        (list->vector (syntax->list #'(ast-fv ...)))
@@ -28,9 +25,11 @@
     [else #`(#%expression #,stx)]))
 
 (begin-for-syntax
-  ;; (instrument-model Expr[Ctx -> X]) : Expr[Ctx -> X]
-  (define (instrument-model stx)
-    (define ee (local-expand stx 'expression null))
+  ;; (instrument-model Expr[X]) : Expr[Ctx Addr -> X]
+  (define (instrument-model body-expr)
+    (define ctx-proc-expr
+      #`(#%plain-lambda (ctx) (with-ctx ctx #,body-expr)))
+    (define ee (local-expand ctx-proc-expr 'expression null))
     (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
     (analyze-FUN-EXP tagged-ee)
     (analyze-CALLS-ERP tagged-ee)
@@ -38,8 +37,14 @@
       (syntax-local-lift-expression
        #`(allocate-call-sites (quote #,call-site-count))))
     (define proc-expr
-      #`(syntax-parameterize ((CSBASE (make-rename-transformer
-                                       (quote-syntax #,csbase-id))))
-          (instrument #,tagged-ee)))
+      (syntax-parse tagged-ee
+        #:literal-sets (kernel-literals)
+        [(#%plain-lambda (ctx) body:expr)
+         #`(#%plain-lambda (ctx addr)
+             (syntax-parameterize ((CSBASE (make-rename-transformer
+                                            (quote-syntax #,csbase-id)))
+                                   (ADDR (make-rename-transformer
+                                          (quote-syntax addr))))
+               (instrument body)))]))
     (define-values (ast ast-fvs) (parse-ast tagged-ee))
     (list proc-expr ast ast-fvs csbase-id)))

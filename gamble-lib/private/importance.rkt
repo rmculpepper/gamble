@@ -16,6 +16,8 @@
 
 (define (importance-sampler mdl
                             #:propose [propose #f])
+  (unless (or (model? mdl) (procedure? mdl))
+    (raise-argument-error 'importance-sampler "(or/c model? (-> any/c))" mdl))
   (new importance-sampler% (mdl mdl) (propose propose)))
 
 (define importance-sampler%
@@ -35,13 +37,10 @@
     ))
 
 (define importance-stochastic-ctx%
-  (class plain-stochastic-ctx%
+  (class scoring-stochastic-ctx%
     (init-field propose) ;; #f or (Label/#f Dist -> Dist/#f)
-    (field [obs-dn one-density])
-    (inherit fail)
+    (inherit -dscore)
     (super-new)
-
-    (define/public (get-observation-density) obs-dn)
 
     (define/override (sample dist label)
       (cond [(and propose (propose (label-view label) dist))
@@ -52,8 +51,4 @@
                                      (dist-density qdist v)))
                   v)]
             [else (super sample dist label)]))
-
-    (define/override (-dscore who dn)
-      (set! obs-dn (density* obs-dn dn))
-      (when (density-zero? obs-dn) (fail who)))
     ))

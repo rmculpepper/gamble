@@ -12,6 +12,8 @@
 ;; Rejection sampling
 
 (define (rejection-sampler mdl)
+  (unless (or (model? mdl) (procedure? mdl))
+    (raise-argument-error 'rejection-sampler "(or/c model? (-> any/c))" mdl))
   (new rejection-sampler% (mdl mdl)))
 
 (define rejection-sampler%
@@ -27,7 +29,7 @@
     ))
 
 (define rejection-stochastic-ctx%
-  (class plain-stochastic-ctx%
+  (class base-stochastic-ctx%
     (super-new)
 
     (define/override (-unsupported who)
