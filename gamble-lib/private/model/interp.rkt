@@ -209,35 +209,6 @@
     ))
 
 ;; ============================================================
-;; Worklist of integers
-
-;; FIXME: use heap?
-(struct worklist ([ns #:mutable] h))
-
-(define (new-worklist)
-  (worklist null (make-hasheqv)))
-
-(define (worklist-add! wl n)
-  (define h (worklist-h wl))
-  (unless (hash-ref h n #f)
-    (hash-set! h n #t)
-    (set-worklist-ns! wl (insert n (worklist-ns wl)))))
-
-(define (insert x ns)
-  (match ns
-    [(cons n ns) #:when (> x n) (cons n (insert x ns))]
-    [_ (cons x ns)]))
-
-(define (worklist-remove-min! wl)
-  (define ns (worklist-ns wl))
-  (cond [(pair? ns)
-         (define n (car ns))
-         (hash-remove! (worklist-h wl) n)
-         (set-worklist-ns! wl (cdr ns))
-         n]
-        [else #f]))
-
-;; ============================================================
 
 (define interpreter%
   (class object%
@@ -245,8 +216,10 @@
     (super-new)
 
     (define the-store (make-hasheqv))       ;; Location => Any
-    (define the-store-deps (make-hasheqv))  ;; Location => (Listof NodeID)
-    (define node-trace (make-hasheqv))      ;; NodeID => Node
+    (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID)
+    (define nodeid=>node (make-hasheqv))    ;; NodeID => Node
+    (define label=>nodeid (make-hash))      ;; Label => NodeID
+    (define final-result #f)                ;; Result, mutated
 
     (define/public (show [expr? #t])
       (printf "Store:\n")
@@ -255,8 +228,8 @@
           (printf "  ~s => ~e\n" loc (hash-ref the-store loc))))
       (printf "Node trace:\n")
       (for ([nodeid (in-range 0 nodeid-counter)])
-        (when (hash-has-key? node-trace nodeid)
-          (define node (hash-ref node-trace nodeid))
+        (when (hash-has-key? nodeid=>node nodeid)
+          (define node (hash-ref nodeid=>node nodeid))
           (if expr?
               (printf "  ~s : ~v\n" nodeid (node->expr node))
               (printf "  ~s : ~e\n" nodeid node)))))
@@ -292,15 +265,16 @@
     (define/private (next-nodeid)
       (begin0 nodeid-counter (set! nodeid-counter (add1 nodeid-counter))))
 
-    ;; add-node! : Node -> Void
+    ;; add-node! : Node -> NodeID
     ;; Add node to node trace, update location dependencies.
     ;; Nodes must be added in execution order.
     (define/private (add-node! node)
       (define nodeid (next-nodeid))
       (define-values (readlocs writelocs) (node-locations node))
-      (hash-set! node-trace nodeid node)
+      (hash-set! nodeid=>node nodeid node)
       (for ([readloc (in-list readlocs)])
-        (hash-update! the-store-deps readloc (lambda (v) (cons nodeid v)) null)))
+        (hash-update! loc=>nodeids readloc (lambda (v) (cons nodeid v)) null))
+      nodeid)
 
     ;; do! : Node -> Void
     ;; Perform node effect and register node in node trace (if needed).
@@ -308,7 +282,7 @@
     (define/private (do! node)
       ;; (eprintf "do! ~e\n" node)
       (define (add-and-exec! [node node])
-        (begin (add-node! node) (exec-node! node)))
+        (begin0 (add-node! node) (exec-node! node)))
       (match node
         [(node:same-if branch result)
          (when (result:location? result) (add-and-exec!))]
@@ -340,11 +314,12 @@
                [else (add-and-exec!)])]
         [(node:apply-prim addr loc proc funid argrs mv) (add-and-exec!)]
         [(node:sample loc addr distr labelr)
-         (match labelr
-           [(result:location lloc)
-            (add-node! (node:same "sample label" (fetch lloc) lloc))]
-           [(result:value _) (void)])
-         (add-and-exec!)]
+         (define label (result->value labelr))
+         (when (result:location? labelr)
+           (add-node! (node:same "sample label" label labelr)))
+         (define nodeid (add-node! node))
+         (hash-set! label=>nodeid label nodeid)
+         (exec-node! node)]
         [(node:dscore argr) (add-and-exec!)]
         [(node:lscore argr) (add-and-exec!)]
         [(node:observe distr valr) (add-and-exec!)]
@@ -403,10 +378,12 @@
     ;; ----------------------------------------
     ;; Initial evaluation
 
+    ;; eval-top : (Model X) -> X
+    ;; Call once to complete initialization.
     (define/public (eval-top m)
       (define ast (model/ast-ast m))
-      (define result (init-eval ast m (hasheqv) 1 (current-init-addr)))
-      (values result (result->value result)))
+      (set! final-result (init-eval ast m (hasheqv) 1 (current-init-addr)))
+      (result->value final-result))
 
     ;; init-eval : AST MCtx LEnv MultiValue -> Result
     (define/public (init-eval ast mctx lenv mv addr)
@@ -545,48 +522,90 @@
     ;; ----------------------------------------
     ;; Re-evaluation
 
-    ;; re-trace : (Listof Location) (Listof NodeID) Boolean
-    ;;         -> (values (Listof Node) (Hash Location Symbol/#t))
-    (define/private (re-trace init-locs init-nodeids make-names?)
-      (define wl (new-worklist))
+    ;; get-slice-eval : (Listof Label) (Listof NodeID)
+    ;;               -> (StochasticCtx -> (values Any CommitStoreUpdate))
+    (define/public (get-slice-eval #:labels [labels null]
+                                   #:nodeids [nodeids null])
+      (expr->proc the-store (get-slice-expr labels nodeids)))
+
+    ;; commit-store-update : CommitStoreUpdate -> Void
+    (define/public (commit-store-update commit)
+      (match-define (cons locv valuev) commit)
+      (for ([loc (in-vector locv)] [value (in-vector valuev)])
+        (store! loc value)))
+
+    ;; get-slice-expr : (Listof Label) (Listof NodeID) -> Expr
+    (define/public (get-slice-expr labels [nodeids null])
+      (define-values (nodes update-locs) (get-slice labels nodeids #t))
+      `(begin
+         ,@(for/list ([node (in-list nodes)])
+             (node->expr node update-locs))
+         (values ,(match final-result
+                    [(result:value val) `(quote ,val)]
+                    [(result:location loc)
+                     (or (hash-ref update-locs loc #f)
+                         `(fetch (quote ,loc)))])
+                 ,(let ([loc+name-list (hash-map update-locs cons #t)])
+                    `(cons (quote ,(list->vector (map car loc+name-list)))
+                           (vector ,@(map cdr loc+name-list)))))))
+
+    ;; get-slice : (Listof Label) (Listof NodeID) Boolean
+    ;;          -> (values (Listof Node) (Hash Location Symbol/#t))
+    (define/private (get-slice labels nodeids make-names?)
+      (define seen-nodeids (make-hasheqv))
       (define update-locs (make-hasheqv))
       (define (make-name loc) (string->uninterned-symbol (format "a_~s" loc)))
       (define (add-nodeids! nodeids)
         (for ([nodeid (in-list nodeids)])
-          (worklist-add! wl nodeid)))
-      (define (add-locs! locs add?)
+          (unless (hash-ref seen-nodeids nodeid #f)
+            (hash-set! seen-nodeids nodeid #t)
+            (define node (hash-ref nodeid=>node nodeid))
+            (define-values (readlocs writelocs) (node-locations node))
+            (add-locs! writelocs))))
+      (define (add-locs! locs)
         (for ([loc (in-list locs)])
-          (when add?
-            (when (memv loc init-locs)
-              (error 're-trace "initially-modified location is updated"))
-            (unless (hash-has-key? update-locs loc)
-              (hash-set! update-locs loc (if make-names? (make-name loc) #t))))
-          (define loc-nodeids (hash-ref the-store-deps loc null))
-          (for ([nodeid (in-list loc-nodeids)]) (worklist-add! wl nodeid))))
-      (add-nodeids! init-nodeids)
-      (add-locs! init-locs #f)
-      ;; --------------------
-      (let loop ([nodes null])
-        (define nodeid (worklist-remove-min! wl))
-        (cond [nodeid
-               (define node (hash-ref node-trace nodeid))
-               (define-values (readlocs writelocs) (node-locations node))
-               (add-locs! writelocs #t)
-               (loop (cons node nodes))]
-              [else
-               (values (reverse nodes) update-locs)])))
-
-    (define/public (re-eval init-nodeids)
-      (define-values (nodes update-locs) (re-trace null init-nodeids #f))
-      (for ([node (in-list nodes)])
-        (exec-node! node)))
-
-    (define/public (re-slice init-nodeids)
-      (define-values (nodes update-locs) (re-trace null init-nodeids #t))
-      `(let-values ()
-         ,@(for/list ([node (in-list nodes)])
-             (node->expr node update-locs))
-         ,(let ([loc+name-list (hash-map update-locs cons #t)])
-            `(cons (quote ,(list->vector (map car loc+name-list)))
-                   (vector ,@(map cdr loc+name-list))))))
+          (unless (hash-ref update-locs loc #f)
+            (hash-set! update-locs loc (if make-names? (make-name loc) #t))
+            (add-nodeids! (hash-ref loc=>nodeids loc null)))))
+      (add-nodeids! nodeids)
+      (for ([label (in-list labels)])
+        (let ([nodeid (hash-ref label=>nodeid label #f)])
+          (when nodeid (add-nodeids! (list nodeid)))))
+      (define sorted-nodeids (sort (hash-keys seen-nodeids) <))
+      (values (map (lambda (nodeid) (hash-ref nodeid=>node nodeid)) sorted-nodeids)
+              update-locs))
     ))
+
+;; ============================================================
+
+;; expr->proc : Store Expr -> (StochasticCtx -> CommitStoreUpdate)
+;; CommitStoreUpdate = (cons (Vectorof Location) (Vectorof Any))
+(define (expr->proc store update-expr)
+  (define outer-expr
+    `(lambda (get-ctx-functions the-store)
+       (define (fetch loc) (hash-ref the-store loc))
+       (define-values (ctx-sample
+                       ctx-dscore
+                       ctx-lscore
+                       ctx-observe
+                       ctx-fail
+                       ctx-mem
+                       ctx-run-model)
+         (get-ctx-functions))
+       (let-values () ,update-expr)))
+  (define outer-proc
+    (parameterize ((current-namespace (namespace-anchor->namespace eval-anchor)))
+      (eval outer-expr)))
+  (define (slice-eval ctx)
+    (define (get-ctx-functions) (send ctx get-functions))
+    (outer-proc get-ctx-functions store))
+  slice-eval)
+
+(module eval-support racket/base
+  (require "addr.rkt")
+  (provide (all-defined-out))
+  (define-namespace-anchor eval-anchor)
+  (struct structural-change (kind))
+  (define (raise-structural-change kind)
+    (raise (structural-change kind))))
+(require (submod "." eval-support))
