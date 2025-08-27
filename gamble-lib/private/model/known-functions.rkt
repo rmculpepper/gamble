@@ -29,11 +29,12 @@
 (define (register-function! id fclass)
   (free-id-table-set! function-table id fclass))
 
-;; function-may-call-erp? : Identifier -> FClass
-;; f-id must be a function identifier
-(define (function-may-call-erp? f-id)
-  (free-id-table-ref function-table f-id
-                     (lambda () (function-may-call-erp* f-id))))
+;; function-may-call-erp? : Syntax -> FClass
+(define (function-may-call-erp? f-stx)
+  (cond [(identifier? f-stx)
+         (free-id-table-ref function-table f-stx
+                            (lambda () (function-may-call-erp* f-stx)))]
+        [else 'unknown]))
 (define (function-may-call-erp* f-id)
   (match (identifier-binding f-id)
     [(list* def-mpi def-name _)

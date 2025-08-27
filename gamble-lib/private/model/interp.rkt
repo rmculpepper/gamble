@@ -9,7 +9,6 @@
 (provide (all-defined-out))
 
 ;; TODO:
-;; - better primop handling
 ;; - coalesce copies
 ;; - support `set!` ?
 ;; - support `mem`
@@ -75,7 +74,7 @@
 ;; - (node:stores (Listof Location) Result)         -- multiple var binding
 ;; - (node:apply (Listof Location) (Listof Result)) -- create lambda env
 ;; - (node:apply-tail Location (Listof Result))     -- create lambda rest arg binding
-;; - (node:apply-prim Addr Location Procedure Identifier/#f (Listof Result) MultiValueMode)
+;; - (node:apply-prim Addr/#f Location Procedure Identifier/#f (Listof Result) MultiValueMode)
 (struct node:same-if (branch testloc) #:prefab)
 (struct node:same (kind val loc) #:prefab)
 (struct node:store (varloc result) #:prefab)
@@ -122,7 +121,8 @@
     [(node:apply-prim addr loc proc funid argrs mv)
      (let ([proc-expr (or funid `(quote ,proc))]
            [arg-exprs (map result->expr argrs)])
-       (define (wrap expr) `(with-put-ADDR (quote ,addr) ,expr)) ;; FIXME: conditional
+       (define (wrap expr)
+         (if addr `(with-put-ADDR (quote ,addr) ,expr) expr))
        (case mv
          [(1) (loc-set! loc (wrap `(#%plain-app ,proc-expr ,@arg-exprs)))]
          [(#f) (wrap `(#%plain-app ,proc-expr ,@arg-exprs))]
@@ -350,11 +350,13 @@
         [(node:apply-tail varloc argrs)
          (store! varloc (results->values argrs))]
         [(node:apply-prim addr loc proc funid argrs mv)
+         (define (call) (apply proc (results->values argrs)))
+         (define (call*) (if addr (with-put-ADDR addr (call)) (call)))
          (case mv
-           [(1) (store! loc (with-put-ADDR addr (apply proc (results->values argrs))))]
-           [(#f) (begin0 (void) (with-put-ADDR addr (apply proc (results->values argrs))))]
+           [(1) (store! loc (with-put-ADDR addr (call*)))]
+           [(#f) (begin0 (void) (with-put-ADDR addr (call*)))]
            [else (call-with-values
-                  (lambda () (with-put-ADDR addr (apply proc (results->values argrs))))
+                  (lambda () (with-put-ADDR addr (call*)))
                   (lambda vals (store! loc vals)))])]
         [(node:sample loc addr distr labelr)
          (store! loc (send ctx sample (result->value distr)
@@ -444,7 +446,7 @@
          (one (result:value datum))]
         ;[(ast:wcm e1 e2 e3) _]
         [(ast:app cs fun args)
-         (define addr* (addr-add-call addr (+ (model/ast-csbase mctx) cs)))
+         (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
          (init-apply (recur1 fun) (map recur1 args) mv addr*)]
         ;; ----------------------------------------
         [(ast:sample cs dist label)

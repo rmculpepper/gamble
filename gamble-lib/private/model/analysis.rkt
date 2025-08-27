@@ -461,7 +461,7 @@
       [(with-continuation-mark e1 e2 e3)
        (ast:wcm (loop #'e1) (loop #'e2) (loop #'e3))]
       [(#%plain-app f e ...)
-       (define cs (CALL-SITE stx))
+       (define cs (and (function-may-call-erp? #'f) (CALL-SITE stx)))
        (define args (loop* #'(e ...)))
        (define argc (length args))
        (or (case (and (identifier? #'f) (free-id-table-ref special-env #'f #f))
