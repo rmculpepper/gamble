@@ -38,11 +38,13 @@
 ;; and no variables in context are mutated (not enforced).
 
 ;; MCtx = (model/ast ... AST Vector (Vectorof Identifier) Nat)
-;; LEnv = (ImmHash LVar Result)
+;; LEnv = (ImmHash LVar (U Result (Boxof Result/#f)))
 
 ;; lenv-lookup : LEnv LVar -> Result
 (define (lenv-lookup lenv var)
-  (hash-ref lenv var))
+  (define (fail) (error 'interpret "reference to uninitialized letrec-bound variable"))
+  (define r (hash-ref lenv var))
+  (if (box? r) (or (unbox r) (fail)) r))
 
 ;; lenv-lookups : LEnv (Listof LVar) -> (Listof Result)
 (define (lenv-lookups lenv vars)
@@ -56,10 +58,18 @@
 (define (lenv-locations lenv vars)
   (map result:location-location (lenv-lookups lenv vars)))
 
-;; lenv-bind : LEnv (Listof Result) -> LEnv
+;; lenv-bind : LEnv (Listof LVar) (Listof Result) -> LEnv
 (define (lenv-bind lenv vars results)
   (for/fold ([lenv lenv]) ([var (in-list vars)] [result (in-list results)])
     (hash-set lenv var result)))
+
+;; lenv-bind-box : LEnv LVar -> LEnv
+(define (lenv-bind-box lenv var)
+  (hash-set lenv var (box #f)))
+
+;; lenv-update-box : LEnv LVar Result -> Void
+(define (lenv-update-box lenv var result)
+  (set-box! (hash-ref lenv var) result))
 
 ;; ============================================================
 ;; Result
@@ -449,13 +459,20 @@
          (define lenv*
            (for/fold ([lenv* lenv]) ([clause (in-list clauses)])
              (match-define (ast:lv-clause vars rhs) clause)
-             (define lenv2 (lenv-add lenv* vars))
-             lenv2))
+             (match vars
+               [(list var)
+                (lenv-bind-box lenv* var)]
+               [else
+                (lenv-add lenv* vars)])))
          (for ([clause (in-list clauses)])
            (match-define (ast:lv-clause vars rhs) clause)
-           (define varlocs (lenv-locations lenv* vars))
-           (define result (recur rhs lenv* (length vars)))
-           (do! (node:stores varlocs result)))
+           (match vars
+             [(list var)
+              (lenv-update-box lenv* var (recur1 rhs lenv*))]
+             [else
+              (define varlocs (lenv-locations lenv* vars))
+              (define result (recur rhs lenv* (length vars)))
+              (do! (node:stores varlocs result))]))
          (recur body lenv*)]
         [(ast:quote datum)
          (one (result:value datum))]
