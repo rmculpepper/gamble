@@ -19,13 +19,12 @@
 
 ;; A (Model X) is one of
 ;; - (model (StochasticCtx -> X))
-;; - (model/ast (StochasticCtx -> X) AST (cons Vector (Vectorof Identifier)))
 ;; - (-> X)
 
 ;; Addr is passed by dynamic protocol (continuation mark).
 
 (struct model (proc))
-(struct model/ast model (ast env) #:transparent)
+(struct model/ast model (ast env envids csbase) #:transparent)
 
 ;; ============================================================
 ;; Samplers

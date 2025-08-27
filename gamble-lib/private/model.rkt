@@ -16,14 +16,15 @@
     [(expression)
      (syntax-parse stx
        [(_ e:expr ...)
-        (with-syntax ([(proc ast (ast-fv ...))
+        (with-syntax ([(proc ast (ast-fv ...) csbase)
                        (instrument-model
                         #'(#%plain-lambda (ctx)
                             (with-ctx ctx
                               (let-values () e ...))))])
           #'(model/ast proc (quote ast)
-                       (cons (vector ast-fv ...)
-                             (list->vector (syntax->list #'(ast-fv ...))))))])]
+                       (vector ast-fv ...)
+                       (list->vector (syntax->list #'(ast-fv ...)))
+                       csbase))])]
     [else #`(#%expression #,stx)]))
 
 (begin-for-syntax
@@ -33,10 +34,12 @@
     (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
     (analyze-FUN-EXP tagged-ee)
     (analyze-CALLS-ERP tagged-ee)
+    (define csbase-id
+      (syntax-local-lift-expression
+       #`(allocate-call-sites (quote #,call-site-count))))
     (define proc-expr
-      #`(let-values ([(csbase) (lift (allocate-call-sites (quote #,call-site-count)))])
-          (syntax-parameterize ((CSBASE (make-rename-transformer
-                                         (quote-syntax csbase))))
-            (instrument #,tagged-ee))))
+      #`(syntax-parameterize ((CSBASE (make-rename-transformer
+                                       (quote-syntax #,csbase-id))))
+          (instrument #,tagged-ee)))
     (define-values (ast ast-fvs) (parse-ast tagged-ee))
-    (list proc-expr ast ast-fvs)))
+    (list proc-expr ast ast-fvs csbase-id)))
