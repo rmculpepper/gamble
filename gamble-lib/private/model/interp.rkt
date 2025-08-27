@@ -576,13 +576,13 @@
               [else
                (values (reverse nodes) update-locs)])))
 
-    (define/public (re-eval init-locs init-nodeids)
-      (define-values (nodes update-locs) (re-trace init-locs init-nodeids #f))
+    (define/public (re-eval init-nodeids)
+      (define-values (nodes update-locs) (re-trace null init-nodeids #f))
       (for ([node (in-list nodes)])
         (exec-node! node)))
 
-    (define/public (re-slice init-locs init-nodeids)
-      (define-values (nodes update-locs) (re-trace init-locs init-nodeids #t))
+    (define/public (re-slice init-nodeids)
+      (define-values (nodes update-locs) (re-trace null init-nodeids #t))
       `(let-values ()
          ,@(for/list ([node (in-list nodes)])
              (node->expr node update-locs))
