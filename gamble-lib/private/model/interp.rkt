@@ -34,16 +34,42 @@
 ;; ============================================================
 ;; Environments
 
-;; MCtx = (model/ast ... AST Vector (Vectorof Identifier) Nat)
-;; LEnv = (ImmHash LVar Location)
+;; This code assumes no local variables are mutated (enforced by `parse-ast`)
+;; and no variables in context are mutated (not enforced).
 
-;; lenv-lookup : LEnv Var -> Location
+;; MCtx = (model/ast ... AST Vector (Vectorof Identifier) Nat)
+;; LEnv = (ImmHash LVar Result)
+
+;; lenv-lookup : LEnv LVar -> Result
 (define (lenv-lookup lenv var)
   (hash-ref lenv var))
 
-;; lenv-lookups : LEnv (Listof Var) -> (Listof Location)
+;; lenv-lookups : LEnv (Listof LVar) -> (Listof Result)
 (define (lenv-lookups lenv vars)
   (map (lambda (var) (hash-ref lenv var)) vars))
+
+;; lenv-location : LEnv LVar -> Location
+(define (lenv-location lenv vars)
+  (result:location-location (lenv-lookup lenv vars)))
+
+;; lenv-locations : LEnv (Listof LVar) -> (Listof Location)
+(define (lenv-locations lenv vars)
+  (map result:location-location (lenv-lookups lenv vars)))
+
+;; lenv-bind : LEnv (Listof Result) -> LEnv
+(define (lenv-bind lenv vars results)
+  (for/fold ([lenv lenv]) ([var (in-list vars)] [result (in-list results)])
+    (hash-set lenv var result)))
+
+;; ============================================================
+;; Result
+
+;; A Result is one of
+;; - (result:location Location)
+;; - (result:value Any)         -- constant given branch choices
+(struct result:location (location) #:prefab)
+(struct result:value (value) #:prefab)
+(struct result:value+id result:value (id) #:prefab)
 
 ;; ============================================================
 
@@ -52,31 +78,21 @@
 ;; - #f   -- any number of values, discarded
 
 ;; ============================================================
-;; Results
-
-;; Result is one of
-;; - (result:location Location)
-;; - (result:value Any)         -- constant given branch choices
-(struct result:location (location) #:prefab)
-(struct result:value (value) #:prefab)
-(struct result:value+id result:value (id) #:prefab)
-
-;; ============================================================
 ;; Node traces
 
 ;; NodeTrace = (MutHash NodeID Node)
 ;; NodeID = Nat
 
 ;; A Node is one of
-;; - (node:same-if Boolean Location)                -- enforce same branch
-;; - (node:same String Any Location)                -- enforce same proc/closure/etc
+;; - (node:same-if Boolean result)                  -- enforce same branch
+;; - (node:same String Any Result)                  -- enforce same proc/closure/etc
 ;; - (node:store Location Result)                   -- single var binding
 ;; - (node:stores (Listof Location) Result)         -- multiple var binding
 ;; - (node:apply (Listof Location) (Listof Result)) -- create lambda env
 ;; - (node:apply-tail Location (Listof Result))     -- create lambda rest arg binding
 ;; - (node:apply-prim Addr/#f Location Procedure Identifier/#f (Listof Result) MultiValueMode)
-(struct node:same-if (branch testloc) #:prefab)
-(struct node:same (kind val loc) #:prefab)
+(struct node:same-if (branch result) #:prefab)
+(struct node:same (kind val result) #:prefab)
 (struct node:store (varloc result) #:prefab)
 (struct node:stores (varlocs result) #:prefab)
 (struct node:apply (varlocs argrs) #:prefab)
@@ -102,20 +118,20 @@
       [(result:location loc) (loc-ref loc)]
       [(result:value val) `(quote ,val)]))
   (match node
-    [(node:same-if branch testloc)
-     `(unless (eq? (quote ,branch) (and ,(loc-ref testloc) #t))
+    [(node:same-if branch result)
+     `(unless (eq? (quote ,branch) (and ,(result->expr result) #t))
         (raise-structural-change "if branch"))]
-    [(node:same kind val loc)
-     `(unless (equal? (quote ,val) ,(loc-ref loc))
+    [(node:same kind val result)
+     `(unless (equal? (quote ,val) ,(result->expr result))
         (raise-structural-change (quote ,kind)))]
-    [(node:store varloc (result:location rloc))
-     (loc-set! varloc (loc-ref rloc))]
-    [(node:stores varlocs (result:location rloc))
-     `(define-values ,(map loc-ref varlocs) (apply values ,(loc-ref rloc)))]
+    [(node:store varloc result)
+     (loc-set! varloc (result->expr result))]
+    [(node:stores varlocs result)
+     `(define-values ,(map loc-ref varlocs) (apply values ,(result->expr result)))]
     [(node:apply varlocs argrs)
      `(begin ,@(for/list ([varloc (in-list varlocs)]
                           [argr (in-list argrs)])
-                 (loc-set! varloc (loc-ref (result:location-location argr)))))]
+                 (loc-set! varloc (result->expr argr))))]
     [(node:apply-tail varloc argrs)
      (loc-set! varloc `(list ,@(map result->expr argrs)))]
     [(node:apply-prim addr loc proc funid argrs mv)
@@ -154,14 +170,14 @@
     (for/list ([r (in-list rs)] #:when (result:location? r))
       (result:location-location r)))
   (match node
-    [(node:same-if branch testloc)
-     (values (list testloc) null)]
-    [(node:same kind val loc)
-     (values (list loc) null)]
-    [(node:store varloc (result:location rloc))
-     (values (list rloc) (list varloc))]
-    [(node:stores varlocs (result:location rloc))
-     (values (list rloc) varlocs)]
+    [(node:same-if branch result)
+     (values (get-locs (list result)) null)]
+    [(node:same kind val result)
+     (values (get-locs (list result)) null)]
+    [(node:store varloc result)
+     (values (get-locs (list result)) (list varloc))]
+    [(node:stores varlocs result)
+     (values (get-locs (list result)) varlocs)]
     [(node:apply varlocs argrs)
      (define v+a-list
        (for/list ([varloc (in-list varlocs)]
@@ -253,11 +269,11 @@
     (define/private (results->values rs)
       (for/list ([r (in-list rs)]) (result->value r)))
 
-    ;; lenv-add : LEnv (Listof Var) -> (values LEnv (Listof Location))
+    ;; lenv-add : LEnv (Listof Var) -> LEnv
     (define (lenv-add lenv vars)
       (for/fold ([lenv lenv]) ([var (in-list vars)])
         (define loc (next-location))
-        (hash-set lenv var loc)))
+        (hash-set lenv var (result:location loc))))
 
     ;; ----------------------------------------
     ;; Node trace, nodes
@@ -284,8 +300,10 @@
       (define (add-and-exec! [node node])
         (begin (add-node! node) (exec-node! node)))
       (match node
-        [(node:same-if branch testloc) (add-and-exec!)]
-        [(node:same kind fun loc) (add-and-exec!)]
+        [(node:same-if branch result)
+         (when (result:location? result) (add-and-exec!))]
+        [(node:same kind fun result)
+         (when (result:location? result) (add-and-exec!))]
         [(node:store varloc result)
          (match result
            [(result:location rloc) (add-and-exec!)]
@@ -327,21 +345,21 @@
     ;; exec-node! : Node -> Void
     ;; Perform node effect.
     (define/private (exec-node! node)
-      ;; (eprintf "exec! ~e\n" node)
+      #;(eprintf "exec! ~e\n" node)
       (match node
-        [(node:same-if branch testloc)
-         (define new-branch (and (fetch testloc) #t))
+        [(node:same-if branch result)
+         (define new-branch (and (result->value result) #t))
          (unless (eq? new-branch branch)
            (error 'interpret "structural change (if branch)"))]
-        [(node:same kind val loc)
-         (define new-val (fetch loc))
+        [(node:same kind val result)
+         (define new-val (result->value result))
          (unless (equal? new-val val)
            (error 'interpret "structural change (~a)" kind))]
-        [(node:store varloc (result:location rloc))
-         (store! varloc (fetch rloc))]
-        [(node:stores varlocs (result:location rloc))
+        [(node:store varloc result)
+         (store! varloc (result->value result))]
+        [(node:stores varlocs result)
          (for ([varloc (in-list varlocs)]
-               [val (in-list (fetch rloc))])
+               [val (in-list (result->value result))])
            (store! varloc val))]
         [(node:apply varlocs argrs)
          (for ([varloc (in-list varlocs)]
@@ -390,7 +408,7 @@
       (define (recur1 ast [lenv lenv]) (init-eval ast mctx lenv 1 addr))
       (match ast
         [(ast:lvar index)
-         (one (result:location (hash-ref lenv index)))]
+         (one (lenv-lookup lenv index))]
         [(ast:ctxvar index)
          (one (result:value+id (vector-ref (model/ast-env mctx) index)
                                (vector-ref (model/ast-envids mctx) index)))]
@@ -399,19 +417,12 @@
         [(ast:case-lambda lambdas)
          (one (result:value (closure lambdas mctx lenv)))]
         [(ast:if e1 e2 e3)
-         (match (recur1 e1)
-           [(result:location loc)
-            (match (fetch loc)
-              [(? values)
-               (do! (node:same-if #t loc))
-               (recur e2)]
-              [#f
-               (do! (node:same-if #f loc))
-               (recur e3)])]
-           [(result:value (? values))
-            (recur e2)]
-           [(result:value #f)
-            (recur e3)])]
+         (define result (recur1 e1))
+         (define branch (and (result->value result) #t))
+         (do! (node:same-if branch result))
+         (if branch
+             (recur e2)
+             (recur e3))]
         [(ast:begin es)
          (let loop ([es es])
            (match es
@@ -425,10 +436,14 @@
            (for/fold ([lenv* lenv]) ([clause (in-list clauses)])
              (match-define (ast:lv-clause vars rhs) clause)
              (define result (recur rhs lenv (length vars)))
-             (define lenv2 (lenv-add lenv* vars))
-             (define varlocs (lenv-lookups lenv2 vars))
-             (do! (node:stores varlocs result))
-             lenv2))
+             (match vars
+               [(list var)
+                (lenv-bind lenv* (list var) (list result))]
+               [vars
+                (define lenv2 (lenv-add lenv* vars))
+                (define varlocs (lenv-lookups lenv2 vars))
+                (do! (node:stores varlocs result))
+                lenv2])))
          (recur body lenv*)]
         [(ast:letrec-values clauses body)
          (define lenv*
@@ -438,7 +453,7 @@
              lenv2))
          (for ([clause (in-list clauses)])
            (match-define (ast:lv-clause vars rhs) clause)
-           (define varlocs (lenv-lookups lenv* vars))
+           (define varlocs (lenv-locations lenv* vars))
            (define result (recur rhs lenv* (length vars)))
            (do! (node:stores varlocs result)))
          (recur body lenv*)]
@@ -468,10 +483,7 @@
         ;[(ast:mem cs arg) _]
         [(ast:run-model arg)
          (define result (recur1 arg))
-         (match result
-           [(result:location rloc)
-            (do! (node:same "model" (fetch rloc) rloc))]
-           [(result:value _) (void)])
+         (do! (node:same "model" (result->value result) result))
          (match (result->value result)
            [(? model/ast? m)
             (define ast (model/ast-ast m))
@@ -480,14 +492,9 @@
 
     (define/private (init-apply funr argrs mv addr)
       ;; PRE: addr is already extended with call site
-      (define-values (funval funid)
-        (match funr
-          [(result:location funloc)
-           (define funval (fetch funloc))
-           (do! (node:same 'application funval funloc))
-           (values funval #f)]
-          [(result:value+id funval funid) (values funval funid)]
-          [(result:value funval) (values funval #f)]))
+      (define funval (result->value funr))
+      (define funid (match funr [(result:value+id _ funid) funid] [_ #f]))
+      (do! (node:same "application" funval funr))
       (match funval
         [(closure lams mctx lenv)
          (define argc (length argrs))
@@ -496,15 +503,14 @@
              (match lam
                [(ast:lambda vars #f body)
                 #:when (= argc (length vars))
-                (define lenv* (lenv-add lenv vars))
-                (do! (node:apply (lenv-lookups lenv* vars) argrs))
+                (define lenv* (lenv-bind lenv vars argrs))
                 (cons lenv* body)]
                [(ast:lambda vars restvar body)
                 #:when (>= argc (length vars))
-                (define lenv* (lenv-add lenv (append vars (list restvar))))
-                (do! (node:apply (lenv-lookups lenv* vars) (take argrs (length vars))))
-                (do! (node:apply-tail (lenv-lookup lenv* restvar) (drop argrs (length vars))))
-                (cons lenv* body)]
+                (define lenv1 (lenv-bind lenv vars (take argrs (length vars))))
+                (define lenv2 (lenv-add lenv (list restvar)))
+                (do! (node:apply-tail (lenv-location lenv2 restvar) (drop argrs (length vars))))
+                (cons lenv2 body)]
                [_ #f])))
          (match lenv+body
            [(cons lenv* body)
