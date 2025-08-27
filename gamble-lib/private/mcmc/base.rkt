@@ -79,6 +79,8 @@
              (hash-iterate-next h iter)))
          (hash-iterate-key h iter)]))
 
+(define (wrap-ok-label? ok-label?)
+  (and ok-label? (lambda (key) (ok-label? (label-view key)))))
 
 ;; ============================================================
 ;; Transition interface

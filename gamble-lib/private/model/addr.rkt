@@ -7,6 +7,7 @@
          init-hash-addr
          init-full-addr
          (struct-out auto-label)
+         label-view
          current-init-addr)
 
 ;; Note: Label vs Addr
@@ -14,6 +15,11 @@
 ;; - Addr refers to addresses managed by instrumenter
 
 (struct auto-label (addr) #:prefab)
+
+;; label-view : Label/#f -> Label/#f
+;; Don't expose auto-label values to user.
+(define (label-view label)
+  (if (auto-label? label) #f label))
 
 ;; Addr is one of
 ;; - HashAddr  -- compact, may introduce collisions

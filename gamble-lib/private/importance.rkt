@@ -7,6 +7,7 @@
          racket/class
          "dist/base.rkt"
          "base.rkt"
+         "model/addr.rkt"
          "util/density.rkt")
 (provide (all-defined-out))
 
@@ -43,7 +44,7 @@
     (define/public (get-observation-density) obs-dn)
 
     (define/override (sample dist label)
-      (cond [(and propose (propose label dist))
+      (cond [(and propose (propose (label-view label) dist))
              => (lambda (qdist)
                   (define v (dist-sample qdist))
                   (-dscore 'sample

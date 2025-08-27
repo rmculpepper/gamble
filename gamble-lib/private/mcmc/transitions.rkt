@@ -101,14 +101,16 @@
 
 (define single-site-transition%
   (class delta-mh-transition-base%
-    (init-field ok-label?      ;; (Label -> Boolean) or #f
+    (init-field ok-label?     ;; (Label/#f -> Boolean) or #f
                 proposal)     ;; Proposal
     (super-new)
+
+    (define ok-label*? (wrap-ok-label? ok-label?))
 
     ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key (trace-db prev-trace) ok-label?))
+      (define label (hash-random-key (trace-db prev-trace) ok-label*?))
       (cond [label
              (log-mcmc-info "Label to change = ~s" label)
              (match (hash-ref prev-db label)
@@ -138,8 +140,8 @@
     (define/override (accept-threshold* prev-trace new-trace)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
-      (define new-nchoices (hash-count* (trace-db new-trace) ok-label?))
-      (define prev-nchoices (hash-count* (trace-db prev-trace) ok-label?))
+      (define new-nchoices (hash-count* (trace-db new-trace) ok-label*?))
+      (define prev-nchoices (hash-count* (trace-db prev-trace) ok-label*?))
       (cond [(zero? prev-nchoices)
              +inf.0]
             [else
@@ -158,11 +160,13 @@
                 proposal)     ;; Proposal
     (super-new)
 
+    (define ok-label*? (wrap-ok-label? ok-label?))
+
     ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
       (define delta-db
-        (for/hash ([(label e) (in-hash prev-db)] #:when (ok-label? label))
+        (for/hash ([(label e) (in-hash prev-db)] #:when (ok-label*? label))
           (values label proposal)))
       (when (zero? (hash-count delta-db))
         (unless (zero? (hash-count prev-db))
@@ -181,11 +185,13 @@
     (init-field ok-label?)     ;; (Label -> Boolean) or #f
     (super-new)
 
+    (define ok-label*? (wrap-ok-label? ok-label?))
+
     ;; run : (Model A) Trace -> (values (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
       (define who 'enumerative-gibbs-transition)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key prev-db ok-label?))
+      (define label (hash-random-key prev-db ok-label*?))
       (unless label (error who "no suitable label to change"))
       (log-mcmc-info "Label to change = ~s" label)
       (match-define (entry dist prev-value _) (hash-ref prev-db label))
@@ -230,11 +236,13 @@
                 [small-dist 10]) ;; limit of small-dist optimization, 0 to disable
     (super-new)
 
+    (define ok-label*? (wrap-ok-label? ok-label?))
+
     ;; run : (Model A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
       (define who 'slice-transition)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key prev-db ok-label?))
+      (define label (hash-random-key prev-db ok-label*?))
       (unless label (error who "no suitable label to change"))
       (match-define (entry dist prev-value _) (hash-ref prev-db label))
       (log-mcmc-info "Label to change = ~s, ~e" label prev-value)
