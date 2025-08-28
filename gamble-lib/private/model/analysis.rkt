@@ -80,11 +80,8 @@
 
 (define tag-counter 0)
 
-(define TAG-table (make-hash))
-
 (define (new-tag [stx #f])
   (set! tag-counter (add1 tag-counter))
-  (hash-set! TAG-table tag-counter stx)
   tag-counter)
 
 (define TAG
