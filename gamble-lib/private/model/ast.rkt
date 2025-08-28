@@ -21,7 +21,7 @@
 (struct ast:observe (dist value) #:prefab)
 (struct ast:fail (arg) #:prefab)
 (struct ast:mem (cs arg) #:prefab)
-(struct ast:run-model (arg) #:prefab)
+(struct ast:run-model (cs arg) #:prefab)
 
 (define (wrap-begin es)
   (if (and (pair? es) (null? (cdr es))) (car es) (ast:begin es)))

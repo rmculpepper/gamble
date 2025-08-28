@@ -460,7 +460,8 @@
         ;; ----------------------------------------
         [(ast:sample cs dist label)
          (define loc (next-location))
-         (do! (node:sample loc addr (recur1 dist) (recur1 label)))
+         (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
+         (do! (node:sample loc addr* (recur1 dist) (recur1 label)))
          (one (result:location loc))]
         [(ast:dscore arg)
          (do! (node:dscore (recur1 arg)))
@@ -475,13 +476,14 @@
          (do! (node:fail (recur1 arg)))
          (one (result:value (void)))]
         ;[(ast:mem cs arg) _]
-        [(ast:run-model arg)
+        [(ast:run-model cs arg)
          (define result (recur1 arg))
          (do! (node:same "model" (result->value result) result))
+         (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
          (match (result->value result)
            [(? model/ast? m)
             (define ast (model/ast-ast m))
-            (init-eval ast m (hasheqv) mv addr)])]
+            (init-eval ast m (hasheqv) mv addr*)])]
         ))
 
     (define/private (init-apply funr argrs mv addr)

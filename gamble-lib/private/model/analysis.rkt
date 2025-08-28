@@ -471,8 +471,8 @@
              [(fail)   (cond [(= argc 0) (ast:fail (ast:quote #f))]
                              [(= argc 1) (ast:fail (car args))]
                              [else #f])]
-             [(mem)    (and (= argc 1) (ast:mem (car args)))]
-             [(run-model) (and (= argc 1) (ast:run-model (car args)))]
+             [(mem)    (and (= argc 1) (ast:mem cs (car args)))]
+             [(run-model) (and (= argc 1) (ast:run-model cs (car args)))]
              [else #f])
            (ast:app cs (loop #'f) args))]
       [(#%top . var:id)
