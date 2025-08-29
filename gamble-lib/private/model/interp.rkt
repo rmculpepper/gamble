@@ -4,6 +4,8 @@
          racket/list
          racket/undefined
          "../base.rkt"
+         (only-in "../dist.rkt" dist-pdf)
+         (only-in "../util/density.rkt" density->real)
          "addr.rkt"
          "ast.rkt")
 (provide (all-defined-out))
@@ -375,6 +377,28 @@
         ;[(node:mem argr) _]
         ))
 
+    ;; exec-stochastic-nodes! : (Listof Node) -> (Values Real Real)
+    ;; Replay only sample/observe nodes to calculate likelihood of given slice.
+    (define/private (exec-stochastic-nodes! nodes)
+      (define ll-free 0.0)
+      (define ll-obs 0.0)
+      (for ([node (in-list nodes)])
+        (match node
+          [(node:sample loc addr distr labelr)
+           (set! ll-free
+                 (+ ll-free (dist-pdf (result->value distr) (fetch loc) #t)))]
+          [(node:dscore argr)
+           (set! ll-obs
+                 (+ ll-obs (density->real (result->value argr) #t)))]
+          [(node:lscore argr)
+           (set! ll-obs
+                 (+ ll-obs (result->value argr)))]
+          [(node:observe distr valr)
+           (set! ll-obs
+                 (+ ll-obs (dist-pdf (result->value distr) (result->value valr) #t)))]
+          [_ (void)]))
+      (values ll-free ll-obs))
+
     ;; ----------------------------------------
     ;; Initial evaluation
 
@@ -525,37 +549,45 @@
     ;; Re-evaluation
 
     ;; get-slice-eval : (Listof Label) (Listof NodeID)
-    ;;               -> (StochasticCtx -> (values Any CommitStoreUpdate))
+    ;;               -> (values (StochasticCtx -> (values Any StoreUpdate)) Real Real)
     (define/public (get-slice-eval #:labels [labels null]
                                    #:nodeids [nodeids null])
-      (expr->proc the-store (get-slice-expr labels nodeids)))
+      (define-values (nodes updated-locs) (get-slice labels nodeids))
+      (define slice-expr (slice->expr nodes updated-locs))
+      (define-values (slice-ll-free slice-ll-obs) (exec-stochastic-nodes! nodes))
+      (values (expr->proc the-store slice-expr)
+              slice-ll-free slice-ll-obs))
 
-    ;; commit-store-update : CommitStoreUpdate -> Void
+    ;; get-slice-expr : (Listof Label) (Listof NodeID) -> Expr
+    (define/public (get-slice-expr labels [nodeids null])
+      (define-values (nodes updated-locs) (get-slice labels nodeids))
+      (slice->expr nodes updated-locs))
+
+    ;; commit-store-update : StoreUpdate -> Void
     (define/public (commit-store-update commit)
       (match-define (cons locv valuev) commit)
       (for ([loc (in-vector locv)] [value (in-vector valuev)])
         (store! loc value)))
 
-    ;; get-slice-expr : (Listof Label) (Listof NodeID) -> Expr
-    (define/public (get-slice-expr labels [nodeids null])
-      (define-values (nodes update-locs) (get-slice labels nodeids #t))
+    ;; slice->expr : (Listof Node) (Hash Location Symbol) -> Expr
+    (define/private (slice->expr nodes updated-locs)
       `(begin
          ,@(for/list ([node (in-list nodes)])
-             (node->expr node update-locs))
+             (node->expr node updated-locs))
          (values ,(match final-result
                     [(result:value val) `(quote ,val)]
                     [(result:location loc)
-                     (or (hash-ref update-locs loc #f)
+                     (or (hash-ref updated-locs loc #f)
                          `(fetch (quote ,loc)))])
-                 ,(let ([loc+name-list (hash-map update-locs cons #t)])
+                 ,(let ([loc+name-list (hash-map updated-locs cons #t)])
                     `(cons (quote ,(list->vector (map car loc+name-list)))
                            (vector ,@(map cdr loc+name-list)))))))
 
     ;; get-slice : (Listof Label) (Listof NodeID) Boolean
-    ;;          -> (values (Listof Node) (Hash Location Symbol/#t))
-    (define/private (get-slice labels nodeids make-names?)
+    ;;           -> (values (Listof NodeID) (Hash Location (U Symbol #t)))
+    (define/private (get-slice labels nodeids [make-names? #t])
       (define seen-nodeids (make-hasheqv))
-      (define update-locs (make-hasheqv))
+      (define updated-locs (make-hasheqv))
       (define (make-name loc) (string->uninterned-symbol (format "a_~s" loc)))
       (define (add-nodeids! nodeids)
         (for ([nodeid (in-list nodeids)])
@@ -566,8 +598,8 @@
             (add-locs! writelocs))))
       (define (add-locs! locs)
         (for ([loc (in-list locs)])
-          (unless (hash-ref update-locs loc #f)
-            (hash-set! update-locs loc (if make-names? (make-name loc) #t))
+          (unless (hash-ref updated-locs loc #f)
+            (hash-set! updated-locs loc (if make-names? (make-name loc) #t))
             (add-nodeids! (hash-ref loc=>nodeids loc null)))))
       (add-nodeids! nodeids)
       (for ([label (in-list labels)])
@@ -575,13 +607,13 @@
           (when nodeid (add-nodeids! (list nodeid)))))
       (define sorted-nodeids (sort (hash-keys seen-nodeids) <))
       (values (map (lambda (nodeid) (hash-ref nodeid=>node nodeid)) sorted-nodeids)
-              update-locs))
+              updated-locs))
     ))
 
 ;; ============================================================
 
-;; expr->proc : Store Expr -> (StochasticCtx -> CommitStoreUpdate)
-;; CommitStoreUpdate = (cons (Vectorof Location) (Vectorof Any))
+;; expr->proc : Store Expr -> (StochasticCtx -> StoreUpdate)
+;; StoreUpdate = (cons (Vectorof Location) (Vectorof Any))
 (define (expr->proc store update-expr)
   (define outer-expr
     `(lambda (get-ctx-functions the-store)
