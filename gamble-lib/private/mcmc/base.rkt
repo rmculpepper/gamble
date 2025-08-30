@@ -26,26 +26,24 @@
 ;; ============================================================
 ;; Trace, DB, Entry
 
-;; A Trace is (trace Any DB Real Real Nat)
-(struct trace (value db ll-free ll-obs))
+;; A Trace is (trace Any DB Real Real)
+;; - lprs is the sum of all log priors from db
+;; - lobs is the sum of all log likelihoods of observations
+(struct trace (value db lprs lobs))
 
 (define init-trace (trace #f (hash) -inf.0 -inf.0))
 
-;; DB = (Hashof Label Entry)
-;; DeltaDB = (Hashof Label (U Entry Proposal))
-
-;; Entry = (entry Dist[X] X Real)
-(struct entry (dist value ll) #:prefab)
-
-;; trace-ll : Trace -> Real
-(define (trace-ll tr)
-  (+ (trace-ll-free tr) (trace-ll-obs tr)))
+;; trace-lj : Trace -> Real
+;; Returns the log joint probability of the trace (priors and observations).
+(define (trace-lj tr)
+  (+ (trace-lprs tr) (trace-lobs tr)))
 
 ;; traces-obs-diff : Trace Trace -> Real
 (define (traces-obs-diff tr1 tr2)
-  (- (trace-ll-obs tr1) (trace-ll-obs tr2)))
+  (- (trace-lobs tr1) (trace-lobs tr2)))
 
 ;; traces-same-structure? : Trace Trace Boolean -> Boolean
+;; If quick?, we already know new-trace has no *new* labels.
 (define (traces-same-structure? prev-trace new-trace [quick? #f])
   (define prev-db (trace-db prev-trace))
   (define new-db (trace-db new-trace))
@@ -54,6 +52,13 @@
        (or quick?
            (for/and ([label (in-hash-keys prev-db)])
              (hash-has-key? new-db label)))))
+
+;; DB = (Hashof Label Entry)
+;; DeltaDB = (Hashof Label (U Entry Proposal))
+
+;; Entry = (entry Dist[X] X Real)
+;; - lprior is redundant, always (dist-pdf dist value #t)
+(struct entry (dist value lprior) #:prefab)
 
 ;; hash-random-key : Hash[K => V] (K -> Boolean) -> K or #f
 (define (hash-random-key h [ok-key? #f])
@@ -207,12 +212,12 @@
     (inherit-field escape-prompt)
     (init-field prev-db       ;; DB, not mutated
                 delta-db      ;; DB, not mutated
-                [ll-R/F 0.0]  ;; real, mutated
+                [l-R/F 0.0]   ;; real, mutated
+                [sumlprs 0.0] ;; real, mutated; sum of lprior of all entries in current-db
+                [sumlobs 0.0] ;; real, mutated; sum of log likelihoods of all observations
                 [disallow-new/who #f]) ;; #f or Symbol
     (field [current-db (make-hash)] ;; DB, mutated
-           [ll-free  0.0]     ;; sum of ll of all entries in current-db
-           [ll-obs   0.0]     ;; sum of ll of all observations
-           [ll-diff  0.0])    ;; see get-ll-diff below
+           [diff-lprs  0.0])        ;; see get-diff-lprs below
 
     (super-new)
 
@@ -253,15 +258,15 @@
              (entry-value delta-e)]
             [(proposal? proposal)
              (match-define (entry prev-dist prev-value _) prev-e)
-             (match-define (cons new-value l-R/F)
+             (match-define (cons new-value proposal-l-R/F)
                (or (send proposal propose2 label dist prev-dist prev-value)
                    (begin (log-mcmc-info "Late proposal returned #f; resampling")
                           (propose2:resample dist prev-dist prev-value))))
              (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" label
                             prev-dist prev-value dist new-value (exp l-R/F))
-             (define new-ll (dist-pdf dist new-value #t))
-             (db-add! label (entry dist new-value new-ll) prev-e)
-             (set! ll-R/F (+ ll-R/F l-R/F))
+             (define new-lpr (dist-pdf dist new-value #t))
+             (db-add! label (entry dist new-value new-lpr) prev-e)
+             (set! l-R/F (+ l-R/F proposal-l-R/F))
              new-value]))
 
     (define/private (sample/prev dist label prev-e)
@@ -270,10 +275,10 @@
              (db-add! label prev-e)
              (entry-value prev-e)]
             [(eq? (dist-type (entry-dist prev-e)) (dist-type dist))
-             (define new-ll (dist-pdf dist (entry-value prev-e) #t))
-             (cond [(logspace-nonzero? new-ll)
+             (define new-lpr (dist-pdf dist (entry-value prev-e) #t))
+             (cond [(logspace-nonzero? new-lpr)
                     (define value (entry-value prev-e))
-                    (define new-e (entry dist value new-ll))
+                    (define new-e (entry dist value new-lpr))
                     (log-mcmc-info "RESCORE ~s: ~e, ~e" label dist value)
                     (db-add! label new-e prev-e)
                     value]
@@ -285,18 +290,18 @@
         (error disallow-new/who
                "structural change (sampling new variable) not allowed"))
       (define value (dist-sample dist))
-      (define ll (dist-pdf dist value #t))
+      (define lpr (dist-pdf dist value #t))
       (if prev-e
           (log-mcmc-info "MISMATCH ~s: ~e, ~e => ~e, ~e" label
                          (entry-dist prev-e) (entry-value prev-e)
                          dist value)
           (log-mcmc-info "NEW ~s: ~e, ~e" label dist value))
-      (db-add! label (entry dist value ll) prev-e)
+      (db-add! label (entry dist value lpr) prev-e)
       value)
 
     (define/override (-dscore who dn)
-      (set! ll-obs (+ ll-obs (density->real dn #t)))
-      (when (logspace-zero? ll-obs) (fail who)))
+      (set! sumlobs (+ sumlobs (density->real dn #t)))
+      (when (logspace-zero? sumlobs) (fail who)))
 
     (define/override (mem f)
       (with-get-ADDR addr
@@ -321,28 +326,27 @@
     ;; make-trace : Any -> Trace
     ;; Should only be called after run, once current-db has stopped changing.
     (define/public (make-trace value)
-      (trace value current-db ll-free ll-obs))
+      (trace value current-db sumlprs sumlobs))
 
-    ;; get-ll-diff : -> Real
-    ;; ll-diff = SUM_{k in K} (- (entry-ll current-db[k]) (entry-ll prev-db[k]))
-    ;;           where K = dom(current-db) intersected with dom(prev-db)
-    ;; Observations do not affect ll-diff, only ll-obs.
-    (define/public (get-ll-diff) ll-diff)
+    ;; get-diff-lprs : -> Real
+    ;; Returns SUM_{k in K} (- (entry-lprior current-db[k]) (entry-lprior prev-db[k]))
+    ;; where K = dom(current-db) intersected with dom(prev-db).
+    (define/public (get-diff-lprs) diff-lprs)
 
-    ;; get-ll-R/F : -> Real
+    ;; get-l-R/F : -> Real
     ;; Mutated by late proposals, eg from multi-site MH.
-    (define/public (get-ll-R/F) ll-R/F)
+    (define/public (get-l-R/F) l-R/F)
 
     ;; db-add! : Label Entry (U #f Entry) -> Void
-    ;; Add entry to current-db and update ll-free, ll-obs.
-    ;; When prev-e is not #f, also update ll-diff.
+    ;; Add entry to current-db and update sumlprs, sumlobs.
+    ;; When prev-e is not #f, also update diff-lprs.
     (define/private (db-add! context e [prev-e #f])
       (hash-set! current-db context e)
-      (define ll (entry-ll e))
-      (set! ll-free (+ ll-free ll))
+      (define lpr (entry-lprior e))
+      (set! sumlprs (+ sumlprs lpr))
       (when prev-e
-        (define prev-ll (entry-ll prev-e))
-        (set! ll-diff (+ ll-diff (- ll prev-ll)))))
+        (define prev-lpr (entry-lprior prev-e))
+        (set! diff-lprs (+ diff-lprs (- lpr prev-lpr)))))
     ))
 
 (define initializing-tracing-stochastic-ctx%
@@ -356,8 +360,8 @@
     (define/override (-sample dist label)
       (match (and label (get-value (label-view label) dist))
         [(list value)
-         (define ll (dist-pdf dist value #t))
-         (hash-set! prev-db label (entry dist value ll))]
+         (define lpr (dist-pdf dist value #t))
+         (hash-set! prev-db label (entry dist value lpr))]
         [_ (void)])
       (super -sample dist label))
     ))

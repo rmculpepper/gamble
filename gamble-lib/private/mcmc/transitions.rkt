@@ -62,18 +62,18 @@
     ;; run* : (Model A) Trace -> (values Real Trace/#f TxInfo)
     (define/override (run* mdl prev-trace)
       (define prev-db (trace-db prev-trace))
-      (define-values (delta-db delta-ll-R/F) (delta prev-trace))
+      (define-values (delta-db delta-l-R/F) (delta prev-trace))
       (define ctx
         (new tracing-stochastic-ctx%
              (prev-db prev-db)
              (delta-db delta-db)
-             (ll-R/F delta-ll-R/F)))
+             (l-R/F delta-l-R/F)))
       (match (send ctx run-top mdl)
         [(list new-value)
          (define new-trace (send ctx make-trace new-value))
-         (define ll-diff (send ctx get-ll-diff))
-         (define ll-R/F (send ctx get-ll-R/F))
-         (define threshold (accept-threshold prev-trace ll-R/F new-trace ll-diff))
+         (define diff-lprs (send ctx get-diff-lprs))
+         (define l-R/F (send ctx get-l-R/F))
+         (define threshold (accept-threshold prev-trace l-R/F new-trace diff-lprs))
          (values threshold new-trace (vector 'delta delta-db))]
         [#f (values -inf.0 #f (vector 'delta delta-db))]))
 
@@ -82,13 +82,13 @@
 
     ;; accept-threshold : Trace Real Trace Real -> Real
     ;; Computes (log) accept threshold for current trace.
-    (define/public (accept-threshold prev-trace ll-R/F new-trace ll-diff)
+    (define/public (accept-threshold prev-trace l-R/F new-trace diff-lprs)
       (define other-factor (accept-threshold* prev-trace new-trace))
       (cond [(or (= other-factor -inf.0) (= other-factor +inf.0))
              other-factor]
             [else
-             (define ll-diff-obs (traces-obs-diff new-trace prev-trace))
-             (+ ll-R/F (/ (+ ll-diff ll-diff-obs) temperature) other-factor)]))
+             (define diff-lobs (traces-obs-diff new-trace prev-trace))
+             (+ l-R/F (/ (+ diff-lprs diff-lobs) temperature) other-factor)]))
 
     ;; accept-threshold* : Trace Trace -> Real
     ;; Computes (log) of additional factors of accept threshold.
@@ -115,10 +115,10 @@
       (cond [label
              (log-mcmc-info "Label to change = ~s" label)
              (match (hash-ref prev-db label)
-               [(entry prev-dist prev-value prev-ll)
-                (define-values (new-e ll-R/F)
+               [(entry prev-dist prev-value prev-lpr)
+                (define-values (new-e l-R/F)
                   (delta-label label prev-dist prev-value))
-                (values (hash label new-e) ll-R/F)])]
+                (values (hash label new-e) l-R/F)])]
             [else
              ;; Allow empty delta if no known variables; eg, for initial trace.
              (unless (zero? (hash-count prev-db))
@@ -127,16 +127,16 @@
 
     ;; delta-label : Label Dist Value -> (values Entry Real)
     (define/public (delta-label label dist prev-value)
-      (match-define (cons new-value ll-R/F)
+      (match-define (cons new-value l-R/F)
         (or (send proposal propose1 label dist prev-value)
             (begin (log-mcmc-info "Proposal returned #f; resampling")
                    (propose1:resample dist prev-value))))
       (log-mcmc-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" label dist
-                     prev-value new-value (exp ll-R/F))
-      (define new-ll (dist-pdf dist new-value #t))
-      (when (logspace-zero? new-ll)
+                     prev-value new-value (exp l-R/F))
+      (define new-lpr (dist-pdf dist new-value #t))
+      (when (logspace-zero? new-lpr)
         (log-mcmc-info "proposed impossible value: ~e, ~e" dist new-value))
-      (values (entry dist new-value new-ll) ll-R/F))
+      (values (entry dist new-value new-lpr) l-R/F))
 
     (define/override (accept-threshold* prev-trace new-trace)
       ;; Account for backward and forward likelihood of picking
@@ -157,7 +157,7 @@
 
 (define multi-site-transition%
   (class delta-mh-transition-base%
-    (init-field ok-label?      ;; (Label -> Boolean) or #f
+    (init-field ok-label?     ;; (Label -> Boolean) or #f
                 proposal)     ;; Proposal
     (super-new)
 
@@ -204,7 +204,7 @@
         (log-hash->normalized-discrete-dist
          (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
            (cond [(equal? new-value prev-value)
-                  (hash-set lh prev-trace (trace-ll prev-trace))]
+                  (hash-set lh prev-trace (trace-lj prev-trace))]
                  [else
                   (define new-entry (make-entry new-value))
                   (define delta-db (hash label new-entry))
@@ -217,7 +217,7 @@
                      (define new-trace (send ctx make-trace new-result))
                      (unless (traces-same-structure? prev-trace new-trace #t)
                        (error who "structural change not allowed"))
-                     (hash-set lh new-trace (trace-ll new-trace))]
+                     (hash-set lh new-trace (trace-lj new-trace))]
                     [#f lh])]))))
       (define new-trace (dist-sample conditional-dist))
       (values new-trace (vector who)))
@@ -261,36 +261,36 @@
     (super-new)
 
     (define prev-db (trace-db prev-trace))
-    (define prev-ll (trace-ll prev-trace))
+    (define prev-lj (trace-lj prev-trace))
     (match-define (entry dist prev-value _) (hash-ref prev-db label))
 
     ;; ----------------------------------------
 
     (define/public (sample)
-      (define lthreshold (+ (log (random)) prev-ll))
+      (define lthreshold (+ (log (random)) prev-lj))
       (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
       (define-values (lo hi) (get-slice-bounds lthreshold))
       (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
       (select lo hi lthreshold))
 
     ;; ----------------------------------------
-    ;; Eval trace, ll
+    ;; Eval trace, lj
 
     (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
     (hash-set! trace-cache prev-value prev-trace)
 
-    (define/private (eval-ll new-value)
-      (cond [(eval-trace new-value) => trace-ll]
+    (define/private (eval-lj new-value)
+      (cond [(eval-trace new-value) => trace-lj]
             [else -inf.0]))
 
     (define/private (eval-trace new-value)
       (hash-ref! trace-cache new-value (lambda () (eval-trace* new-value))))
 
     (define/private (eval-trace* new-value)
-      (define new-ll (dist-pdf dist new-value #t))
-      (cond [(not (logspace-zero? new-ll))
+      (define new-lpr (dist-pdf dist new-value #t))
+      (cond [(not (logspace-zero? new-lpr))
              (define delta-db
-               (hash label (entry dist new-value new-ll)))
+               (hash label (entry dist new-value new-lpr)))
              (define ctx
                (new tracing-stochastic-ctx% 
                     (prev-db prev-db)
@@ -331,20 +331,20 @@
             [else (let ([k (random M)]) (- M 1 k))]))
 
     (define/private (step-out lthreshold k x delta)
-      (let loop ([k k] [x x] [x-ll (eval-ll x)])
-        (cond [(or (zero? k) (<= x-ll lthreshold)) x]
-              [else (let ([x* (+ x delta)]) (loop (sub1 k) x* (eval-ll x*)))])))
+      (let loop ([k k] [x x] [x-lj (eval-lj x)])
+        (cond [(or (zero? k) (<= x-lj lthreshold)) x]
+              [else (let ([x* (+ x delta)]) (loop (sub1 k) x* (eval-lj x*)))])))
 
     (define/private (double-out lthreshold lo hi)
-      (let loop ([lo lo] [lo-ll (eval-ll lo)] [hi hi] [hi-ll (eval-ll hi)])
-        (cond [(and (<= lo-ll lthreshold) (<= hi-ll lthreshold))
+      (let loop ([lo lo] [lo-lj (eval-lj lo)] [hi hi] [hi-lj (eval-lj hi)])
+        (cond [(and (<= lo-lj lthreshold) (<= hi-lj lthreshold))
                (values lo hi)]
               [(zero? (random 2))
                (let ([lo* (- lo (- hi lo))])
-                 (loop lo* (eval-ll lo*) hi hi-ll))]
+                 (loop lo* (eval-lj lo*) hi hi-lj))]
               [else
                (let ([hi* (+ hi (- hi lo))])
-                 (loop lo lo-ll hi* (eval-ll hi*)))])))
+                 (loop lo lo-lj hi* (eval-lj hi*)))])))
 
     ;; ----------------------------------------
     ;; Select value in slice
@@ -358,7 +358,7 @@
               (+ lo (* (random) (- hi lo)))))
         (define new-trace (eval-trace new-value))
         (cond [(and new-trace
-                    (> (trace-ll new-trace) lthreshold)
+                    (> (trace-lj new-trace) lthreshold)
                     (acceptable? new-value lo0 hi0 lthreshold))
                new-trace]
               [(integer-dist? dist)
@@ -387,8 +387,8 @@
               (define hi* (if (< new-value mid) mid hi))
               (if (and (or (and (<  prev-value mid) (>= new-value mid))
                            (and (>= prev-value mid) (<  new-value mid)))
-                       (<= (eval-ll lo*) lthreshold)
-                       (<= (eval-ll hi*) lthreshold))
+                       (<= (eval-lj lo*) lthreshold)
+                       (<= (eval-lj hi*) lthreshold))
                   #f ;; not acceptable
                   (loop lo* hi*))))))
 

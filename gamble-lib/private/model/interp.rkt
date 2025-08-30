@@ -378,26 +378,26 @@
         ))
 
     ;; exec-stochastic-nodes! : (Listof Node) -> (Values Real Real)
-    ;; Replay only sample/observe nodes to calculate likelihood of given slice.
+    ;; Replay only sample/observe nodes to calculate priors and likelihoods of given slice.
     (define/private (exec-stochastic-nodes! nodes)
-      (define ll-free 0.0)
-      (define ll-obs 0.0)
+      (define sumlprs 0.0)
+      (define sumlobs 0.0)
       (for ([node (in-list nodes)])
         (match node
           [(node:sample loc addr distr labelr)
-           (set! ll-free
-                 (+ ll-free (dist-pdf (result->value distr) (fetch loc) #t)))]
+           (set! sumlprs
+                 (+ sumlprs (dist-pdf (result->value distr) (fetch loc) #t)))]
           [(node:dscore argr)
-           (set! ll-obs
-                 (+ ll-obs (density->real (result->value argr) #t)))]
+           (set! sumlobs
+                 (+ sumlobs (density->real (result->value argr) #t)))]
           [(node:lscore argr)
-           (set! ll-obs
-                 (+ ll-obs (result->value argr)))]
+           (set! sumlobs
+                 (+ sumlobs (result->value argr)))]
           [(node:observe distr valr)
-           (set! ll-obs
-                 (+ ll-obs (dist-pdf (result->value distr) (result->value valr) #t)))]
+           (set! sumlobs
+                 (+ sumlobs (dist-pdf (result->value distr) (result->value valr) #t)))]
           [_ (void)]))
-      (values ll-free ll-obs))
+      (values sumlprs sumlobs))
 
     ;; ----------------------------------------
     ;; Initial evaluation
@@ -554,9 +554,9 @@
                                    #:nodeids [nodeids null])
       (define-values (nodes updated-locs) (get-slice labels nodeids))
       (define slice-expr (slice->expr nodes updated-locs))
-      (define-values (slice-ll-free slice-ll-obs) (exec-stochastic-nodes! nodes))
+      (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! nodes))
       (values (expr->proc the-store slice-expr)
-              slice-ll-free slice-ll-obs))
+              slice-lprs slice-lobs))
 
     ;; get-slice-expr : (Listof Label) (Listof NodeID) -> Expr
     (define/public (get-slice-expr labels [nodeids null])
