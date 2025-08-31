@@ -9,6 +9,7 @@
          "../dist.rkt"
          "../base.rkt"
          "../model/addr.rkt"
+         "../model/interp.rkt"
          "../util/real.rkt"
          "../util/density.rkt")
 (provide (all-defined-out))
@@ -318,7 +319,7 @@
     (define/override (run-top top)
       (match top
         [(? model? m)
-         (super run-top (lambda () (run-top m (current-init-addr))))]
+         (super run-top (lambda () (run-model m (current-init-addr))))]
         [_ (super run-top top)]))
 
     ;; ----------------------------------------
@@ -365,3 +366,42 @@
         [_ (void)])
       (super -sample dist label))
     ))
+
+;; ============================================================
+;; Runner
+
+(define (make-eval-slice who m prev-db labels)
+  (define base-ctx (new tracing-stochastic-ctx%
+                        (prev-db prev-db)
+                        (delta-db (hash))
+                        (disallow-new/who who)))
+  (define interp (new interpreter% (ctx base-ctx)))
+  (define base-value (send interp eval-top m))
+  (define base-trace (send base-ctx make-trace base-value))
+  #;(send interp show)
+  #;(pretty-print (send interp get-slice-expr labels))
+  (define-values (re slice-lprs slice-lobs)
+    (send interp get-slice-eval #:labels labels))
+  (define rest-lprs (- (trace-lprs base-trace) slice-lprs))
+  (define rest-lobs (- (trace-lobs base-trace) slice-lobs))
+  (define base-db (trace-db base-trace))
+  (define (eval-slice delta-db)
+    (define slice-ctx
+      (new tracing-stochastic-ctx%
+           (prev-db base-db)
+           (delta-db delta-db)
+           (sumlprs rest-lprs)
+           (sumlobs rest-lobs)
+           (disallow-new/who who)))
+    (match (send slice-ctx run-top (lambda () (re slice-ctx)))
+      [(list result store-update)
+       (define new-trace (send slice-ctx make-trace result))
+       new-trace]
+      [#f #f]))
+  eval-slice)
+
+(define (complete-slice-trace! slice-trace prev-db)
+  (define slice-db (trace-db slice-trace))
+  (for ([(label entry) (in-hash prev-db)])
+    (unless (hash-has-key? slice-db label)
+      (hash-set! slice-db label entry))))

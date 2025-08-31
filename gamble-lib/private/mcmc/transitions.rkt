@@ -190,6 +190,32 @@
 
     ;; run : (Model A) Trace -> (values (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
+      (run/slice mdl prev-trace))
+
+    ;; run/slice : (Model A) Trace -> (values (U Trace #f) TxInfo)
+    (define/public (run/slice mdl prev-trace)
+      (define who 'enumerative-gibbs-transition)
+      (define prev-db (trace-db prev-trace))
+      (define label (hash-random-key prev-db ok-label*?))
+      (unless label (error who "no suitable label to change"))
+      (log-mcmc-info "Label to change = ~s" label)
+      (match-define (entry dist prev-value _) (hash-ref prev-db label))
+      (unless (finite-dist? dist)
+        (error who "distribution is not finite\n  label: ~e\n  dist: ~e" label dist))
+      (define (make-entry new-value)
+        (entry dist new-value (dist-pdf dist new-value #t)))
+      (define eval-slice (make-eval-slice who mdl prev-db (list label)))
+      (define conditional-dist
+        (log-hash->normalized-discrete-dist
+         (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
+           (define new-trace (eval-slice new-value))
+           (if new-trace (hash-set lh new-trace (trace-lj new-trace)) lh))))
+      (define new-trace (dist-sample conditional-dist))
+      (complete-slice-trace! new-trace prev-db)
+      (values new-trace (vector who)))
+
+    ;; run/full : (Model A) Trace -> (values (U Trace #f) TxInfo)
+    (define/public (run/full mdl prev-trace)
       (define who 'enumerative-gibbs-transition)
       (define prev-db (trace-db prev-trace))
       (define label (hash-random-key prev-db ok-label*?))
@@ -264,14 +290,17 @@
     (define prev-lj (trace-lj prev-trace))
     (match-define (entry dist prev-value _) (hash-ref prev-db label))
 
+    (define eval-slice (make-eval-slice 'slice-transition mdl prev-db (list label)))
+
     ;; ----------------------------------------
 
     (define/public (sample)
       (define lthreshold (+ (log (random)) prev-lj))
       (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
       (define-values (lo hi) (get-slice-bounds lthreshold))
-      (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
-      (select lo hi lthreshold))
+      (define new-trace (select lo hi lthreshold))
+      (complete-slice-trace! new-trace prev-db)
+      new-trace)
 
     ;; ----------------------------------------
     ;; Eval trace, lj
@@ -287,6 +316,16 @@
       (hash-ref! trace-cache new-value (lambda () (eval-trace* new-value))))
 
     (define/private (eval-trace* new-value)
+      (eval-trace/full new-value))
+
+    (define/private (eval-trace/slice new-value)
+      (log-mcmc-info "Eval at ~e" new-value)
+      (define new-lpr (dist-pdf dist new-value #t))
+      (define new-trace (eval-slice (hash label (entry dist new-value new-lpr))))
+      (log-mcmc-info "Eval lj ~e" (and new-trace (trace-lj new-trace)))
+      new-trace)
+
+    (define/private (eval-trace/full new-value)
       (define new-lpr (dist-pdf dist new-value #t))
       (cond [(not (logspace-zero? new-lpr))
              (define delta-db
@@ -352,6 +391,7 @@
     ;; select : Real Real Real -> Trace
     (define/private (select lo0 hi0 lthreshold)
       (let loop ([lo lo0] [hi hi0])
+        (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
         (define new-value
           (if (integer-dist? dist)
               (+ lo (random (add1 (- hi lo))))
@@ -360,6 +400,7 @@
         (cond [(and new-trace
                     (> (trace-lj new-trace) lthreshold)
                     (acceptable? new-value lo0 hi0 lthreshold))
+               (log-mcmc-info "Selected ~s" new-value)
                new-trace]
               [(integer-dist? dist)
                (if (< new-value prev-value)

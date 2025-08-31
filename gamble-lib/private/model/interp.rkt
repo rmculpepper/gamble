@@ -234,7 +234,10 @@
           (define node (hash-ref nodeid=>node nodeid))
           (if expr?
               (printf "  ~s : ~v\n" nodeid (node->expr node))
-              (printf "  ~s : ~e\n" nodeid node)))))
+              (printf "  ~s : ~e\n" nodeid node))))
+      (printf "Label mapping:\n")
+      (for ([(label nodeid) (in-hash label=>nodeid)])
+        (printf "  ~s => ~s\n" label nodeid)))
 
     ;; ----------------------------------------
     ;; Store
@@ -282,7 +285,6 @@
     ;; Perform node effect and register node in node trace (if needed).
     ;; (Eg, assignments to constants do not need to be repeated.)
     (define/private (do! node)
-      ;; (eprintf "do! ~e\n" node)
       (define (add-and-exec! [node node])
         (begin0 (add-node! node) (exec-node! node)))
       (match node
@@ -320,7 +322,8 @@
          (when (result:location? labelr)
            (add-node! (node:same "sample label" label labelr)))
          (define nodeid (add-node! node))
-         (hash-set! label=>nodeid label nodeid)
+         (let ([label (or label (auto-label addr))])
+           (hash-set! label=>nodeid label nodeid))
          (exec-node! node)]
         [(node:dscore argr) (add-and-exec!)]
         [(node:lscore argr) (add-and-exec!)]
@@ -332,7 +335,6 @@
     ;; exec-node! : Node -> Void
     ;; Perform node effect.
     (define/private (exec-node! node)
-      #;(eprintf "exec! ~e\n" node)
       (match node
         [(node:same-if branch result)
          (define new-branch (and (result->value result) #t))
