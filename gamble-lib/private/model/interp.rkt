@@ -332,9 +332,9 @@
         [(node:mem loc argr) (add-and-exec!)]
         ))
 
-    ;; exec-node! : Node -> Void
+    ;; exec-node! : Node StochasticCtx -> Void
     ;; Perform node effect.
-    (define/private (exec-node! node)
+    (define/private (exec-node! node [ctx ctx])
       (match node
         [(node:same-if branch result)
          (define new-branch (and (result->value result) #t))
@@ -555,10 +555,17 @@
     (define/public (get-slice-eval #:labels [labels null]
                                    #:nodeids [nodeids null])
       (define-values (nodes updated-locs) (get-slice labels nodeids))
-      (define slice-expr (slice->expr nodes updated-locs))
       (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! nodes))
-      (values (expr->proc the-store slice-expr)
-              slice-lprs slice-lobs))
+      (values (get-slice-proc/interp nodes) slice-lprs slice-lobs))
+
+    (define/private (get-slice-proc/interp nodes)
+      (lambda (ctx)
+        (for ([node (in-list nodes)])
+          (exec-node! node ctx))
+        (values (result->value final-result) '(#() . #()))))
+
+    (define/private (get-slice-proc/eval nodes updated-locs)
+      (expr->proc the-store (slice->expr nodes updated-locs)))
 
     ;; get-slice-expr : (Listof Label) (Listof NodeID) -> Expr
     (define/public (get-slice-expr labels [nodeids null])
