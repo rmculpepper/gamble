@@ -378,8 +378,6 @@
   (define interp (new interpreter% (ctx base-ctx)))
   (define base-value (send interp eval-top m))
   (define base-trace (send base-ctx make-trace base-value))
-  #;(send interp show)
-  #;(pretty-print (send interp get-slice-expr labels))
   (define-values (re slice-lprs slice-lobs)
     (send interp get-slice-eval #:labels labels))
   (define rest-lprs (- (trace-lprs base-trace) slice-lprs))
@@ -394,9 +392,7 @@
            (sumlobs rest-lobs)
            (disallow-new/who who)))
     (match (send slice-ctx run-top (lambda () (re slice-ctx)))
-      [(list result store-update)
-       (define new-trace (send slice-ctx make-trace result))
-       new-trace]
+      [(list result) (send slice-ctx make-trace result)]
       [#f #f]))
   eval-slice)
 
