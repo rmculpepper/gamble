@@ -3,8 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base)
-         syntax/id-table
+(require syntax/id-table
          racket/match
          racket/runtime-path)
 (provide register-function!
@@ -116,3 +115,71 @@ To get list of '#%runtime exports:
 (let-values ([(vars stxs) (module->exports ''#%runtime)])
   (map car (cdr (assoc 0 vars))))
 |#
+
+;; ============================================================
+
+(module constant-folding-ct racket/base
+  (require (for-template racket/base racket/fixnum racket/flonum)
+           syntax/id-table)
+  (provide (all-defined-out))
+  (define constant-folding-ids
+    (syntax->list
+     #'(;; Boolean
+        boolean? eq? eqv? equal? equal-always? not immutable?
+        ;; Numeric
+        number? complex? real? rational?
+        exact-integer? exact-positive-integer? exact-nonnegative-integer?
+        inexact-real? fixnum? flonum? integer? exact? inexact?
+        zero? positive? negative? even? odd? exact->inexact inexact->exact
+        add1 sub1 + - * / quotient remainder modulo
+        abs min max round floor ceiling truncate sqrt
+        = < <= > >=
+        log expt exp sin cos tan asin acos atan
+        ;; racket/flonum
+        fl+ fl- fl* fl/ flabs fl= fl< fl<= fl> fl>= flmin flmax
+        flround flfloor flceiling fltruncate
+        flsin flcos fltan flasin flacos flatan flexp fllog flsqrt flexpt
+        ;; racket/fixnum
+        fx+ fx- fx* fxquotient fxremainder fxmodulo fxabs
+        fxand fxior fxxor fxlshift fxrshift
+        fx= fx< fx<= fx> fx>= fxmin fxmax
+        ;; Characters
+        char? char->integer integer->char
+        char=? char<? char<=? char>? char>=?
+        ;; Symbols
+        symbol? symbol-interned? symbol-unreadable? symbol<?
+        ;; Keywords
+        keyword? keyword<?
+        ;; Pairs and lists
+        null? pair? cons car cdr cadr cddr caddr cdddr list? list list*
+        length list-ref list-tail append reverse
+        ;; Vectors
+        vector? vector vector-immutable vector-length
+        list->vector vector->list vector->immutable-vector
+        ;; Boxes
+        box? box box-immutable
+        ;; Hashes
+        hash? hash-equal? hash-eq? hash-eqv? hash-equal-always? hash-strong? hash-weak?
+        hash hashalw hasheq hasheqv hash-count
+        ;; Procedures
+        procedure?
+        ;; Void
+        void?
+        )))
+  (define constant-folding-table
+    (make-immutable-free-id-table
+     (for/list ([id (in-list constant-folding-ids)])
+       (cons id #t))))
+  (define (constant-folding-procedure-id? id)
+    (free-id-table-ref constant-folding-table id #f)))
+
+(module constant-folding-rt racket/base
+  (require (for-syntax racket/base (submod ".." constant-folding-ct)))
+  (provide (all-defined-out))
+  (define constant-folding-hash
+    (let-syntax ([cfh (lambda (stx)
+                        (with-syntax ([(cfid ...) constant-folding-ids])
+                          #'(hash (~@ cfid #t) ...)))])
+      (cfh)))
+  (define (constant-folding-procedure? proc)
+    (hash-ref constant-folding-hash proc #t)))

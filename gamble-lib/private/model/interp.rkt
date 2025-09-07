@@ -6,6 +6,7 @@
          "../base.rkt"
          (only-in "../dist.rkt" dist-pdf)
          (only-in "../util/density.rkt" density->real)
+         (submod "known-functions.rkt" constant-folding-rt)
          "addr.rkt"
          "ast.rkt")
 (provide (all-defined-out))
@@ -540,12 +541,18 @@
            [#f (error 'interpreter-apply "arity mismatch\n  procedure: ~e\n  arguments: ~e"
                       funval argrs)])]
         [(? procedure? proc)
-         (define loc (next-location))
-         ;; can't `eval` local var ref, so only use funid if bound at module-level
-         (let ([funid (and funid (list? (identifier-binding funid)) funid)])
-           (do! (node:apply-prim addr loc proc funid argrs mv)))
-         (result:location loc)]
-        ))
+         (cond [(eq? proc void)
+                ;; Constant result, any arity
+                (result:value (void))]
+               [(and (constant-folding-procedure? proc)
+                     (andmap result:value? argrs))
+                (result:value (apply proc (results->values argrs)))]
+               [else
+                (define loc (next-location))
+                ;; can't `eval` local var ref, so only use funid if bound at module-level
+                (let ([funid (and funid (list? (identifier-binding funid)) funid)])
+                  (do! (node:apply-prim addr loc proc funid argrs mv)))
+                (result:location loc)])]))
 
     ;; ----------------------------------------
     ;; Re-evaluation
