@@ -6,7 +6,6 @@
          "../base.rkt"
          (only-in "../dist.rkt" dist-pdf)
          (only-in "../util/density.rkt" density->real)
-         (submod "known-functions.rkt" constant-folding-rt)
          "addr.rkt"
          "ast.rkt")
 (provide (all-defined-out))
@@ -484,6 +483,11 @@
         [(ast:app cs fun args)
          (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
          (init-apply (recur1 fun) (map recur1 args) mv addr*)]
+        [(ast:app/cf fun args)
+         (one (init-apply/cf (recur1 fun) (map recur1 args)))]
+        [(ast:void args)
+         (map recur1 args)
+         (one (result:value (void)))]
         ;; ----------------------------------------
         [(ast:sample cs dist label)
          (define loc (next-location))
@@ -541,18 +545,18 @@
            [#f (error 'interpreter-apply "arity mismatch\n  procedure: ~e\n  arguments: ~e"
                       funval argrs)])]
         [(? procedure? proc)
-         (cond [(eq? proc void)
-                ;; Constant result, any arity
-                (result:value (void))]
-               [(and (constant-folding-procedure? proc)
-                     (andmap result:value? argrs))
-                (result:value (apply proc (results->values argrs)))]
-               [else
-                (define loc (next-location))
-                ;; can't `eval` local var ref, so only use funid if bound at module-level
-                (let ([funid (and funid (list? (identifier-binding funid)) funid)])
-                  (do! (node:apply-prim addr loc proc funid argrs mv)))
-                (result:location loc)])]))
+         (define loc (next-location))
+         ;; can't `eval` local var ref, so only use funid if bound at module-level
+         (let ([funid (and funid (list? (identifier-binding funid)) funid)])
+           (do! (node:apply-prim addr loc proc funid argrs mv)))
+         (result:location loc)]))
+
+    (define/private (init-apply/cf funr argrs)
+      ;; PRE: fun is known constant-foldable primitive procedure
+      (cond [(andmap result:value? argrs)
+             (define proc (result->value funr))
+             (result:value (apply proc (results->values argrs)))]
+            [else (init-apply funr argrs 1 #f)]))
 
     ;; ----------------------------------------
     ;; Re-evaluation

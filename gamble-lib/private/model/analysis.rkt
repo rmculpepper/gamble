@@ -474,7 +474,11 @@
              [(mem)    (and (= argc 1) (ast:mem cs (car args)))]
              [(run-model) (and (= argc 1) (ast:run-model cs (car args)))]
              [else #f])
-           (ast:app cs (loop #'f) args))]
+           (cond [(and (identifier? #'f) (free-identifier=? #'f #'void))
+                  (ast:void args)]
+                 [(and (identifier? #'f) (constant-folding-procedure-id? #'f))
+                  (ast:app/cf (loop #'f) args)]
+                 [else (ast:app cs (loop #'f) args)]))]
       [(#%top . var:id)
        (loop #'var)]
       #;[(#%variable-reference . _) _]

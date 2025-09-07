@@ -14,6 +14,8 @@
 (struct ast:quote (datum) #:prefab)
 (struct ast:wcm (e1 e2 e3) #:prefab)
 (struct ast:app (cs fun args) #:prefab)
+(struct ast:app/cf (fun args) #:prefab)
+(struct ast:void (args) #:prefab)
 
 (struct ast:sample (cs dist label) #:prefab)
 (struct ast:dscore (arg) #:prefab)
