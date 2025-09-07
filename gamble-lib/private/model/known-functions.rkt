@@ -7,7 +7,8 @@
          racket/match
          racket/runtime-path)
 (provide register-function!
-         function-may-call-erp?)
+         function-may-call-erp?
+         constant-folding-procedure-id?)
 
 ;; FClass is one of
 ;; - #f -- No stochastic effect is expected to occur within the dynamic extent
@@ -172,6 +173,7 @@ To get list of '#%runtime exports:
        (cons id #t))))
   (define (constant-folding-procedure-id? id)
     (free-id-table-ref constant-folding-table id #f)))
+(require (submod "." constant-folding-ct))
 
 (module constant-folding-rt racket/base
   (require (for-syntax racket/base (submod ".." constant-folding-ct)))
