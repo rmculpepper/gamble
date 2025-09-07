@@ -119,8 +119,59 @@ To get list of '#%runtime exports:
 
 ;; ============================================================
 
+(module constant-folding-expand-ct racket/base
+  (require (for-syntax racket/base)
+           "../dist.rkt")
+  (begin-for-syntax
+    (define expand-constant-folding-ids
+      (syntax->list
+       #'(;; dist
+          dist?
+          dist-pdf
+          dist-density
+          enumerable-dist?
+          finite-dist?
+          real-dist?
+          dist-cdf
+          continuous-dist?
+          integer-dist?
+          ;; monad
+          dist-unit
+          ;; discrete
+          boolean-dist
+          make-discrete-dist
+          ;; univariate
+          beta-dist
+          cauchy-dist
+          exponential-dist
+          gamma-dist
+          logistic-dist
+          normal-dist
+          uniform-dist
+          triangle-dist
+          pareto-dist
+          student-t-dist
+          geometric-dist
+          poisson-dist
+          bernoulli-dist
+          binomial-dist
+          negative-binomial-dist
+          categorical-dist
+          ))))
+  (define-syntax (define/provide-expanded-ids stx)
+    (syntax-case stx ()
+      [(_ name)
+       (with-syntax ([(eid ...)
+                      (map (lambda (id) (local-expand id 'expression null))
+                           expand-constant-folding-ids)])
+         #'(begin-for-syntax
+             (define name (syntax->list (quote-syntax (eid ...))))
+             (provide name)))]))
+  (define/provide-expanded-ids expanded-constant-folding-ids))
+
 (module constant-folding-ct racket/base
-  (require (for-template racket/base racket/fixnum racket/flonum)
+  (require (for-template racket/base racket/fixnum racket/flonum
+                         (submod ".." constant-folding-expand-ct))
            syntax/id-table)
   (provide (all-defined-out))
   (define constant-folding-ids
@@ -167,10 +218,11 @@ To get list of '#%runtime exports:
         ;; Void
         void?
         )))
-  (define constant-folding-table
-    (make-immutable-free-id-table
-     (for/list ([id (in-list constant-folding-ids)])
-       (cons id #t))))
+  (define constant-folding-table (make-free-id-table))
+  (for ([id (in-list constant-folding-ids)])
+    (free-id-table-set! constant-folding-table id #t))
+  (for ([id (in-list expanded-constant-folding-ids)])
+    (free-id-table-set! constant-folding-table id #t))
   (define (constant-folding-procedure-id? id)
     (free-id-table-ref constant-folding-table id #f)))
 (require (submod "." constant-folding-ct))
@@ -184,4 +236,4 @@ To get list of '#%runtime exports:
                           #'(hash (~@ cfid #t) ...)))])
       (cfh)))
   (define (constant-folding-procedure? proc)
-    (hash-ref constant-folding-hash proc #t)))
+    (hash-ref constant-folding-hash proc #f)))
