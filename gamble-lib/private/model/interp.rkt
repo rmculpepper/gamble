@@ -161,9 +161,9 @@
     [(node:sample loc addr distr labelr)
      (define label-expr
        (match labelr
-         [(result:value #f) `(quote ,(auto-label addr))]
+         [(result:value #f) `(quote ,(and addr (auto-label addr)))]
          [(result:value (? values v)) `(quote ,v)]
-         [_ `(or ,(result->expr labelr) (quote ,(auto-label addr)))]))
+         [_ `(or ,(result->expr labelr) (quote ,(and addr (auto-label addr))))]))
      (loc-set! loc `(ctx-sample ,(result->expr distr) ,label-expr))]
     [(node:dscore argr)
      `(ctx-dscore ,(result->expr argr))]
@@ -323,7 +323,7 @@
          (when (result:location? labelr)
            (add-node! (node:same "sample label" label labelr)))
          (define nodeid (add-node! node))
-         (let ([label (or label (auto-label addr))])
+         (let ([label (or label (and addr (auto-label addr)))])
            (hash-set! label=>nodeid label nodeid))
          (exec-node! node)]
         [(node:dscore argr) (add-and-exec!)]
@@ -368,7 +368,7 @@
                   (lambda vals (store! loc vals)))])]
         [(node:sample loc addr distr labelr)
          (store! loc (send ctx sample (result->value distr)
-                           (or (result->value labelr) (auto-label addr))))]
+                           (or (result->value labelr) (and addr (auto-label addr)))))]
         [(node:dscore argr)
          (send ctx dscore (result->value argr))]
         [(node:lscore argr)
