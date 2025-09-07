@@ -20,7 +20,7 @@
 ;; (Model X) = (model (StochasticCtx Addr -> X))
 
 (struct model (proc))
-(struct model/ast model (ast env envids csbase))
+(struct model/ast model (ast env csbase))
 
 ;; ============================================================
 ;; Samplers

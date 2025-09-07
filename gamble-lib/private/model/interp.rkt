@@ -39,7 +39,7 @@
 ;; This code assumes no local variables are mutated (enforced by `parse-ast`)
 ;; and no variables in context are mutated (not enforced).
 
-;; MCtx = (model/ast ... AST Vector (Vectorof Identifier) Nat)
+;; MCtx = (model/ast ... AST Vector Nat)
 ;; LEnv = (ImmHash LVar (U Result (Boxof Result/#f)))
 
 ;; lenv-lookup : LEnv LVar -> Result
@@ -81,7 +81,6 @@
 ;; - (result:value Any)         -- constant given branch choices
 (struct result:location (location) #:prefab)
 (struct result:value (value) #:prefab)
-(struct result:value+id result:value (id) #:prefab)
 
 ;; ============================================================
 
@@ -109,7 +108,7 @@
 (struct node:stores (varlocs result) #:prefab)
 (struct node:apply (varlocs argrs) #:prefab)
 (struct node:apply-tail (varloc argrs) #:prefab)
-(struct node:apply-prim (addr loc proc funid argrs mv) #:prefab)
+(struct node:apply-prim (addr loc proc argrs mv) #:prefab)
 (struct node:sample (loc addr distr labelr) #:prefab)
 (struct node:dscore (argr) #:prefab)
 (struct node:lscore (argr) #:prefab)
@@ -146,8 +145,8 @@
                  (loc-set! varloc (result->expr argr))))]
     [(node:apply-tail varloc argrs)
      (loc-set! varloc `(list ,@(map result->expr argrs)))]
-    [(node:apply-prim addr loc proc funid argrs mv)
-     (let ([proc-expr (or funid `(quote ,proc))]
+    [(node:apply-prim addr loc proc argrs mv)
+     (let ([proc-expr `(quote ,proc)]
            [arg-exprs (map result->expr argrs)])
        (define (wrap expr)
          (if addr `(with-put-ADDR (quote ,addr) ,expr) expr))
@@ -199,7 +198,7 @@
      (values (map cdr v+a-list) (map car v+a-list))]
     [(node:apply varloc argrs)
      (values (get-locs argrs) (list varloc))]
-    [(node:apply-prim addr loc proc funid argrs mv)
+    [(node:apply-prim addr loc proc argrs mv)
      (values (get-locs argrs) (list loc))]
     [(node:sample loc addr distr labelr)
      (values (get-locs (list distr labelr)) (list loc))]
@@ -316,7 +315,7 @@
          (cond [(andmap result:value? argrs)
                 (store! varloc (map result:value-value argrs))]
                [else (add-and-exec!)])]
-        [(node:apply-prim addr loc proc funid argrs mv) (add-and-exec!)]
+        [(node:apply-prim addr loc proc argrs mv) (add-and-exec!)]
         [(node:sample loc addr distr labelr)
          (define label (result->value labelr))
          (when (result:location? labelr)
@@ -356,7 +355,7 @@
            (store! varloc (result->value argr)))]
         [(node:apply-tail varloc argrs)
          (store! varloc (results->values argrs))]
-        [(node:apply-prim addr loc proc funid argrs mv)
+        [(node:apply-prim addr loc proc argrs mv)
          (define (call) (apply proc (results->values argrs)))
          (define (call*) (if addr (with-put-ADDR addr (call)) (call)))
          (case mv
@@ -423,8 +422,7 @@
         [(ast:lvar index)
          (one (lenv-lookup lenv index))]
         [(ast:ctxvar index)
-         (one (result:value+id (vector-ref (model/ast-env mctx) index)
-                               (vector-ref (model/ast-envids mctx) index)))]
+         (one (result:value (vector-ref (model/ast-env mctx) index)))]
         [(ast:lambda args restarg body)
          (one (result:value (closure (list ast) mctx lenv)))]
         [(ast:case-lambda lambdas)
@@ -520,7 +518,6 @@
     (define/private (init-apply funr argrs mv addr)
       ;; PRE: addr is already extended with call site
       (define funval (result->value funr))
-      (define funid (match funr [(result:value+id _ funid) funid] [_ #f]))
       (do! (node:same "application" funval funr))
       (match funval
         [(closure lams mctx lenv)
@@ -546,9 +543,7 @@
                       funval argrs)])]
         [(? procedure? proc)
          (define loc (next-location))
-         ;; can't `eval` local var ref, so only use funid if bound at module-level
-         (let ([funid (and funid (list? (identifier-binding funid)) funid)])
-           (do! (node:apply-prim addr loc proc funid argrs mv)))
+         (do! (node:apply-prim addr loc proc argrs mv))
          (result:location loc)]))
 
     (define/private (init-apply/cf funr argrs)

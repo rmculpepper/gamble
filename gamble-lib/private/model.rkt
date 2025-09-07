@@ -18,10 +18,7 @@
        [(_ e:expr ...)
         (with-syntax ([(proc ast (ast-fv ...) csbase)
                        (instrument-model #'(let-values () e ...))])
-          #'(model/ast proc (quote ast)
-                       (vector ast-fv ...)
-                       (list->vector (syntax->list #'(ast-fv ...)))
-                       csbase))])]
+          #'(model/ast proc (quote ast) (vector ast-fv ...) csbase))])]
     [else #`(#%expression #,stx)]))
 
 (begin-for-syntax
