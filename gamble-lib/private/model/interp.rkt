@@ -122,10 +122,10 @@
 (define (node->expr node [loc=>name (hasheqv)])
   (define (loc-ref loc)
     (cond [(hash-ref loc=>name loc #f) => values]
-          [else `(fetch (quote ,loc))]))
+          [else `(fetch ,loc)]))
   (define (loc-set! loc rhs)
     (cond [(hash-ref loc=>name loc #f) => (lambda (name) `(define ,name ,rhs))]
-          [else `(store! (quote ,loc) ,rhs)]))
+          [else `(store! ,loc ,rhs)]))
   (define (result->expr result)
     (match result
       [(result:location loc) (loc-ref loc)]
@@ -161,9 +161,9 @@
     [(node:sample loc addr distr labelr)
      (define label-expr
        (match labelr
-         [(result:value #f) `(auto-label (quote ,addr))]
+         [(result:value #f) `(quote ,(auto-label addr))]
          [(result:value (? values v)) `(quote ,v)]
-         [_ `(or ,(result->expr labelr) (auto-label (quote ,addr)))]))
+         [_ `(or ,(result->expr labelr) (quote ,(auto-label addr)))]))
      (loc-set! loc `(ctx-sample ,(result->expr distr) ,label-expr))]
     [(node:dscore argr)
      `(ctx-dscore ,(result->expr argr))]
@@ -234,7 +234,7 @@
         (when (hash-has-key? nodeid=>node nodeid)
           (define node (hash-ref nodeid=>node nodeid))
           (if expr?
-              (printf "  ~s : ~v\n" nodeid (node->expr node))
+              (printf "  ~s : ~s\n" nodeid (node->expr node))
               (printf "  ~s : ~e\n" nodeid node))))
       (printf "Label mapping:\n")
       (for ([(label nodeid) (in-hash label=>nodeid)])
