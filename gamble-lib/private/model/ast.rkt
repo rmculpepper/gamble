@@ -16,6 +16,7 @@
 (struct ast:app (cs fun args) #:prefab)
 (struct ast:app/cf (fun args) #:prefab)
 (struct ast:void (args) #:prefab)
+(struct ast:values1 (arg) #:prefab)
 
 (struct ast:sample (cs dist label) #:prefab)
 (struct ast:dscore (arg) #:prefab)
@@ -24,6 +25,7 @@
 (struct ast:fail (arg) #:prefab)
 (struct ast:mem (cs arg) #:prefab)
 (struct ast:run-model (cs arg) #:prefab)
+(struct ast:structural (arg) #:prefab)
 
 (define (wrap-begin es)
   (if (and (pair? es) (null? (cdr es))) (car es) (ast:begin es)))

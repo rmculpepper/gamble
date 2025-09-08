@@ -15,6 +15,12 @@
 ;; - support `set!` ?
 ;; - support `mem`
 
+;; IDEA: add `begin-structural` hint, produces node:same, treat value as const
+;;   (define n (begin-structural (sample (binomial-dist 10 1/2))))
+;;   (for/sum ([i n]) (sample (uniform-dist 0 1)))
+;; Without begin-structural, there is a separate node:same-if for each iteration
+;; of the for/sum loop; each comparison takes a location, etc.
+
 ;; IDEA: track `box` contents by location
 ;;   (define vs (for/list ([i 10]) (box (sample (uniform-dist 0 1)))))
 ;;   (unbox (list-ref vs 4))
@@ -486,6 +492,8 @@
         [(ast:void args)
          (map recur1 args)
          (one (result:value (void)))]
+        [(ast:values1 arg)
+         (one (recur1 arg))]
         ;; ----------------------------------------
         [(ast:sample cs dist label)
          (define loc (next-location))
@@ -513,6 +521,10 @@
            [(? model/ast? m)
             (define ast (model/ast-ast m))
             (init-eval ast m (hasheqv) mv addr*)])]
+        [(ast:structural arg)
+         (define result (recur1 arg))
+         (do! (node:same "declared structural" (result->value result) result))
+         (one (result:value (result->value result)))]
         ))
 
     (define/private (init-apply funr argrs mv addr)

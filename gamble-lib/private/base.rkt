@@ -260,3 +260,7 @@
                           [mem (make-rename-transformer (quote-syntax ctx-mem))]
                           [run-model (make-rename-transformer (quote-syntax ctx-run-model))])
       body ...)))
+
+;; ============================================================
+
+(define (begin-structural v) v)

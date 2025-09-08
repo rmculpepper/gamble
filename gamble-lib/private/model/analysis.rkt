@@ -3,7 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-template racket/base)
+(require (for-template racket/base "../base.rkt")
          (for-syntax racket/base
                      racket/syntax)
          racket/runtime-path
@@ -457,6 +457,10 @@
       #;[(quote-syntax . _) _]
       [(with-continuation-mark e1 e2 e3)
        (ast:wcm (loop #'e1) (loop #'e2) (loop #'e3))]
+      [(#%plain-app (~literal values) e)
+       (ast:values1 (loop #'e))]
+      [(#%plain-app (~literal void) e ...)
+       (ast:void (loop* #'(e ...)))]
       [(#%plain-app f e ...)
        (define cs (and (function-may-call-erp? #'f) (CALL-SITE stx)))
        (define args (loop* #'(e ...)))
@@ -473,10 +477,9 @@
                              [else #f])]
              [(mem)    (and (= argc 1) (ast:mem cs (car args)))]
              [(run-model) (and (= argc 1) (ast:run-model cs (car args)))]
+             [(begin-structural) (and (= argc 1) (ast:structural (car args)))]
              [else #f])
-           (cond [(and (identifier? #'f) (free-identifier=? #'f #'void))
-                  (ast:void args)]
-                 [(and (identifier? #'f) (constant-folding-procedure-id? #'f))
+           (cond [(and (identifier? #'f) (constant-folding-procedure-id? #'f))
                   (ast:app/cf (loop #'f) args)]
                  [else (ast:app cs (loop #'f) args)]))]
       [(#%top . var:id)
@@ -509,6 +512,9 @@
        (free-id-table-set! special-env #'ctx-fail 'fail)
        (free-id-table-set! special-env #'ctx-mem 'mem)
        (free-id-table-set! special-env #'ctx-run-model 'run-model)
+       ;; ----
+       (free-id-table-set! special-env #'begin-structural 'begin-structural)
+       ;; ----
        (loop #'body)]))
   (values (top stx)
           (let ([v (make-vector ctxvar-counter)])

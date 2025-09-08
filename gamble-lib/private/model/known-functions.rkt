@@ -217,6 +217,8 @@ To get list of '#%runtime exports:
         procedure?
         ;; Void
         void?
+        ;; Other
+        values
         )))
   (define constant-folding-table (make-free-id-table))
   (for ([id (in-list constant-folding-ids)])

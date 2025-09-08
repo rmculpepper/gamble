@@ -27,6 +27,7 @@
          fail
          mem
          run-model
+         begin-structural
 
          (struct-out auto-label)
          current-init-addr
