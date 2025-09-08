@@ -10,10 +10,16 @@
          "ast.rkt")
 (provide (all-defined-out))
 
-;; TODO:
-;; - coalesce copies
-;; - support `set!` ?
-;; - support `mem`
+;; Summary of re-evaluation restrictions: Re-evaluation must not change
+;; - which branch of an `if` expression is taken
+;; - the closure/procedure value of an application expression
+;;   - but the values in a closure's environment are allowed to change
+;; - the label value of a call to `sample`
+;; - the closure/procedure value of a call to `mem`
+;; - the argument values in an application of a memoized function
+;; - the model value of a call to `run-model`
+;; - the value of an expression wrapped with `begin-structural`
+
 
 ;; IDEA: add `begin-structural` hint, produces node:same, treat value as const
 ;;   (define n (begin-structural (sample (binomial-dist 10 1/2))))
