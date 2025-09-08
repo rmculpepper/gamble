@@ -35,9 +35,19 @@
 ;;   (cell v) = (let ([x v]) (lambda () x))
 ;;   (cell-ref c) = (c)
 
+
+;; Memoization issue: if update to memoized computation happens, must update
+;; all dependent computations. Possible restrictions:
+;;  1. arguments must always be same (both on misses and on hits)
+;;  2. arguments must be same for misses, may vary for hits
+;;     but then all hits must depend on some loc for updates
+;; Implement #1 for now.
+
 ;; ============================================================
 
 (struct closure (lambdas mctx lenv))
+
+(struct memoized (proc memo-table addr))
 
 ;; ============================================================
 ;; Environments
@@ -120,7 +130,6 @@
 (struct node:lscore (argr) #:prefab)
 (struct node:observe (distr valr) #:prefab)
 (struct node:fail (argr) #:prefab)
-(struct node:mem (loc argr) #:prefab)
 
 ;; node->expr : Node (Hash Location Symbol) -> Expr
 (define (node->expr node [loc=>name (hasheqv)])
@@ -177,7 +186,6 @@
      `(ctx-observe ,(result->expr distr) ,(result->expr valr))]
     [(node:fail argr)
      `(ctx-fail ,(result->expr argr))]
-    ;[(node:mem loc argr) _]
     ))
 
 ;; node-locations : Node -> (values (Listof Location) (Listof Location))
@@ -212,7 +220,6 @@
     [(node:lscore argr) (values (get-locs (list argr)) null)]
     [(node:observe distr valr) (values (get-locs (list distr valr)) null)]
     [(node:fail argr) (values (get-locs argr) null)]
-    [(node:mem loc argr) (values (get-locs argr) null)]
     ))
 
 ;; ============================================================
@@ -334,7 +341,6 @@
         [(node:lscore argr) (add-and-exec!)]
         [(node:observe distr valr) (add-and-exec!)]
         [(node:fail argr) (add-and-exec!)]
-        [(node:mem loc argr) (add-and-exec!)]
         ))
 
     ;; exec-node! : Node StochasticCtx -> Void
@@ -381,7 +387,6 @@
          (send ctx observe (result->value distr) (result->value valr))]
         [(node:fail argr)
          (send ctx fail (result->value argr))]
-        ;[(node:mem argr) _]
         ))
 
     ;; exec-stochastic-nodes! : (Listof Node) -> (Values Real Real)
@@ -516,7 +521,13 @@
         [(ast:fail arg)
          (do! (node:fail (recur1 arg)))
          (one (result:value (void)))]
-        ;[(ast:mem cs arg) _]
+        [(ast:mem cs arg)
+         (define funr (recur1 arg))
+         (define funv (result->value funr))
+         (do! (node:same "function for memoize" funv funr))
+         (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
+         (define memo-table (make-hash))
+         (one (result:value (memoized proc memo-table addr*)))]
         [(ast:run-model cs arg)
          (define result (recur1 arg))
          (do! (node:same "model" (result->value result) result))
@@ -557,6 +568,18 @@
             (init-eval body mctx lenv* mv addr)]
            [#f (error 'interpreter-apply "arity mismatch\n  procedure: ~e\n  arguments: ~e"
                       funval argrs)])]
+        [(memoized fun args=>result addr)
+         ;; FIXME: check mv = 1 or #f
+         (define args (results->values argrs))
+         (for ([arg (in-list args)] [argr (in-list argrs)])
+           (do! (node:same "memoized function argument" arg argr)))
+         (cond [(hash-ref args=>result args #f)
+                => (lambda (result) result)]
+               [else
+                (define addr* (addr-add-mem addr args))
+                (define result (init-apply (result:value fun) argrs 1 addr*))
+                (hash-set! memo-table args result)
+                result])]
         [(? procedure? proc)
          (define loc (next-location))
          (do! (node:apply-prim addr loc proc argrs mv))
