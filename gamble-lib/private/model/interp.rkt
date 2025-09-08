@@ -483,7 +483,11 @@
          (recur body lenv*)]
         [(ast:quote datum)
          (one (result:value datum))]
-        ;[(ast:wcm e1 e2 e3) _]
+        [(ast:wcm e1 e2 e3)
+         ;; This does not handle re-evaluation.
+         (define v1 (result->value (recur1 e1)))
+         (define v2 (result->value (recur1 e2)))
+         (with-continuation-mark v1 v2 (recur e3))]
         [(ast:app cs fun args)
          (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
          (init-apply (recur1 fun) (map recur1 args) mv addr*)]

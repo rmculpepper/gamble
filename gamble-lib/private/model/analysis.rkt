@@ -487,7 +487,7 @@
       #;[(#%variable-reference . _) _]
       [(#%expression e)
        (loop #'e)]
-      [_ (raise-syntax-error #f "unhandled syntax" stx)]
+      [_ (raise-syntax-error #f "unsupported syntax" stx)]
       ))
   (define (top stx)
     (syntax-parse stx
