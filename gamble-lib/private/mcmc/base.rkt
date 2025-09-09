@@ -86,7 +86,9 @@
                (if (zero? n) key (loop (hash-iterate-next h iter) (sub1 n)))
                (loop (hash-iterate-next h iter) n)))]
         [else
-         (for/last ([key (in-hash-keys h)] [i (in-range n)]) key)]))
+         (let loop ([iter (hash-iterate-first h)] [n n])
+           (cond [(zero? n) (hash-iterate-key h iter)]
+                 [else (loop (hash-iterate-next h iter) (sub1 n))]))]))
 
 ;; ============================================================
 ;; Transition interface
