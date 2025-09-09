@@ -1,7 +1,5 @@
 #lang racket/base
-(provide dbkey
-         dbkey-tag
-         with-put-ADDR
+(provide with-put-ADDR
          with-get-ADDR
          context-has-ADDR?
          addr-add-call
@@ -9,10 +7,6 @@
          init-hash-addr
          init-full-addr
          current-init-addr)
-
-;; DBKey = (cons Tag Addr/#f)
-(define (dbkey tag addr) (cons tag addr))
-(define (dbkey-tag key) (car key))
 
 ;; Addr is one of
 ;; - HashAddr  -- compact, may introduce collisions

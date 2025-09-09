@@ -335,7 +335,7 @@
          (when (result:location? tagr)
            (add-node! (node:same "sample tag" tag tagr)))
          (define nodeid (add-node! node))
-         (hash-set! key=>nodeid (dbkey tag addr) nodeid)
+         (hash-set! key=>nodeid addr nodeid)
          (exec-node! node)]
         [(node:dscore argr) (add-and-exec!)]
         [(node:lscore argr) (add-and-exec!)]
