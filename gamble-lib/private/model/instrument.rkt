@@ -14,7 +14,7 @@
                      "known-functions.rkt")
          racket/match
          racket/stxparam
-         "addr.rkt"
+         "../addr.rkt"
          "../base.rkt")
 (provide (all-defined-out))
 

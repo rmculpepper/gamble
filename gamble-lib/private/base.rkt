@@ -3,7 +3,7 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base)
+(require (for-syntax racket/base syntax/parse racket/list)
          racket/class
          racket/match
          racket/stxparam
@@ -98,20 +98,18 @@
 ;; ============================================================
 ;; Stochastic contexts
 
-;; A Label is one of
-;; - (auto-label Addr)  -- managed by model/instrument
-;; - Any (not false)    -- chosen by user
+;; Tag = Any, chosen by user
 
 (define stochastic-ctx<%>
   (interface ()
     get-functions
 
-    sample      ;; (Dist A) Label/#f -> A
+    sample      ;; (Dist A) Tag Addr/#f -> A
     observe     ;; Dist[X] X -> Void
     dscore      ;; Density -> Void
     lscore      ;; LogReal Nat -> Void
     fail        ;; -> escapes
-    mem         ;; (X ... -> Y) -> (X ... -> Y)
+    mem         ;; (X ... -> Y) Addr/#f -> (X ... -> Y)
     run-model   ;; (Model A ...) Addr/#f -> (values A ...)
 
     ;; run-top  ;; varies, but often: (-> (values A ...)) -> (U (list A ...) #f)
@@ -123,23 +121,23 @@
     (super-new)
 
     (define/public (get-functions)
-      (define (ctx-sample dist [label #f]) (sample dist label))
+      (define (ctx-sample dist [tag #f] [addr #f]) (sample dist tag addr))
       (define (ctx-dscore dn) (dscore dn))
       (define (ctx-lscore ll) (lscore ll))
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
-      (define (ctx-mem f) (mem f))
-      (define (ctx-run-model m [addr #f]) (run-model m addr)) ;; 2nd arg for internal use only
+      (define (ctx-mem f [addr #f]) (mem f addr))
+      (define (ctx-run-model m [addr #f]) (run-model m addr))
       (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
 
     (define/public (-unsupported who)
       (error who "called outside of sampling context"))
 
-    (define/public (sample dist label)
+    (define/public (sample dist tag addr)
       (unless (dist? dist) (raise-argument-error 'sample "dist?" dist))
-      (-sample dist label))
+      (-sample dist tag addr))
 
-    (define/public (-sample dist label)
+    (define/public (-sample dist tag addr)
       (dist-sample dist))
 
     (define/public (-dscore who dn)
@@ -160,7 +158,7 @@
         (-unsupported 'fail))
       (abort-current-continuation escape-prompt (lambda () #f)))
 
-    (define/public (mem f)
+    (define/public (mem f addr)
       (define memo-table (make-hash))
       (define (mf . args)
         (hash-ref! memo-table args (lambda () (apply f args))))
@@ -197,7 +195,7 @@
     (inherit -unsupported)
     (super-new)
 
-    (define/override (-sample dist label)
+    (define/override (-sample dist tag addr)
       (-unsupported 'sample))
 
     (define/override (run-model m addr)
@@ -223,19 +221,24 @@
 ;; ============================================================
 ;; Primitive operations
 
-(define (dynamic-sample dist [label #f])
-  (send (current-stochastic-ctx) sample dist label))
+(define (dynamic-sample dist [tag #f])
+  (send (current-stochastic-ctx) sample dist tag #f))
 
 (define (dynamic-dscore dn) (send (current-stochastic-ctx) dscore dn))
 (define (dynamic-lscore ll) (send (current-stochastic-ctx) lscore ll))
 (define (dynamic-observe dist val) (send (current-stochastic-ctx) observe dist val))
 (define (dynamic-fail [reason #f]) (send (current-stochastic-ctx) fail reason))
 
-(define (dynamic-mem f) (send (current-stochastic-ctx) mem f))
+(define (dynamic-mem f) (send (current-stochastic-ctx) mem f #f))
 (define (dynamic-run-model m) (send (current-stochastic-ctx) run-model m #f))
 
 (define-syntax-parameter sample
   (make-rename-transformer (quote-syntax dynamic-sample)))
+(define-syntax-parameter mem
+  (make-rename-transformer (quote-syntax dynamic-mem)))
+(define-syntax-parameter run-model
+  (make-rename-transformer (quote-syntax dynamic-run-model)))
+
 (define-syntax-parameter dscore
   (make-rename-transformer (quote-syntax dynamic-dscore)))
 (define-syntax-parameter lscore
@@ -244,21 +247,38 @@
   (make-rename-transformer (quote-syntax dynamic-observe)))
 (define-syntax-parameter fail
   (make-rename-transformer (quote-syntax dynamic-fail)))
-(define-syntax-parameter mem
-  (make-rename-transformer (quote-syntax dynamic-mem)))
-(define-syntax-parameter run-model
-  (make-rename-transformer (quote-syntax dynamic-run-model)))
+
+(begin-for-syntax
+  ;; op-transformer : (Listof Nat) Identifier -> Syntax -> Syntax
+  ;; Useful for making sure opid occurs in expanded code only in operator position
+  ;; with correct arity, but also usable like variable.
+  (define ((op-transformer arities opid) stx)
+    (case (syntax-local-context)
+      [(expression)
+       (syntax-parse stx
+         [(_ e:expr ...)
+          (unless (memv (length (syntax->list #'(e ...))) arities)
+            (raise-syntax-error #f "arity mismatch in special operation" stx))
+          (with-syntax ([op opid])
+            #'(#%plain-app op e ...))]
+         [self:id
+          (with-syntax ([op opid]
+                        [((var ...) ...)
+                         (for/list ([arity (in-list arities)])
+                           (generate-temporaries (make-list arity 'tmp)))])
+            #'(case-lambda [(var ...) (#%plain-app op var ...)] ...))])]
+      [else #`(#%expression #,stx)])))
 
 (define-syntax-rule (with-ctx ctx body ...)
   (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model)
                 (ctx-get-functions ctx)])
-    (syntax-parameterize ([sample (make-rename-transformer (quote-syntax ctx-sample))]
-                          [dscore (make-rename-transformer (quote-syntax ctx-dscore))]
-                          [lscore (make-rename-transformer (quote-syntax ctx-lscore))]
-                          [observe (make-rename-transformer (quote-syntax ctx-observe))]
-                          [fail (make-rename-transformer (quote-syntax ctx-fail))]
-                          [mem (make-rename-transformer (quote-syntax ctx-mem))]
-                          [run-model (make-rename-transformer (quote-syntax ctx-run-model))])
+    (syntax-parameterize ([sample (op-transformer '(1 2) (quote-syntax ctx-sample))]
+                          [mem (op-transformer '(1) (quote-syntax ctx-mem))]
+                          [run-model (op-transformer '(1) (quote-syntax ctx-run-model))]
+                          [dscore (op-transformer '(1) (quote-syntax ctx-dscore))]
+                          [lscore (op-transformer '(1) (quote-syntax ctx-lscore))]
+                          [observe (op-transformer '(2) (quote-syntax ctx-observe))]
+                          [fail (op-transformer '(0 1) (quote-syntax ctx-fail))])
       body ...)))
 
 ;; ============================================================

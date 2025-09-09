@@ -7,7 +7,7 @@
          racket/match
          "base.rkt"
          "../dist.rkt"
-         "../model/addr.rkt"
+         "../addr.rkt"
          "../util/real.rkt")
 (provide (all-defined-out))
 
@@ -37,14 +37,14 @@
 
 (define initialize-transition%
   (class* object% (mcmc-transition<%>)
-    (init-field get-value)  ;; (Label Dist -> (or/c (list X) #f))
+    (init-field get-value)  ;; (Tag Dist -> (or/c (list X) #f))
     (super-new)
 
     ;; run : (Model A) #f -> (values Trace/#f TxInfo)
     (define/public (run mdl prev-trace)
       (define ctx
         (new initializing-tracing-stochastic-ctx%
-             (get-value (lambda (label dist) (get-value (label-view label) dist)))))
+             (get-value get-value)))
       (match (send ctx run-top mdl)
         [(list new-value)
          (define new-trace (send ctx make-trace new-value))
@@ -102,36 +102,34 @@
 
 (define single-site-transition%
   (class delta-mh-transition-base%
-    (init-field ok-label?     ;; (Label/#f -> Boolean) or #f
+    (init-field ok-tag?       ;; (Tag -> Boolean) or #f
                 proposal)     ;; Proposal
     (super-new)
-
-    (define ok-label*? (wrap-ok-label? ok-label?))
 
     ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key (trace-db prev-trace) ok-label*?))
-      (cond [label
-             (log-mcmc-info "Label to change = ~s" label)
-             (match (hash-ref prev-db label)
+      (define key (db-random-key (trace-db prev-trace) ok-tag?))
+      (cond [key
+             (log-mcmc-info "Key to change = ~s" key)
+             (match (hash-ref prev-db key)
                [(entry prev-dist prev-value prev-lpr)
                 (define-values (new-e l-R/F)
-                  (delta-label label prev-dist prev-value))
-                (values (hash label new-e) l-R/F)])]
+                  (delta-key key prev-dist prev-value))
+                (values (hash key new-e) l-R/F)])]
             [else
              ;; Allow empty delta if no known variables; eg, for initial trace.
              (unless (zero? (hash-count prev-db))
-               (error 'single-site-transition "no suitable label to change"))
+               (error 'single-site-transition "no suitable key to change"))
              (values (hash) 0.0)]))
 
-    ;; delta-label : Label Dist Value -> (values Entry Real)
-    (define/public (delta-label label dist prev-value)
+    ;; delta-key : DBKey Dist Value -> (values Entry Real)
+    (define/public (delta-key key dist prev-value)
       (match-define (cons new-value l-R/F)
-        (or (send proposal propose1 label dist prev-value)
+        (or (send proposal propose1 (dbkey-tag key) dist prev-value)
             (begin (log-mcmc-info "Proposal returned #f; resampling")
                    (propose1:resample dist prev-value))))
-      (log-mcmc-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" label dist
+      (log-mcmc-info "PROPOSED ~s: ~e, ~e => ~e; R/F=~s" key dist
                      prev-value new-value (exp l-R/F))
       (define new-lpr (dist-pdf dist new-value #t))
       (when (logspace-zero? new-lpr)
@@ -141,8 +139,8 @@
     (define/override (accept-threshold* prev-trace new-trace)
       ;; Account for backward and forward likelihood of picking
       ;; the random choice to perturb that we picked.
-      (define new-nchoices (hash-count* (trace-db new-trace) ok-label*?))
-      (define prev-nchoices (hash-count* (trace-db prev-trace) ok-label*?))
+      (define new-nchoices (db-count* (trace-db new-trace) ok-tag?))
+      (define prev-nchoices (db-count* (trace-db prev-trace) ok-tag?))
       (cond [(zero? prev-nchoices)
              +inf.0]
             [else
@@ -157,21 +155,19 @@
 
 (define multi-site-transition%
   (class delta-mh-transition-base%
-    (init-field ok-label?     ;; (Label -> Boolean) or #f
+    (init-field ok-tag?       ;; (Tag -> Boolean) or #f
                 proposal)     ;; Proposal
     (super-new)
-
-    (define ok-label*? (wrap-ok-label? ok-label?))
 
     ;; delta : Trace -> (values DeltaDB Real)
     (define/override (delta prev-trace)
       (define prev-db (trace-db prev-trace))
       (define delta-db
-        (for/hash ([(label e) (in-hash prev-db)] #:when (ok-label*? label))
-          (values label proposal)))
+        (for/hash ([(key e) (in-hash prev-db)] #:when (ok-tag? (dbkey-tag key)))
+          (values key proposal)))
       (when (zero? (hash-count delta-db))
         (unless (zero? (hash-count prev-db))
-          (error 'multi-site-transition "no suitable labels to change")))
+          (error 'multi-site-transition "no suitable keys to change")))
       (values delta-db 0.0))
 
     ;; accept-threshold* : Trace Trace -> Real
@@ -183,10 +179,8 @@
 
 (define enumerative-gibbs-transition%
   (class* object% (mcmc-transition<%>)
-    (init-field ok-label?)     ;; (Label -> Boolean) or #f
+    (init-field ok-tag?)      ;; (Tag -> Boolean) or #f
     (super-new)
-
-    (define ok-label*? (wrap-ok-label? ok-label?))
 
     ;; run : (Model A) Trace -> (values (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
@@ -196,15 +190,15 @@
     (define/public (run/slice mdl prev-trace)
       (define who 'enumerative-gibbs-transition)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key prev-db ok-label*?))
-      (unless label (error who "no suitable label to change"))
-      (log-mcmc-info "Label to change = ~s" label)
-      (match-define (entry dist prev-value _) (hash-ref prev-db label))
+      (define key (db-random-key prev-db ok-tag?))
+      (unless key (error who "no suitable key to change"))
+      (log-mcmc-info "Key to change = ~s" key)
+      (match-define (entry dist prev-value _) (hash-ref prev-db key))
       (unless (finite-dist? dist)
-        (error who "distribution is not finite\n  label: ~e\n  dist: ~e" label dist))
+        (error who "distribution is not finite\n  key: ~e\n  dist: ~e" key dist))
       (define (make-entry new-value)
         (entry dist new-value (dist-pdf dist new-value #t)))
-      (define eval-slice (make-eval-slice who mdl prev-db (list label)))
+      (define eval-slice (make-eval-slice who mdl prev-db (list key)))
       (define conditional-dist
         (log-hash->normalized-discrete-dist
          (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
@@ -218,12 +212,12 @@
     (define/public (run/full mdl prev-trace)
       (define who 'enumerative-gibbs-transition)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key prev-db ok-label*?))
-      (unless label (error who "no suitable label to change"))
-      (log-mcmc-info "Label to change = ~s" label)
-      (match-define (entry dist prev-value _) (hash-ref prev-db label))
+      (define key (db-random-key prev-db ok-tag?))
+      (unless key (error who "no suitable key to change"))
+      (log-mcmc-info "Key to change = ~s" key)
+      (match-define (entry dist prev-value _) (hash-ref prev-db key))
       (unless (finite-dist? dist)
-        (error who "distribution is not finite\n  label: ~e\n  dist: ~e" label dist))
+        (error who "distribution is not finite\n  key: ~e\n  dist: ~e" key dist))
       (define (make-entry new-value)
         (entry dist new-value (dist-pdf dist new-value #t)))
       (define conditional-dist
@@ -233,7 +227,7 @@
                   (hash-set lh prev-trace (trace-lj prev-trace))]
                  [else
                   (define new-entry (make-entry new-value))
-                  (define delta-db (hash label new-entry))
+                  (define delta-db (hash key new-entry))
                   (define ctx (new tracing-stochastic-ctx%
                                    (prev-db prev-db)
                                    (delta-db delta-db)
@@ -255,7 +249,7 @@
 
 (define slice-transition%
   (class* object% (mcmc-transition<%>)
-    (init-field ok-label?
+    (init-field ok-tag?
                 [method 'double] ;; (U 'step 'double)
                 [Wi 1]           ;; slice search width for integer dists
                 [Wr 1.0]         ;; slice search width for real dists
@@ -263,34 +257,32 @@
                 [small-dist 10]) ;; limit of small-dist optimization, 0 to disable
     (super-new)
 
-    (define ok-label*? (wrap-ok-label? ok-label?))
-
     ;; run : (Model A) Trace -> (cons (U Trace #f) TxInfo)
     (define/public (run mdl prev-trace)
       (define who 'slice-transition)
       (define prev-db (trace-db prev-trace))
-      (define label (hash-random-key prev-db ok-label*?))
-      (unless label (error who "no suitable label to change"))
-      (match-define (entry dist prev-value _) (hash-ref prev-db label))
-      (log-mcmc-info "Label to change = ~s, ~e" label prev-value)
+      (define key (db-random-key prev-db ok-tag?))
+      (unless key (error who "no suitable key to change"))
+      (match-define (entry dist prev-value _) (hash-ref prev-db key))
+      (log-mcmc-info "Key to change = ~s, ~e" key prev-value)
       (unless (real-dist? dist)
         (error who "distribution does not support slice sampling\n  dist: ~e" dist))
       (define slice
         (new slice% (method method) (Wi Wi) (Wr Wr) (M M) (small-dist small-dist)
-             (mdl mdl) (prev-trace prev-trace) (label label)))
-      (values (send slice sample) (vector who label)))
+             (mdl mdl) (prev-trace prev-trace) (key key)))
+      (values (send slice sample) (vector who key)))
     ))
 
 (define slice%
   (class object%
-    (init-field method Wi Wr M small-dist mdl prev-trace label)
+    (init-field method Wi Wr M small-dist mdl prev-trace key)
     (super-new)
 
     (define prev-db (trace-db prev-trace))
     (define prev-lj (trace-lj prev-trace))
-    (match-define (entry dist prev-value _) (hash-ref prev-db label))
+    (match-define (entry dist prev-value _) (hash-ref prev-db key))
 
-    (define eval-slice (make-eval-slice 'slice-transition mdl prev-db (list label)))
+    (define eval-slice (make-eval-slice 'slice-transition mdl prev-db (list key)))
 
     ;; ----------------------------------------
 
@@ -321,7 +313,7 @@
     (define/private (eval-trace/slice new-value)
       (log-mcmc-info "Eval at ~e" new-value)
       (define new-lpr (dist-pdf dist new-value #t))
-      (define new-trace (eval-slice (hash label (entry dist new-value new-lpr))))
+      (define new-trace (eval-slice (hash key (entry dist new-value new-lpr))))
       (log-mcmc-info "Eval lj ~e" (and new-trace (trace-lj new-trace)))
       new-trace)
 
@@ -329,7 +321,7 @@
       (define new-lpr (dist-pdf dist new-value #t))
       (cond [(not (logspace-zero? new-lpr))
              (define delta-db
-               (hash label (entry dist new-value new-lpr)))
+               (hash key (entry dist new-value new-lpr)))
              (define ctx
                (new tracing-stochastic-ctx% 
                     (prev-db prev-db)

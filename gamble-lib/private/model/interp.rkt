@@ -6,7 +6,7 @@
          "../base.rkt"
          (only-in "../dist.rkt" dist-pdf)
          (only-in "../util/density.rkt" density->real)
-         "addr.rkt"
+         "../addr.rkt"
          "ast.rkt")
 (provide (all-defined-out))
 
@@ -14,7 +14,7 @@
 ;; - which branch of an `if` expression is taken
 ;; - the closure/procedure value of an application expression
 ;;   - but the values in a closure's environment are allowed to change
-;; - the label value of a call to `sample`
+;; - the tag value of a call to `sample`
 ;; - the closure/procedure value of a call to `mem`
 ;; - the argument values in an application of a memoized function
 ;; - the model value of a call to `run-model`
@@ -131,7 +131,7 @@
 (struct node:apply (varlocs argrs) #:prefab)
 (struct node:apply-tail (varloc argrs) #:prefab)
 (struct node:apply-prim (addr loc proc argrs mv) #:prefab)
-(struct node:sample (loc addr distr labelr) #:prefab)
+(struct node:sample (loc addr distr tagr) #:prefab)
 (struct node:dscore (argr) #:prefab)
 (struct node:lscore (argr) #:prefab)
 (struct node:observe (distr valr) #:prefab)
@@ -177,13 +177,8 @@
          [else (loc-set! loc `(call-with-values
                                (lambda () ,(wrap `(#%plain-app ,proc-expr ,@arg-exprs)))
                                list))]))]
-    [(node:sample loc addr distr labelr)
-     (define label-expr
-       (match labelr
-         [(result:value #f) `(quote ,(and addr (auto-label addr)))]
-         [(result:value (? values v)) `(quote ,v)]
-         [_ `(or ,(result->expr labelr) (quote ,(and addr (auto-label addr))))]))
-     (loc-set! loc `(ctx-sample ,(result->expr distr) ,label-expr))]
+    [(node:sample loc addr distr tagr)
+     (loc-set! loc `(ctx-sample ,(result->expr distr) ,(result->expr tagr) (quote ,addr)))]
     [(node:dscore argr)
      `(ctx-dscore ,(result->expr argr))]
     [(node:lscore argr)
@@ -220,8 +215,8 @@
      (values (get-locs argrs) (list varloc))]
     [(node:apply-prim addr loc proc argrs mv)
      (values (get-locs argrs) (list loc))]
-    [(node:sample loc addr distr labelr)
-     (values (get-locs (list distr labelr)) (list loc))]
+    [(node:sample loc addr distr tagr)
+     (values (get-locs (list distr tagr)) (list loc))]
     [(node:dscore argr) (values (get-locs (list argr)) null)]
     [(node:lscore argr) (values (get-locs (list argr)) null)]
     [(node:observe distr valr) (values (get-locs (list distr valr)) null)]
@@ -238,7 +233,7 @@
     (define the-store (make-hasheqv))       ;; Location => Any
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID)
     (define nodeid=>node (make-hasheqv))    ;; NodeID => Node
-    (define label=>nodeid (make-hash))      ;; Label => NodeID
+    (define key=>nodeid (make-hash))        ;; DBKey => NodeID
     (define final-result #f)                ;; Result, mutated
 
     (define/public (show [expr? #t])
@@ -253,9 +248,9 @@
           (if expr?
               (printf "  ~s : ~s\n" nodeid (node->expr node))
               (printf "  ~s : ~e\n" nodeid node))))
-      (printf "Label mapping:\n")
-      (for ([(label nodeid) (in-hash label=>nodeid)])
-        (printf "  ~s => ~s\n" label nodeid)))
+      (printf "Key mapping:\n")
+      (for ([(key nodeid) (in-hash key=>nodeid)])
+        (printf "  ~s => ~s\n" key nodeid)))
 
     ;; ----------------------------------------
     ;; Store
@@ -335,13 +330,12 @@
                 (store! varloc (map result:value-value argrs))]
                [else (add-and-exec!)])]
         [(node:apply-prim addr loc proc argrs mv) (add-and-exec!)]
-        [(node:sample loc addr distr labelr)
-         (define label (result->value labelr))
-         (when (result:location? labelr)
-           (add-node! (node:same "sample label" label labelr)))
+        [(node:sample loc addr distr tagr)
+         (define tag (result->value tagr))
+         (when (result:location? tagr)
+           (add-node! (node:same "sample tag" tag tagr)))
          (define nodeid (add-node! node))
-         (let ([label (or label (and addr (auto-label addr)))])
-           (hash-set! label=>nodeid label nodeid))
+         (hash-set! key=>nodeid (dbkey tag addr) nodeid)
          (exec-node! node)]
         [(node:dscore argr) (add-and-exec!)]
         [(node:lscore argr) (add-and-exec!)]
@@ -382,9 +376,8 @@
            [else (call-with-values
                   (lambda () (with-put-ADDR addr (call*)))
                   (lambda vals (store! loc vals)))])]
-        [(node:sample loc addr distr labelr)
-         (store! loc (send ctx sample (result->value distr)
-                           (or (result->value labelr) (and addr (auto-label addr)))))]
+        [(node:sample loc addr distr tagr)
+         (store! loc (send ctx sample (result->value distr) (result->value tagr) addr))]
         [(node:dscore argr)
          (send ctx dscore (result->value argr))]
         [(node:lscore argr)
@@ -402,7 +395,7 @@
       (define sumlobs 0.0)
       (for ([node (in-list nodes)])
         (match node
-          [(node:sample loc addr distr labelr)
+          [(node:sample loc addr distr tagr)
            (set! sumlprs
                  (+ sumlprs (dist-pdf (result->value distr) (fetch loc) #t)))]
           [(node:dscore argr)
@@ -510,10 +503,10 @@
         [(ast:values1 arg)
          (one (recur1 arg))]
         ;; ----------------------------------------
-        [(ast:sample cs dist label)
+        [(ast:sample cs dist tag)
          (define loc (next-location))
          (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
-         (do! (node:sample loc addr* (recur1 dist) (recur1 label)))
+         (do! (node:sample loc addr* (recur1 dist) (recur1 tag)))
          (one (result:location loc))]
         [(ast:dscore arg)
          (do! (node:dscore (recur1 arg)))
@@ -532,8 +525,8 @@
          (define funv (result->value funr))
          (do! (node:same "function for memoize" funv funr))
          (define addr* (and cs (addr-add-call addr (+ (model/ast-csbase mctx) cs))))
-         (define memo-table (make-hash))
-         (one (result:value (memoized proc memo-table addr*)))]
+         (define args=>result (make-hash))
+         (one (result:value (memoized funv args=>result addr*)))]
         [(ast:run-model cs arg)
          (define result (recur1 arg))
          (do! (node:same "model" (result->value result) result))
@@ -584,7 +577,7 @@
                [else
                 (define addr* (addr-add-mem addr args))
                 (define result (init-apply (result:value fun) argrs 1 addr*))
-                (hash-set! memo-table args result)
+                (hash-set! args=>result args result)
                 result])]
         [(? procedure? proc)
          (define loc (next-location))
@@ -601,11 +594,11 @@
     ;; ----------------------------------------
     ;; Re-evaluation
 
-    ;; get-slice-eval : (Listof Label) (Listof NodeID)
+    ;; get-slice-eval : (Listof DBKey) (Listof NodeID)
     ;;               -> (values (StochasticCtx Boolean -> Any) Real Real)
-    (define/public (get-slice-eval #:labels [labels null]
+    (define/public (get-slice-eval #:keys [keys null]
                                    #:nodeids [nodeids null])
-      (define-values (nodes updated-locs) (get-slice labels nodeids))
+      (define-values (nodes updated-locs) (get-slice keys nodeids))
       (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! nodes))
       (values (get-slice-proc/interp nodes) slice-lprs slice-lobs))
 
@@ -618,9 +611,9 @@
     (define/private (get-slice-proc/eval nodes updated-locs)
       (expr->proc the-store (slice->expr nodes updated-locs)))
 
-    ;; get-slice-expr : (Listof Label) (Listof NodeID) -> Expr
-    (define/public (get-slice-expr labels [nodeids null])
-      (define-values (nodes updated-locs) (get-slice labels nodeids))
+    ;; get-slice-expr : (Listof DBKey) (Listof NodeID) -> Expr
+    (define/public (get-slice-expr keys [nodeids null])
+      (define-values (nodes updated-locs) (get-slice keys nodeids))
       (slice->expr nodes updated-locs))
 
     ;; slice->expr : (Listof Node) (Hash Location Symbol) -> Expr
@@ -638,9 +631,9 @@
              (or (hash-ref updated-locs loc #f)
                  `(fetch (quote ,loc)))])))
 
-    ;; get-slice : (Listof Label) (Listof NodeID) Boolean
+    ;; get-slice : (Listof DBKey) (Listof NodeID) Boolean
     ;;           -> (values (Listof NodeID) (Hash Location (U Symbol #t)))
-    (define/private (get-slice labels nodeids [make-names? #t])
+    (define/private (get-slice keys nodeids [make-names? #t])
       (define seen-nodeids (make-hasheqv))
       (define updated-locs (make-hasheqv))
       (define (make-name loc) (string->uninterned-symbol (format "a_~s" loc)))
@@ -657,8 +650,8 @@
             (hash-set! updated-locs loc (if make-names? (make-name loc) #t))
             (add-nodeids! (hash-ref loc=>nodeids loc null)))))
       (add-nodeids! nodeids)
-      (for ([label (in-list labels)])
-        (let ([nodeid (hash-ref label=>nodeid label #f)])
+      (for ([key (in-list keys)])
+        (let ([nodeid (hash-ref key=>nodeid key #f)])
           (when nodeid (add-nodeids! (list nodeid)))))
       (define sorted-nodeids (sort (hash-keys seen-nodeids) <))
       (values (map (lambda (nodeid) (hash-ref nodeid=>node nodeid)) sorted-nodeids)
@@ -690,7 +683,7 @@
   slice-eval)
 
 (module eval-support racket/base
-  (require "addr.rkt")
+  (require "../addr.rkt")
   (provide (all-defined-out))
   (define-namespace-anchor eval-anchor)
   (struct structural-change (kind))

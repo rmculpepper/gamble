@@ -18,7 +18,7 @@
 (struct ast:void (args) #:prefab)
 (struct ast:values1 (arg) #:prefab)
 
-(struct ast:sample (cs dist label) #:prefab)
+(struct ast:sample (cs dist tag) #:prefab)
 (struct ast:dscore (arg) #:prefab)
 (struct ast:lscore (arg) #:prefab)
 (struct ast:observe (dist value) #:prefab)

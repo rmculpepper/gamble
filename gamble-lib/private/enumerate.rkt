@@ -43,7 +43,7 @@
     (define memo-key (gensym))
     (define ctag (make-continuation-prompt-tag))
 
-    (define/override (-sample dist label)
+    (define/override (-sample dist tag addr)
       (call/restore
        (lambda (restore)
          (for/list ([(v w) (in-dist dist)])
@@ -78,7 +78,7 @@
           (lambda () (proc (lambda (v) (call memo-table (lambda () (k v))))))))
        ctag))
 
-    (define/override (mem f)
+    (define/override (mem f addr)
       (define f-key (gensym))
       (define (memoized-function . args)
         (unless (continuation-prompt-available? ctag)

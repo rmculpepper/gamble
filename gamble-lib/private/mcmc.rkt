@@ -15,32 +15,27 @@
 ;; ============================================================
 ;; Transitions
 
-(define (initialize-transition [get-value (lambda (label dist) #f)]
-                               #:hash [value-hash #f])
-  (define (get-value* label dist)
-    (cond [(hash-has-key? value-hash label)
-           (list (hash-ref value-hash label))]
-          [else (get-value label dist)]))
-  (new initialize-transition% (get-value get-value*)))
+(define (initialize-transition [get-value (lambda (tag dist) #f)])
+  (new initialize-transition% (get-value get-value)))
 
 (define (single-site-transition #:proposal [proposal (resample-proposal)]
-                                #:any [ok-label? #f])
-  (new single-site-transition% (ok-label? ok-label?) (proposal proposal)))
+                                #:any [ok-tag? #f])
+  (new single-site-transition% (ok-tag? ok-tag?) (proposal proposal)))
 
 (define (multi-site-transition #:proposal proposal
-                               #:all [ok-label? #f])
-  (new multi-site-transition% (ok-label? ok-label?) (proposal proposal)))
+                               #:all [ok-tag? #f])
+  (new multi-site-transition% (ok-tag? ok-tag?) (proposal proposal)))
 
-(define (enumerative-gibbs-transition #:any [ok-label? #f])
-  (new enumerative-gibbs-transition% (ok-label? ok-label?)))
+(define (enumerative-gibbs-transition #:any [ok-tag? #f])
+  (new enumerative-gibbs-transition% (ok-tag? ok-tag?)))
 
 (define (slice-transition #:method [method 'double]
                           #:W [Wr 1.0]
                           #:Wi [Wi (exact (ceiling Wr))]
                           #:M [M +inf.0]
                           #:small-dist-limit [small-dist 10]
-                          #:any [ok-label? #f])
-  (new slice-transition% (ok-label? ok-label?) (method method)
+                          #:any [ok-tag? #f])
+  (new slice-transition% (ok-tag? ok-tag?) (method method)
        (Wr Wr) (Wi Wi) (M M) (small-dist small-dist)))
 
 ;; ============================================================

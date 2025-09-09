@@ -7,7 +7,7 @@
          racket/class
          "dist/base.rkt"
          "base.rkt"
-         "model/addr.rkt"
+         "addr.rkt"
          "util/density.rkt")
 (provide (all-defined-out))
 
@@ -38,17 +38,17 @@
 
 (define importance-stochastic-ctx%
   (class scoring-stochastic-ctx%
-    (init-field propose) ;; #f or (Label/#f Dist -> Dist/#f)
+    (init-field propose) ;; #f or (Tag/#f Dist -> Dist/#f)
     (inherit -dscore)
     (super-new)
 
-    (define/override (sample dist label)
-      (cond [(and propose (propose (label-view label) dist))
+    (define/override (sample dist tag addr)
+      (cond [(and propose (propose tag dist))
              => (lambda (qdist)
                   (define v (dist-sample qdist))
                   (-dscore 'sample
                            (density/ (dist-density dist v)
                                      (dist-density qdist v)))
                   v)]
-            [else (super sample dist label)]))
+            [else (super sample dist tag addr)]))
     ))

@@ -1,7 +1,7 @@
 #lang racket/base
 (require "dist.rkt"
          "private/base.rkt"
-         "private/model/addr.rkt"
+         "private/addr.rkt"
          "private/model.rkt"
          "private/rejection.rkt"
          "private/importance.rkt"
@@ -29,7 +29,6 @@
          run-model
          begin-structural
 
-         (struct-out auto-label)
          current-init-addr
 
          (rename-out [model* model])

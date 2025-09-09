@@ -6,7 +6,6 @@
 (require (for-syntax racket/base syntax/parse)
          racket/stxparam
          "base.rkt"
-         "model/addr.rkt"
          (for-syntax "model/analysis.rkt")
          "model/instrument.rkt")
 (provide model*)

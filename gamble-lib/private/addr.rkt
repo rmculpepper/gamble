@@ -1,25 +1,18 @@
 #lang racket/base
-(provide with-put-ADDR
+(provide dbkey
+         dbkey-tag
+         with-put-ADDR
          with-get-ADDR
          context-has-ADDR?
          addr-add-call
          addr-add-mem
          init-hash-addr
          init-full-addr
-         (struct-out auto-label)
-         label-view
          current-init-addr)
 
-;; Note: Label vs Addr
-;; - Label is any non-false value, includes (auto-label Addr)
-;; - Addr refers to addresses managed by instrumenter
-
-(struct auto-label (addr) #:prefab)
-
-;; label-view : Label/#f -> Label/#f
-;; Don't expose auto-label values to user.
-(define (label-view label)
-  (if (auto-label? label) #f label))
+;; DBKey = (cons Tag Addr/#f)
+(define (dbkey tag addr) (cons tag addr))
+(define (dbkey-tag key) (car key))
 
 ;; Addr is one of
 ;; - HashAddr  -- compact, may introduce collisions
