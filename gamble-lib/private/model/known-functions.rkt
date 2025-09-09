@@ -40,11 +40,9 @@
   (cond [(identifier? f-stx)
          (define-values (def-mod def-name)
            (id->def-mod+name f-stx))
-         (eprintf "may-effect: ~v ~v\n" def-mod def-name)
          (cond [(hash-ref may-effect def-mod #f)
                 => (match-lambda
                      [(cons default table)
-                      (eprintf "  => ~v\n" (hash-ref table def-name default))
                       (hash-ref table def-name default)])]
                [else #t])]
         [else #t]))
@@ -52,7 +50,6 @@
 ;; constant-folding-procedure-id? : Identifier -> Boolean
 (define (constant-folding-procedure-id? id)
   (define-values (def-mod def-name) (id->def-mod+name id))
-  (eprintf "cfold: ~v ~v\n" def-mod def-name)
   (cond [(free-id-table-ref constant-folding-table id #f) #t]
         [(hash-ref constant-folding def-mod #f)
          => (match-lambda
