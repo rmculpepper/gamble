@@ -230,6 +230,11 @@
     ;; complete record of all random choices made by the program;
     ;; if accepted, it typically becomes a new execution's prev-db.
 
+    (define/override (sample dist tag addr)
+      (if addr
+          (super sample dist tag addr)
+          (with-get-ADDR addr (super sample dist tag addr))))
+
     (define/override (-sample dist tag addr)
       (unless addr
         (error 'sample "unique address is required for MCMC sampler~a\n  dist: ~e"
@@ -304,10 +309,17 @@
       (when (logspace-zero? sumlobs) (fail who)))
 
     (define/override (mem f addr)
-      (define (af . args)
-        (with-put-ADDR (addr-add-mem addr args)
-          (apply f args)))
-      (super mem (procedure-reduce-arity af (procedure-arity f) 'memoized-function)))
+      (define (do-mem addr)
+        (define (af . args)
+          (with-put-ADDR (addr-add-mem addr args)
+            (apply f args)))
+        (super mem (procedure-reduce-arity af (procedure-arity f) 'memoized-function) addr))
+      (if addr (do-mem addr) (with-get-ADDR addr (do-mem addr))))
+
+    (define/override (run-model m addr)
+      (if addr
+          (super run-model m addr)
+          (with-get-ADDR addr (super run-model m addr))))
 
     (define/override (run-top top)
       (match top

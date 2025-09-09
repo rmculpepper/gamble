@@ -87,6 +87,7 @@
     (super-new)
 
     (define mcmc (new mcmc% (mdl mdl)))
+    (define/public (get-mcmc) mcmc)
 
     (define/override (sample)
       (define-values (accepted? trace txinfo)

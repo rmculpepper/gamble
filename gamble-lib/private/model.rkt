@@ -33,14 +33,14 @@
       (syntax-local-lift-expression
        #`(allocate-call-sites (quote #,call-site-count))))
     (define proc-expr
-      (syntax-parse tagged-ee
-        #:literal-sets (kernel-literals)
-        [(#%plain-lambda (ctx) body:expr)
-         #`(#%plain-lambda (ctx addr)
-             (syntax-parameterize ((CSBASE (make-rename-transformer
-                                            (quote-syntax #,csbase-id)))
-                                   (ADDR (make-rename-transformer
-                                          (quote-syntax addr))))
-               (instrument body)))]))
+      #`(syntax-parameterize ((CSBASE (make-rename-transformer
+                                       (quote-syntax #,csbase-id))))
+          (instrument-top #,tagged-ee)))
     (define-values (ast ast-fvs) (parse-ast tagged-ee))
     (list proc-expr ast ast-fvs csbase-id)))
+
+(define next-global-call-site 1)
+
+(define (allocate-call-sites n)
+  (begin0 next-global-call-site
+    (set! next-global-call-site (+ next-global-call-site n))))

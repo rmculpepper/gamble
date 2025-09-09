@@ -501,7 +501,8 @@
                         ctx-observe
                         ctx-fail
                         ctx-mem
-                        ctx-run-model)
+                        ctx-run-model
+                        ctx-sample/addr)
                        (#%plain-app (~datum ctx-get-functions) ctx2:id)])
            body:expr))
        #:when (free-identifier=? #'ctx #'ctx2)
@@ -512,6 +513,7 @@
        (free-id-table-set! special-env #'ctx-fail 'fail)
        (free-id-table-set! special-env #'ctx-mem 'mem)
        (free-id-table-set! special-env #'ctx-run-model 'run-model)
+       (free-id-table-set! special-env #'ctx-sample/addr 'sample/addr)
        ;; ----
        (free-id-table-set! special-env #'begin-structural 'begin-structural)
        ;; ----

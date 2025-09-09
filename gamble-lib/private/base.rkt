@@ -121,14 +121,16 @@
     (super-new)
 
     (define/public (get-functions)
-      (define (ctx-sample dist [tag #f] [addr #f]) (sample dist tag addr))
+      (define (ctx-sample dist [tag #f]) (sample dist tag #f))
       (define (ctx-dscore dn) (dscore dn))
       (define (ctx-lscore ll) (lscore ll))
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
-      (define (ctx-mem f [addr #f]) (mem f addr))
-      (define (ctx-run-model m [addr #f]) (run-model m addr))
-      (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model))
+      (define (ctx-mem f) (mem f #f))
+      (define (ctx-run-model m) (run-model m #f))
+      (define (ctx-sample/addr dist tag addr) (sample dist tag addr))
+      (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model
+              ctx-sample/addr))
 
     (define/public (-unsupported who)
       (error who "called outside of sampling context"))
@@ -248,6 +250,7 @@
 (define-syntax-parameter fail
   (make-rename-transformer (quote-syntax dynamic-fail)))
 
+#;
 (begin-for-syntax
   ;; op-transformer : (Listof Nat) Identifier -> Syntax -> Syntax
   ;; Useful for making sure opid occurs in expanded code only in operator position
@@ -270,15 +273,16 @@
       [else #`(#%expression #,stx)])))
 
 (define-syntax-rule (with-ctx ctx body ...)
-  (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model)
+  (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model
+                            ctx-sample/addr)
                 (ctx-get-functions ctx)])
-    (syntax-parameterize ([sample (op-transformer '(1 2) (quote-syntax ctx-sample))]
-                          [mem (op-transformer '(1) (quote-syntax ctx-mem))]
-                          [run-model (op-transformer '(1) (quote-syntax ctx-run-model))]
-                          [dscore (op-transformer '(1) (quote-syntax ctx-dscore))]
-                          [lscore (op-transformer '(1) (quote-syntax ctx-lscore))]
-                          [observe (op-transformer '(2) (quote-syntax ctx-observe))]
-                          [fail (op-transformer '(0 1) (quote-syntax ctx-fail))])
+    (syntax-parameterize ([sample (make-rename-transformer (quote-syntax ctx-sample))]
+                          [mem (make-rename-transformer (quote-syntax ctx-mem))]
+                          [run-model (make-rename-transformer (quote-syntax ctx-run-model))]
+                          [dscore (make-rename-transformer (quote-syntax ctx-dscore))]
+                          [lscore (make-rename-transformer (quote-syntax ctx-lscore))]
+                          [observe (make-rename-transformer (quote-syntax ctx-observe))]
+                          [fail (make-rename-transformer (quote-syntax ctx-fail))])
       body ...)))
 
 ;; ============================================================
