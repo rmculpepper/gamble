@@ -40,9 +40,11 @@
   (cond [(identifier? f-stx)
          (define-values (def-mod def-name)
            (id->def-mod+name f-stx))
+         (eprintf "may-effect: ~v ~v\n" def-mod def-name)
          (cond [(hash-ref may-effect def-mod #f)
                 => (match-lambda
                      [(cons default table)
+                      (eprintf "  => ~v\n" (hash-ref table def-name default))
                       (hash-ref table def-name default)])]
                [else #t])]
         [else #t]))
@@ -50,6 +52,7 @@
 ;; constant-folding-procedure-id? : Identifier -> Boolean
 (define (constant-folding-procedure-id? id)
   (define-values (def-mod def-name) (id->def-mod+name id))
+  (eprintf "cfold: ~v ~v\n" def-mod def-name)
   (cond [(free-id-table-ref constant-folding-table id #f) #t]
         [(hash-ref constant-folding def-mod #f)
          => (match-lambda
@@ -110,7 +113,7 @@
 
 ;; may-effect : (Hash CanonicalModulePath (cons Boolean (Hasheq Symbol Boolean)))
 (define may-effect
-  (hash ''#%runtime (cons #f may-effect:runtime)
+  (hash '#%runtime (cons #f may-effect:runtime)
         '(lib "gamble/private/dist/base.rkt") (cons #f (hasheq))
         '(lib "gamble/private/dist/discrete.rkt") (cons #f (hasheq))
         '(lib "gamble/private/dist/multinomial.rkt") (cons #f (hasheq))
@@ -160,7 +163,7 @@
 
 ;; constant-folding : (Hash CanonicalModulePath (cons Boolean (Hasheq Symbol Boolean)))
 (define constant-folding
-  (hash ''#%runtime (cons #f constant-folding:runtime)))
+  (hash '#%runtime (cons #f constant-folding:runtime)))
 
 #|
 To get list of '#%runtime exports:
