@@ -6,110 +6,161 @@
 (require syntax/id-table
          racket/match
          racket/runtime-path)
-(provide register-function!
-         function-may-call-erp?
+(provide function-may-call-erp?
          constant-folding-procedure-id?)
 
-;; FClass is one of
-;; - #f -- No stochastic effect is expected to occur within the dynamic extent
-;;         of a call to the function, under reasonable circumstances.
-;;         For example, `equal?` may trigger custom comparison functions, which
-;;         could have stochastic effects, but we classify `equal?` as effect-free.
-;; - (true value) -- Stochastic effects are possible.
+;; For the purpose of this module, stochastic effects are `sample` and `mem`.
 
-;; Stochastic effects are `sample` and `mem`. If a function call is effect-free,
-;; we can skip the dynamic protocol for address tracking.
+;; Within model, if we have a call (f e ...), where f has no static addr-accepting
+;; variant registered (that is, no static protocol). The following possibilities exist:
+;; - f is an instrumented function => NEEDS dynamic protocol
+;; - f is a non-instrumented function
+;;   - f never has stochastic effects at all (eg, +, cons) => OK either way
+;;   - f calls an instrumented stochastic function only in non-tail position (eg, map)
+;;     => OKERR either way, addr link broken by non-tail context (as expected)
+;;   - f calls an instrumented stochastic function in tail position
+;;     => if dynamic protocol used, addr link preserved (AMBIVALENT)
+;;        otherwise:
+;;       - if call to f is in tail position wrt instrumented function
+;;          => inherits wrong address, BAD
+;;       - if call to f is in non-tail position wrt instrumented function
+;;          => addr link broken by non-tail context (INCONSISTENT)
 
-;; TODO: add common non-kernel Racket functions
-;; TODO: static analysis for locally-defined functions
+;; Conclusions:
+;; - Accept that non-instrumented functions that call instrumented functions in
+;;   in tail context inherit address link, and make that behave consistently.
+;; - Then always allowed to insert dynamic protocol.
+;; - Allowed to OMIT dynamic protocol only if
+;;   - ('no-effect) f is known to never have stochastic effects (eg, +, cons)
+;;   - ('no-tail) f is known to never call instrumented function in tail position (eg, map)
 
-;; function-table : free-id-table[ FClass ]
-(define function-table (make-free-id-table))
 
-(define (register-function! id fclass)
-  (free-id-table-set! function-table id fclass))
-
-;; function-may-call-erp? : Syntax -> FClass
+;; function-may-call-erp? : Syntax -> Boolean
 (define (function-may-call-erp? f-stx)
   (cond [(identifier? f-stx)
-         (free-id-table-ref function-table f-stx
-                            (lambda () (function-may-call-erp* f-stx)))]
-        [else 'unknown]))
-(define (function-may-call-erp* f-id)
-  (match (identifier-binding f-id)
-    [(list* def-mpi def-name _)
-     (define def-mod
-       (resolved-module-path-name
-        (module-path-index-resolve def-mpi)))
-     (cond [(equal? def-mod ''#%runtime)
-            (and (hash-ref runtime-info def-name #f) 'runtime)]
-           [else #f])]
-    [else 'unknown]))
+         (define-values (def-mod def-name)
+           (id->def-mod+name f-stx))
+         (cond [(hash-ref may-effect def-mod #f)
+                => (match-lambda
+                     [(cons default table)
+                      (hash-ref table def-name default)])]
+               [else #t])]
+        [else #t]))
 
-(define runtime-info
-  ((lambda (syms) (for/fold ([h (hasheq)]) ([sym (in-list syms)]) (hash-set h sym #t)))
-   '(abort-current-continuation
-     andmap
+;; constant-folding-procedure-id? : Identifier -> Boolean
+(define (constant-folding-procedure-id? id)
+  (define-values (def-mod def-name) (id->def-mod+name id))
+  (cond [(free-id-table-ref constant-folding-table id #f) #t]
+        [(hash-ref constant-folding def-mod #f)
+         => (match-lambda
+              [(cons default table)
+               (hash-ref table def-name default)])]
+        [else #f]))
+
+;; ============================================================
+
+(define (id->def-mod+name id)
+  (match (identifier-binding id)
+    [(list* def-mpi def-name _)
+     (values (resolved-module-path-name
+              (module-path-index-resolve def-mpi))
+             def-name)]
+    [_ (values #f #f)]))
+
+(define (list->hashset xs)
+  (for/fold ([h (hasheq)]) ([x (in-list xs)]) (hash-set h x #t)))
+
+;; may-effect:runtime : (Hasheq Symbol #t) -- set of functions from #%runtime
+;; module that might call an argument in tail position.
+(define may-effect:runtime
+  (list->hashset
+   '(;;abort-current-continuation
+     andmap             ;; last element in tail position
      apply
-     assert-unreachable
-     byte-pregexp
-     byte-regexp
-     bytes-close-converter
-     bytes-convert
-     bytes-convert-end
-     bytes-open-converter
+     byte-pregexp       ;; failure handler
+     byte-regexp        ;; failure handler
      call-in-continuation
      call-in-nested-thread
      call-with-composable-continuation
-     call-with-continuation-barrier
-     call-with-continuation-prompt
+     ;; call-with-continuation-barrier
+     ;; call-with-continuation-prompt
      call-with-current-continuation
      call-with-escape-continuation
      call-with-immediate-continuation-mark
      call-with-input-file
      call-with-output-file
-     call-with-semaphore
-     call-with-semaphore/enable-break
      call-with-values
-     chaperone-box
-     chaperone-channel
-     chaperone-continuation-mark-key
-     chaperone-evt
-     chaperone-hash
-     chaperone-of?
-     chaperone-procedure
-     chaperone-procedure*
-     chaperone-prompt-tag
-     chaperone-struct
-     chaperone-struct-type
-     chaperone-vector
-     chaperone-vector*
-     checked-procedure-check-and-extract
-     dynamic-wind
-     for-each
-     hash-for-each
-     hash-map
-     ;hash-ref
-     ;hash-ref-key
-     map
-     ormap
-     ;pregexp
-     ;regexp
-     ;regexp-replace
-     ;regexp-replace*
-     ;stencil-vector-ref
-     stencil-vector-update
+     ;; checked-procedure-check-and-extract
+     ;; dynamic-wind
+     hash-ref           ;; failure handler
+     hash-ref-key       ;; failure handler
+     ormap              ;; last element in tail position
+     pregexp            ;; failure handler
+     regexp             ;; failure handler
      sync
      sync/enable-break
      sync/timeout
      sync/timeout/enable-break
      thread
-     time-apply
      will-execute
      will-try-execute
      with-input-from-file
      with-output-to-file
      )))
+
+;; may-effect : (Hash CanonicalModulePath (cons Boolean (Hasheq Symbol Boolean)))
+(define may-effect
+  (hash ''#%runtime (cons #f may-effect:runtime)
+        '(lib "gamble/private/dist/base.rkt") (cons #f (hasheq))
+        '(lib "gamble/private/dist/discrete.rkt") (cons #f (hasheq))
+        '(lib "gamble/private/dist/multinomial.rkt") (cons #f (hasheq))
+        '(lib "gamble/private/dist/transformer.rkt") (cons #f (hasheq))
+        '(lib "gamble/private/dist/univariate.rkt") (cons #f (hasheq))))
+
+;; constant-folding:runtime : (Hasheq Symbol #t) -- set of functions from
+;; #%runtime module that can be constant-folded.
+(define constant-folding:runtime
+  (list->hashset
+   '(;; Boolean
+     boolean? eq? eqv? equal? equal-always? not immutable?
+     ;; Numeric
+     number? complex? real? rational?
+     exact-integer? exact-positive-integer? exact-nonnegative-integer?
+     inexact-real? fixnum? flonum? integer? exact? inexact?
+     zero? positive? negative? even? odd? exact->inexact inexact->exact
+     add1 sub1 + - * / quotient remainder modulo
+     abs min max round floor ceiling truncate sqrt
+     = < <= > >=
+     log expt exp sin cos tan asin acos atan
+     ;; Characters
+     char? char->integer integer->char
+     char=? char<? char<=? char>? char>=?
+     ;; Symbols
+     symbol? symbol-interned? symbol-unreadable? symbol<?
+     ;; Keywords
+     keyword? keyword<?
+     ;; Pairs and lists
+     null? pair? cons car cdr cadr cddr caddr cdddr list? list list*
+     length list-ref list-tail append reverse
+     ;; Vectors
+     vector? vector vector-immutable vector-length
+     list->vector vector->list vector->immutable-vector
+     ;; Boxes
+     box? box box-immutable
+     ;; Hashes
+     hash? hash-equal? hash-eq? hash-eqv? hash-equal-always? hash-strong? hash-weak?
+     hash hashalw hasheq hasheqv hash-count
+     ;; Procedures
+     procedure?
+     ;; Void
+     void?
+     ;; Other
+     values
+     )))
+
+;; constant-folding : (Hash CanonicalModulePath (cons Boolean (Hasheq Symbol Boolean)))
+(define constant-folding
+  (hash ''#%runtime (cons #f constant-folding:runtime)))
 
 #|
 To get list of '#%runtime exports:
@@ -119,13 +170,28 @@ To get list of '#%runtime exports:
 
 ;; ============================================================
 
-(module constant-folding-expand-ct racket/base
+(define constant-folding-table (make-free-id-table))
+(for ([id (in-list expanded-constant-folding-ids)])
+  (free-id-table-set! constant-folding-table id #t))
+
+(module constant-folding-ct racket/base
   (require (for-syntax racket/base)
+           racket/flonum
+           racket/fixnum
            "../dist.rkt")
   (begin-for-syntax
     (define expand-constant-folding-ids
       (syntax->list
-       #'(;; dist
+       #'(;; racket/flonum
+          fl+ fl- fl* fl/ flabs fl= fl< fl<= fl> fl>= flmin flmax
+          flround flfloor flceiling fltruncate
+          flsin flcos fltan flasin flacos flatan flexp fllog flsqrt flexpt
+          ;; racket/fixnum
+          fx+ fx- fx* fxquotient fxremainder fxmodulo fxabs
+          fxand fxior fxxor fxlshift fxrshift
+          fx= fx< fx<= fx> fx>= fxmin fxmax
+          ;; ----------------------------------------
+          ;; dist
           dist?
           dist-pdf
           dist-density
@@ -138,104 +204,35 @@ To get list of '#%runtime exports:
           ;; monad
           dist-unit
           ;; discrete
-          boolean-dist
-          make-discrete-dist
+          boolean-dist boolean-dist?
+          make-discrete-dist discrete-dist?
           ;; univariate
-          beta-dist
-          cauchy-dist
-          exponential-dist
-          gamma-dist
-          logistic-dist
-          normal-dist
-          uniform-dist
-          triangle-dist
-          pareto-dist
-          student-t-dist
-          geometric-dist
-          poisson-dist
-          bernoulli-dist
-          binomial-dist
-          negative-binomial-dist
-          categorical-dist
+          beta-dist beta-dist?
+          cauchy-dist cauchy-dist?
+          exponential-dist exponential-dist?
+          gamma-dist gamma-dist?
+          logistic-dist logistic-dist?
+          normal-dist normal-dist?
+          uniform-dist uniform-dist?
+          triangle-dist triangle-dist?
+          pareto-dist pareto-dist?
+          student-t-dist student-t-dist?
+          geometric-dist geometric-dist?
+          poisson-dist poisson-dist?
+          bernoulli-dist bernoulli-dist?
+          binomial-dist binomial-dist?
+          negative-binomial-dist negative-binomial-dist?
+          categorical-dist categorical-dist?
           ))))
   (define-syntax (define/provide-expanded-ids stx)
     (syntax-case stx ()
       [(_ name)
        (with-syntax ([(eid ...)
-                      (map (lambda (id) (local-expand id 'expression null))
-                           expand-constant-folding-ids)])
+                      (filter identifier?
+                              (map (lambda (id) (local-expand id 'expression null))
+                                   expand-constant-folding-ids))])
          #'(begin-for-syntax
              (define name (syntax->list (quote-syntax (eid ...))))
              (provide name)))]))
   (define/provide-expanded-ids expanded-constant-folding-ids))
-
-(module constant-folding-ct racket/base
-  (require (for-template racket/base racket/fixnum racket/flonum
-                         (submod ".." constant-folding-expand-ct))
-           syntax/id-table)
-  (provide (all-defined-out))
-  (define constant-folding-ids
-    (syntax->list
-     #'(;; Boolean
-        boolean? eq? eqv? equal? equal-always? not immutable?
-        ;; Numeric
-        number? complex? real? rational?
-        exact-integer? exact-positive-integer? exact-nonnegative-integer?
-        inexact-real? fixnum? flonum? integer? exact? inexact?
-        zero? positive? negative? even? odd? exact->inexact inexact->exact
-        add1 sub1 + - * / quotient remainder modulo
-        abs min max round floor ceiling truncate sqrt
-        = < <= > >=
-        log expt exp sin cos tan asin acos atan
-        ;; racket/flonum
-        fl+ fl- fl* fl/ flabs fl= fl< fl<= fl> fl>= flmin flmax
-        flround flfloor flceiling fltruncate
-        flsin flcos fltan flasin flacos flatan flexp fllog flsqrt flexpt
-        ;; racket/fixnum
-        fx+ fx- fx* fxquotient fxremainder fxmodulo fxabs
-        fxand fxior fxxor fxlshift fxrshift
-        fx= fx< fx<= fx> fx>= fxmin fxmax
-        ;; Characters
-        char? char->integer integer->char
-        char=? char<? char<=? char>? char>=?
-        ;; Symbols
-        symbol? symbol-interned? symbol-unreadable? symbol<?
-        ;; Keywords
-        keyword? keyword<?
-        ;; Pairs and lists
-        null? pair? cons car cdr cadr cddr caddr cdddr list? list list*
-        length list-ref list-tail append reverse
-        ;; Vectors
-        vector? vector vector-immutable vector-length
-        list->vector vector->list vector->immutable-vector
-        ;; Boxes
-        box? box box-immutable
-        ;; Hashes
-        hash? hash-equal? hash-eq? hash-eqv? hash-equal-always? hash-strong? hash-weak?
-        hash hashalw hasheq hasheqv hash-count
-        ;; Procedures
-        procedure?
-        ;; Void
-        void?
-        ;; Other
-        values
-        )))
-  (define constant-folding-table (make-free-id-table))
-  (for ([id (in-list constant-folding-ids)])
-    (free-id-table-set! constant-folding-table id #t))
-  (for ([id (in-list expanded-constant-folding-ids)])
-    (free-id-table-set! constant-folding-table id #t))
-  (define (constant-folding-procedure-id? id)
-    (free-id-table-ref constant-folding-table id #f)))
-(require (submod "." constant-folding-ct))
-
-(module constant-folding-rt racket/base
-  (require (for-syntax racket/base (submod ".." constant-folding-ct)))
-  (provide (all-defined-out))
-  (define constant-folding-hash
-    (let-syntax ([cfh (lambda (stx)
-                        (with-syntax ([(cfid ...) constant-folding-ids])
-                          #'(hash (~@ cfid #t) ...)))])
-      (cfh)))
-  (define (constant-folding-procedure? proc)
-    (hash-ref constant-folding-hash proc #f)))
+(require (for-template (submod "." constant-folding-ct)))
