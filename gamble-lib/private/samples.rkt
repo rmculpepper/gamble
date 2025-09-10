@@ -16,19 +16,17 @@
 ;; ------------------------------------------------------------
 ;; Empirical CDF
 
-(define vector->empirical-cdf
-  (case-lambda
-    [(vs)
-     (sorted->empirical-cdf (vector-sort vs <))]
-    [(vs ws)
-     (define svs (for/vector ([v (in-vector vs)] [w (in-vector ws)]) (cons v w)))
-     (vector-sort! svs < #:key car)
-     (define scws (make-vector (vector-length svs)))
-     (for/fold ([sum 0]) ([i (in-naturals)] [vw (in-vector svs)])
-       (vector-set! svs i (car vw))
-       (vector-set! scws i (+ sum (cdr vw)))
-       (+ sum (cdr vw)))
-     (sorted->empirical-cdf svs scws)]))
+(define (vector->empirical-cdf vs [ws #f])
+  (cond [ws
+         (define svs (for/vector ([v (in-vector vs)] [w (in-vector ws)]) (cons v w)))
+         (vector-sort! svs < #:key car)
+         (define scws (make-vector (vector-length svs)))
+         (for/fold ([sum 0]) ([i (in-naturals)] [vw (in-vector svs)])
+           (vector-set! svs i (car vw))
+           (vector-set! scws i (+ sum (cdr vw)))
+           (+ sum (cdr vw)))
+         (sorted->empirical-cdf svs scws)]
+        [else (sorted->empirical-cdf (vector-sort vs <))]))
 
 (define (sorted->empirical-cdf svs [scws #f])
   (define (ecdf x)
@@ -65,9 +63,6 @@
 
 ;; ------------------------------------------------------------
 ;; Kernel Density Estimation
-
-;; samples-density : (Vectorof Real) (Vectorof Real) 
-;;                -> (values (-> Real Real) (U Real #f) (U Real #f))
 
 ;; kde : (Vectorof Real) (Vectorof Real) Real
 ;;    -> (values (-> Real Real) (U Real #f) (U Real #f))
