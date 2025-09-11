@@ -23,18 +23,20 @@
 
 ;; dist-fmap : FDist[X] (X -> Y) -> FDist[Y]
 (define (dist-fmap d f)
-  (for/discrete-dist ([(v w) (in-dist d)])
+  (for/discrete-dist #:normalize? #f ([(v w) (in-dist d)])
     (values (f v) w)))
 
 ;; dist-bind : FDist[X] (X -> FDist[Y]) -> FDist[Y]
 (define (dist-bind d f)
-  (for*/discrete-dist ([(v w) (in-dist d)]
+  (for*/discrete-dist #:normalize? #f
+                      ([(v w) (in-dist d)]
                        [(vv ww) (in-dist (f v))])
     (values vv (* w ww))))
 
 ;; dist-bindx : FDist[X] (X -> FDist[Y]) -> FDist[(list X Y)]
 (define (dist-bindx d f)
-  (for*/discrete-dist ([(v w) (in-dist d)]
+  (for*/discrete-dist #:normalize? #f
+                      ([(v w) (in-dist d)]
                        [(vv ww) (in-dist (f v))])
     (values (list v vv) (* w ww))))
 
@@ -44,17 +46,18 @@
                    (let ([tm (dist-total-measure d)])
                      (lambda (v) (/ tm))))])
     #;(dist-bind d (lambda (v) (dirac v (scale v))))
-    (for/discrete-dist ([(v w) (in-dist d)])
+    (for/discrete-dist #:normalize? #f ([(v w) (in-dist d)])
       (values v (* w (scale v))))))
 
 ;; dist-filter : FDist[X] (X -> Boolean) -> FDist[X]
 (define (dist-filter d pred)
-  (for/discrete-dist ([(v w) (in-dist d)] #:when (pred v))
+  (for/discrete-dist #:normalize? #f ([(v w) (in-dist d)] #:when (pred v))
     (values v w)))
 
 ;; dist-join : FDist[FDist[X]] -> FDist[X]
 (define (dist-join d)
   #;(dist-bind d values)
-  (for*/discrete-dist ([(v w) (in-dist d)]
+  (for*/discrete-dist #:normalize? #f
+                      ([(v w) (in-dist d)]
                        [(vv ww) (in-dist v)])
     (values vv (* w ww))))

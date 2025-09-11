@@ -55,8 +55,8 @@
         (sample/weight))
       (void))
 
-    (define/public (generate-discrete-dist n)
-      (for/discrete-dist ([i (in-range n)])
+    (define/public (generate-discrete-dist n #:normalize? [normalize? #t])
+      (for/discrete-dist #:normalize? normalize? ([i (in-range n)])
         (sample/weight)))
 
     (define/public (generate-weighted-samples n)
@@ -85,9 +85,9 @@
       vs)
     ))
 
-(define (sampler->discrete-dist s n #:burn [nburn 0])
+(define (sampler->discrete-dist s n #:burn [nburn 0] #:normalize [normalize? #t])
   (send s burn nburn)
-  (send s generate-discrete-dist n))
+  (send s generate-discrete-dist n #:normalize? normalize?))
 (define (generate-samples s n #:burn [nburn 0])
   (send s burn nburn)
   (send s generate-samples n))

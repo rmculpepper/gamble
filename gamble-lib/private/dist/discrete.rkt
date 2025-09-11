@@ -57,7 +57,6 @@
 
 ;; DiscreteDist[X]:
 (struct discrete-dist (h wsum)
-  #:transparent
   #:property prop:custom-write
   (lambda (self port mode)
     (define h (discrete-dist-h self))
@@ -122,7 +121,7 @@
            (for/fold ([dh (hash)] [ws 0]) ([(v w) (in-hash h)])
              (define w* (/ w wsum))
              (values (hash-set dh v w*) (+ ws w*))))
-         (discrete-dist h ws)]
+         (discrete-dist dh ws)]
         [else (discrete-dist h wsum)]))
 
 (define empty-discrete-dist (discrete-dist '#hash() 0))
@@ -174,9 +173,11 @@
   (case-lambda
     [(vs)
      (unless (vector? vs) (raise-argument-error 'make-discrete-dist "vector?" vs))
-     (define w (/ (max 1 (vector-length vs))))
-     (for/discrete-dist ([v (in-vector vs)])
-       (values v w))]
+     (cond [(zero? (vector-length vs))
+            empty-discrete-dist]
+           [else
+            (define w (/ (max 1 (vector-length vs))))
+            (for/discrete-dist #:normalize? #f ([v (in-vector vs)]) (values v w))])]
     [(vs ws)
      (define (badws)
        (raise-argument-error 'make-discrete-dist "(vectorof (>=/c 0))" ws))
@@ -188,7 +189,7 @@
                "values vector and weights vectors have different lengths"
                "\n  values: ~e\n  weights: ~e")
               vs ws))
-     (for/discrete-dist ([v (in-vector vs)] [w (in-vector ws)])
+     (for/discrete-dist #:normalize? #f ([v (in-vector vs)] [w (in-vector ws)])
        (unless (and (rational? w) (>= w 0)) (badws))
        (values v w))]))
 
@@ -238,8 +239,7 @@
 (define (-discrete-normalize dist)
   (match-define (discrete-dist h wsum) dist)
   (cond [(or (zero? wsum) (= wsum 1)) dist]
-        [else (for/discrete-dist ([(v w) (in-hash h)])
-                (values v (/ w wsum)))]))
+        [else (-hash->discrete-dist h wsum #f #t)]))
 
 ;; ------------------------------------------------------------
 ;; in-discrete-dist
@@ -266,15 +266,18 @@
 (define-syntaxes (for/discrete-dist for*/discrete-dist)
   (let ()
     (define ((transformer for/derived) stx)
+      (define-splicing-syntax-class maybe-normalize
+        (pattern (~seq #:normalize? normalize?:expr))
+        (pattern (~seq) #:with normalize? #'(quote #t)))
       (syntax-parse stx
-        [(for/dd clauses . body)
+        [(for/dd :maybe-normalize (clause ...) . body)
          (with-syntax ([for/derived for/derived])
            #`(for/derived #,stx
                           ([dh (hash)]
                            [wsum 0]
                            [any-exact? #f]
-                           #:result (-hash->discrete-dist dh wsum any-exact? #f))
-                          clauses
+                           #:result (-hash->discrete-dist dh wsum any-exact? normalize?))
+                          (clause ...)
                (let-values ([(v w) (let () . body)])
                  (unless (and (rational? w) (>= w 0))
                    (for/dd-bad-weight 'for/dd v w))
