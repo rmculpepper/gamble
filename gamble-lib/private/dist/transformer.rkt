@@ -143,8 +143,8 @@
      (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
      (cond [(<= x a) (convert-p 0.0 log? 1-p?)]
            [(>= x b) (convert-p 1.0 log? 1-p?)]
-           [log? (- (dist-cdf d x #t 1-p?) lw)]
-           [else (/ (dist-cdf d x #f 1-p?) w)]))
+           [log? (- (logspace- (dist-cdf d x #t 1-p?) lpa) lw)]
+           [else (/ (- (dist-cdf d x #f 1-p?) pa) w)]))
    (define (-invcdf self p log? 1-p?)
      (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
      (cond [log?
@@ -309,7 +309,7 @@
      (match-define (discretize/round-distx d) self)
      (exact (round (dist-inv-cdf d p log? 1-p?))))
    (define (-support self)
-     (match-define (discretize/floor-distx d) self)
+     (match-define (discretize/round-distx d) self)
      (match (dist-support d)
        [(real-range lo hi)
         (integer-range (xexact (round lo)) (xexact (round hi)))]

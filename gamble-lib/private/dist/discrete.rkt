@@ -24,7 +24,7 @@
 ;; Boolean Bernoulli distribution
 
 (define-dist-struct boolean-dist
-  ([p probability? fl])
+  ([p probability?])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (boolean-dist p) self)
@@ -86,7 +86,7 @@
 ;; ----------------------------------------
 ;; Constructor
 
-(define (hash->discrete-dist h #:normalize? [normalize? #f])
+(define (hash->discrete-dist h #:normalize? [normalize? #t])
   (define who 'hash->discrete-dist)
   (define (bad) (raise-argument-error who "(hash/c any/c (>=/c 0))" h))
   (cond [(and (hash? h) (immutable? h) (not (impersonator? h))
@@ -169,29 +169,28 @@
 (define (dirac-dist v [w 1])
   (discrete-dist (hash v w) w))
 
-(define make-discrete-dist
-  (case-lambda
-    [(vs)
-     (unless (vector? vs) (raise-argument-error 'make-discrete-dist "vector?" vs))
-     (cond [(zero? (vector-length vs))
-            empty-discrete-dist]
-           [else
-            (define w (/ (max 1 (vector-length vs))))
-            (for/discrete-dist #:normalize? #f ([v (in-vector vs)]) (values v w))])]
-    [(vs ws)
-     (define (badws)
-       (raise-argument-error 'make-discrete-dist "(vectorof (>=/c 0))" ws))
-     (unless (vector? vs) (raise-argument-error 'make-discrete-dist "vector?" vs))
-     (unless (vector? ws) (badws))
-     (unless (= (vector-length vs) (vector-length ws))
-       (error 'make-discrete-dist
-              (string-append
-               "values vector and weights vectors have different lengths"
-               "\n  values: ~e\n  weights: ~e")
-              vs ws))
-     (for/discrete-dist #:normalize? #f ([v (in-vector vs)] [w (in-vector ws)])
-       (unless (and (rational? w) (>= w 0)) (badws))
-       (values v w))]))
+(define (make-discrete-dist vs [ws #f] #:normalize? [normalize? #t])
+  (define who 'make-discrete-dist)
+  (define (badws) (raise-argument-error who "(or/c #f (vectorof (>=/c 0)))" ws))
+  (unless (vector? vs) (raise-argument-error who "vector?" vs))
+  (unless (or (not ws) (vector? ws)) (badws))
+  (when ws
+    (unless (= (vector-length vs) (vector-length ws))
+      (error who (string-append
+                  "values vector and weights vectors have different lengths"
+                  "\n  values: ~e\n  weights: ~e")
+             vs ws)))
+  (cond [(zero? (vector-length vs))
+         empty-discrete-dist]
+        [(eq? ws #f)
+         (for/discrete-dist #:normalize? normalize?
+                            ([v (in-vector vs)])
+           (values v 1))]
+        [else
+         (for/discrete-dist #:normalize? normalize?
+                            ([v (in-vector vs)] [w (in-vector ws)])
+           (unless (and (rational? w) (>= w 0)) (badws))
+           (values v w))]))
 
 ;; ----------------------------------------
 ;; Operations
