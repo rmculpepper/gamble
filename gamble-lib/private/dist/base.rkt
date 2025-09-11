@@ -19,20 +19,13 @@
   ;; type X
   (-sample dist)                   ;; Dist -> X
   (-pdf dist x log?)               ;; Dist X Boolean -> Real/ExtReal
-  (-density dist x log?)           ;; Dist X Boolean -> Density
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
   (-count dist)                    ;; Dist -> (U Nat +inf.0), upper bound
   #:fallbacks
-  [(define (-density self x log?)
-     (cond [(continuous-dist? self)
-            (density log? (dist-pdf self x log?) #;1)]
-           [(integer-dist? self)
-            (density log? (dist-pdf self x log?) #;0)]
-           [else (raise-support-error 'dist-density self)]))
-   (define (-measure self ms)
+  [(define (-measure self ms)
      (match-define (measurable atoms ivls) ms)
-     (cond [(continuous-dist? self)
+     (cond [(real-dist? self)
             (let loop ([ivls ivls] [acc 0])
               (match ivls
                 [(list* lo hi ivls)
@@ -55,7 +48,7 @@
             (+ ivls-mass atoms-mass)]
            [else (raise-support-error 'dist-measure self)]))
    (define (-total-measure self)
-     (cond [(continuous-dist? self) 1]
+     (cond [(real-dist? self) 1]
            [(integer-dist? self) 1]
            [else (raise-support-error 'dist-total-measure self)]))
    (define (-count self) +inf.0)
@@ -66,10 +59,12 @@
   (-sample d))
 (define (dist-pdf d x [log? #f])
   (unless (dist? d) (raise-argument-error 'dist-pdf "dist?" d))
-  (-pdf d x (and log? #t)))
+  (cond [(numeric-dist? d)
+         (if (rational? x) (-pdf d x (and log? #t)) (if log? -inf.0 0))]
+        [else (-pdf d x (and log? #t))]))
 (define (dist-density d x [log? #f])
   (unless (dist? d) (raise-argument-error 'dist-density "dist?" d))
-  (-density d x (and log? #t)))
+  (density log? (dist-pdf d x log?)))
 (define (dist-measure d ms)
   (unless (dist? d) (raise-argument-error 'dist-measure "dist?" d))
   (unless (measurable? ms) (raise-argument-error 'dist-measure "measurable?" ms))
@@ -101,16 +96,16 @@
   (unless (enumerable-dist? d) (raise-argument-error 'in-dist-values "enumerable-dist?" d))
   (-sequence d))
 
-(define-generics real-dist ;; extends dist; comprises {continuous,integer}-dist
+(define-generics numeric-dist ;; extends dist; comprises {real,integer}-dist
   ;; Represents normalized real-valued distributions.
   ;; type X = Real
-  (-cdf real-dist x log? 1-p?)     ;; Dist X Boolean Boolean -> NNReal
-  (-invcdf real-dist x log? 1-p?)  ;; Dist Real Bool Bool -> X
-  (-support real-dist)             ;; Dist -> DistSupport
-  (-mean real-dist)                ;; Dist -> Real or #f
-  (-median real-dist)              ;; Dist -> Real or #f
-  (-modes real-dist)               ;; Dist -> (Listof Real) or #f
-  (-variance real-dist)            ;; Dist -> Real or #f
+  (-cdf numeric-dist x log? 1-p?)     ;; Dist X Boolean Boolean -> NNReal
+  (-invcdf numeric-dist x log? 1-p?)  ;; Dist Real Bool Bool -> X
+  (-support numeric-dist)             ;; Dist -> DistSupport
+  (-mean numeric-dist)                ;; Dist -> Real or #f
+  (-median numeric-dist)              ;; Dist -> Real or #f
+  (-modes numeric-dist)               ;; Dist -> (Listof Real) or #f
+  (-variance numeric-dist)            ;; Dist -> Real or #f
   #:fallbacks
   [(define (-support d) #f)
    (define (-mean d) #f)
@@ -119,28 +114,28 @@
    (define (-variance d) #f)])
 
 (define (dist-cdf d x [log? #f] [1-p? #f])
-  (unless (real-dist? d) (raise-argument-error 'dist-cdf "real-dist?" d))
+  (unless (numeric-dist? d) (raise-argument-error 'dist-cdf "numeric-dist?" d))
   (unless (real? x) (raise-argument-error 'dist-cdf "real?" x))
   (-cdf d x (and log? #t) (and 1-p? #t)))
 
-;; dist-inv-cdf : Real-Dist Real Boolean Boolean -> Real
+;; dist-inv-cdf : Numeric-Dist Real Boolean Boolean -> Real
 ;; (dist-inv-cdf d p) returns least x such that Pr[X <= x] >= p, where X ~ d.
 (define (dist-inv-cdf d p [log? #f] [1-p? #f])
-  (unless (real-dist? d) (raise-argument-error 'dist-inv-cdf "real-dist?" d))
+  (unless (numeric-dist? d) (raise-argument-error 'dist-inv-cdf "numeric-dist?" d))
   (unless (real? p) (raise-argument-error 'dist-inv-cdf "real?" p))
   (-invcdf d p (and log?) (and 1-p?)))
 
-;; dist-support : Real-Dist -> DistSupport
+;; dist-support : Numeric-Dist -> DistSupport
 (define (dist-support d)
-  (unless (real-dist? d) (raise-argument-error 'dist-support "real-dist?" d))
+  (unless (numeric-dist? d) (raise-argument-error 'dist-support "numeric-dist?" d))
   (-support d))
 
-(define-generics continuous-dist   ;; extends real-dist
+(define-generics real-dist   ;; extends numeric-dist
   ;; Represents normalized, continuous real-valued distributions.
-  ;; (-denergy real-dist x . d/dts)   ;; Dist Real Param ... -> Real
+  ;; (-denergy numeric-dist x . d/dts)   ;; Dist Real Param ... -> Real
   #:fallbacks [])
 
-(define-generics integer-dist      ;; extends real-dist, enumerable-dist
+(define-generics integer-dist      ;; extends numeric-dist, enumerable-dist
   ;; Represents discrete, normalized integer-valued distributions.
   #:fallbacks [])
 
@@ -171,7 +166,7 @@
     (raise-argument-error 'dist-drift1 "positive-rational?" scale))
   (cond [(not (driftable? dist)) #f]
         [(and (integer-dist? dist) (not (integer? x))) #f]
-        [(and (continuous-dist? dist) (not (rational? x))) #f]
+        [(and (real-dist? dist) (not (rational? x))) #f]
         [else (-drift1 dist x params? scale)]))
 
 (define (dist-drift2 dist old-dist x [params? #t] [scale 1.0])
@@ -183,7 +178,7 @@
     (raise-argument-error 'dist-drift2 "positive-rational?" scale))
   (cond [(not (and (driftable? dist) (driftable? old-dist))) #f]
         [(and (integer-dist? dist) (not (integer? x))) #f]
-        [(and (continuous-dist? dist) (not (rational? x))) #f]
+        [(and (real-dist? dist) (not (rational? x))) #f]
         [else (-drift2 dist old-dist x params? scale)]))
 
 (define (dist-drift-dist dist x [params? #t] [scale 1.0])
@@ -193,7 +188,7 @@
     (raise-argument-error 'dist-drift-dist "positive-rational?" scale))
   (cond [(not (driftable? dist)) #f]
         [(and (integer-dist? dist) (not (integer? x))) #f]
-        [(and (continuous-dist? dist) (not (rational? x))) #f]
+        [(and (real-dist? dist) (not (rational? x))) #f]
         [else (-drift-dist dist x params? scale)]))
 
 ;; ============================================================

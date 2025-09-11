@@ -67,8 +67,6 @@
   #:methods gen:dist
   [(define (-sample self)
      (-discrete-sample self))
-   (define (-density self x log?)
-     (density log? (-discrete-pdf self x log?) #;0))
    (define (-pdf self x log?)
      (-discrete-pdf self x log?))
    (define (-measure self ms)

@@ -197,9 +197,9 @@ To get list of '#%runtime exports:
           dist-density
           enumerable-dist?
           finite-dist?
-          real-dist?
+          numeric-dist?
           dist-cdf
-          continuous-dist?
+          real-dist?
           integer-dist?
           ;; monad
           dist-unit

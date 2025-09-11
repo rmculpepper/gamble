@@ -31,8 +31,8 @@
    (define (-pdf self x log?)
      (match-define (beta-dist a b) self)
      (m:flbeta-pdf a b (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (beta-dist a b) self)
      (m:flbeta-cdf a b (fl x) log? 1-p?))
@@ -88,8 +88,8 @@
    (define (-pdf self x log?)
      (match-define (cauchy-dist mode scale) self)
      (m:flcauchy-pdf mode scale (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (cauchy-dist mode scale) self)
      (m:flcauchy-cdf mode scale (fl x) log? 1-p?))
@@ -126,8 +126,8 @@
    (define (-pdf self x log?)
      (match-define (exponential-dist mean) self)
      (m:flexponential-pdf mean (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (exponential-dist mean) self)
      (m:flexponential-cdf mean (fl x) log? 1-p?))
@@ -168,8 +168,8 @@
    (define (-pdf self x log?)
      (match-define (gamma-dist shape scale) self)
      (m:flgamma-pdf shape scale (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (gamma-dist shape scale) self)
      (m:flgamma-cdf shape scale (fl x) log? 1-p?))
@@ -236,8 +236,8 @@
    (define (-pdf self x log?)
      (match-define (logistic-dist mean scale) self)
      (m:fllogistic-pdf mean scale (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (logistic-dist mean scale) self)
      (m:fllogistic-cdf mean scale (fl x) log? 1-p?))
@@ -279,8 +279,8 @@
    (define (-pdf self x log?)
      (match-define (normal-dist mean scale) self)
      (m:flnormal-pdf mean scale (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (normal-dist mean scale) self)
      (m:flnormal-cdf mean scale (fl x) log? 1-p?))
@@ -338,8 +338,8 @@
    (define (-pdf self x log?)
      (match-define (uniform-dist lo hi) self)
      (m:fluniform-pdf lo hi (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (uniform-dist lo hi) self)
      (m:fluniform-cdf lo hi (fl x) log? 1-p?))
@@ -391,8 +391,8 @@
    (define (-pdf self x log?)
      (match-define (triangle-dist lo hi mode) self)
      (m:fltriangle-pdf lo hi mode (fl x) log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (triangle-dist lo hi mode) self)
      (m:fltriangle-cdf lo hi mode (fl x) log? 1-p?))
@@ -438,8 +438,8 @@
               (* (add1 shape) (log x)))
            -inf.0))
      (if log? lp (exp lp)))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (pareto-dist xm alpha) self)
      (cond [(< x xm) (impossible log?)]
@@ -496,8 +496,8 @@
      (-t-sample (-t-ext self)))
    (define (-pdf self x log?)
      (-t-pdf (-t-ext self) x log?))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (-t-cdf (-t-ext self) x log? 1-p?))
    (define (-invcdf self p log? 1-p?)
@@ -556,7 +556,7 @@
      (match-define (geometric-dist p) self)
      (if (integer? x) (m:flgeometric-pdf p (fl x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (geometric-dist p) self)
      (m:flgeometric-cdf p (fl x) log? 1-p?))
@@ -590,7 +590,7 @@
      (match-define (poisson-dist mean) self)
      (if (integer? x) (m:flpoisson-pdf mean (fl x) log?) (impossible log?)))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (poisson-dist mean) self)
      (m:flpoisson-cdf mean (fl x) log? 1-p?))
@@ -632,7 +632,7 @@
      (convert-p r log? #f))
    (define (-count self) 2)]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (bernoulli-dist p) self)
      (define r (cond [(< x 0) 0.0] [(< x 1) (- 1.0 p)] [else 1.0]))
@@ -678,7 +678,7 @@
      (match-define (binomial-dist n p) self)
      (add1 n))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (binomial-dist n p) self)
      (m:flbinomial-cdf (fl n) p (fl x) log? 1-p?))
@@ -733,7 +733,7 @@
                    (* coeff (expt (- 1 p) k) (expt p r))])]
            [else (impossible log?)]))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (negative-binomial-dist r p) self)
      (define k (floor (fl x)))
@@ -775,7 +775,7 @@
      (match-define (categorical-dist ws) self)
      (vector-length ws))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (categorical-dist ws) self)
      (define k (exact (floor x)))
@@ -929,7 +929,7 @@
 
   (define EPS 1e-3)
 
-  (define (check-real-dist d continuous? [inv-cdf? continuous?])
+  (define (check-numeric-dist d continuous? [inv-cdf? continuous?])
     (define (check-value v)
       (if continuous?
           (check-pred inexact? v)
@@ -957,34 +957,34 @@
     (for ([v vs]) (test-case (format "~e, ~e" d v) (check-value v))))
 
   (let ([d (beta-dist 3 4)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (cauchy-dist 0 1)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (exponential-dist 1)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (gamma-dist 2 3)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (logistic-dist 0 1)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (normal-dist 0 1)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (uniform-dist 0 1)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (triangle-dist 0 5 3)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
   (let ([d (pareto-dist 1 2)])
-    (check-real-dist d #t))
+    (check-numeric-dist d #t))
 
   (let ([d (binomial-dist 10 2/3)])
-    (check-real-dist d #f))
+    (check-numeric-dist d #f))
   (let ([d (geometric-dist 2/3)])
-    (check-real-dist d #f))
+    (check-numeric-dist d #f))
   (let ([d (poisson-dist 1)])
-    (check-real-dist d #f))
+    (check-numeric-dist d #f))
   (let ([d (bernoulli-dist 0.2)])
-    (check-real-dist d #f))
+    (check-numeric-dist d #f))
   (let ([d (categorical-dist '#(1/2 1/3 1/6))])
-    (check-real-dist d #f))
+    (check-numeric-dist d #f))
   (let ([d (negative-binomial-dist 3 0.4)])
-    (check-real-dist d #f))
+    (check-numeric-dist d #f))
   (begin))

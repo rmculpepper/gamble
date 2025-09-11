@@ -20,12 +20,12 @@
          in-dist
          in-dist-values
 
-         real-dist?
+         numeric-dist?
          dist-cdf
          dist-inv-cdf
          dist-support
 
-         continuous-dist?
+         real-dist?
          integer-dist?
 
          dist-drift1
@@ -95,6 +95,4 @@
 (provide (struct-out mixture-distx)
          (struct-out affine-distx)
          (struct-out clip-distx)
-         (struct-out exp-distx)
-         (struct-out discretize/floor-distx)
-         (struct-out discretize/round-distx))
+         (struct-out exp-distx))

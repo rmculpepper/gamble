@@ -12,13 +12,13 @@
 (provide (all-defined-out))
 
 ;; ============================================================
-;; continuous-dist to continuous-dist
+;; real-dist to real-dist
 
 ;; ----------------------------------------
 ;; mixture
 
 (define-dist-struct mixture-distx
-  ([mix (discrete-distof continuous-dist?)])
+  ([mix (discrete-distof real-dist?)])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (mixture-distx mix) self)
@@ -39,8 +39,8 @@
      (match-define (mixture-distx mix) self)
      (for/sum ([(cd w) (in-discrete-dist mix)])
        (* w (dist-total-measure cd))))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (mixture-distx mix) self)
      (if log?
@@ -58,7 +58,7 @@
 ;; affine transformation
 
 (define-dist-struct affine-distx
-  ([d continuous-dist?]
+  ([d real-dist?]
    [a nonzero-rational? fl]
    [b rational? fl])
   #:methods gen:dist
@@ -83,8 +83,8 @@
    (define (-total-measure self)
      (match-define (affine-distx d a b) self)
      (dist-total-measure d))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self y log? 1-p?)
      (match-define (affine-distx d a b) self)
      (dist-cdf d (affine-invert a b y) log? (if (< a 0) (not 1-p?) 1-p?)))
@@ -114,7 +114,7 @@
 
 (define-dist-struct clip-distx
   ;; Represents dist clipped to (a,b) and renormalized.
-  ([dist continuous-dist?]
+  ([dist real-dist?]
    [a rational? fl]
    [b rational? fl])
   #:extension (pa lpa w lw)
@@ -137,8 +137,8 @@
      (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
      (cond [log? (- (dist-pdf d x #t) lw)]
            [else (/ (dist-pdf d x #f) w)]))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
      (cond [(<= x a) (convert-p 0.0 log? 1-p?)]
@@ -182,7 +182,7 @@
 ;; This library names transformations according to their effect on generation.
 
 (define-dist-struct exp-distx
-  ([d continuous-dist?])
+  ([d real-dist?])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (exp-distx d) self)
@@ -194,8 +194,8 @@
             (cond [log? (- (dist-pdf d x #t) x)]
                   [else (/ (dist-pdf d x #f) (fl y))])]
            [else (impossible log?)]))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self y log? 1-p?)
      (match-define (exp-distx d) self)
      (let ([x (if (and (real? y) (positive? y)) (log (fl y)) -inf.0)])
@@ -213,10 +213,11 @@
 ;; ----------------------------------------
 ;; continuous transformation
 
+#;
 (define-dist-struct real-map-distx
   ;; f must be injective, continuous, differentiable, monotonic increasing
   ;; invf returns -inf.0 or +inf.0 for out-of-range inputs
-  ([d continuous-dist?] [f procedure?] [invf procedure?] [df procedure?])
+  ([d real-dist?] [f procedure?] [invf procedure?] [df procedure?])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (real-map-distx d f invf df) self)
@@ -229,8 +230,8 @@
             (cond [log? (- (dist-pdf d x #t) (log m))]
                   [else (/ (dist-pdf d x #f) m)])]
            [else (impossible log?)]))]
-  #:methods gen:continuous-dist []
-  #:methods gen:real-dist
+  #:methods gen:real-dist []
+  #:methods gen:numeric-dist
   [(define (-cdf self y log? 1-p?)
      (match-define (real-map-distx d f invf df) self)
      ;; If f is not monotonic increasing, need to flip 1-p?.
@@ -247,17 +248,15 @@
           (real-range (min flo fhi) (max flo fhi)))]
        [_ #f]))])
 
-(define (log:extended x)
-  (if (real? x) (if (< x 0) -inf.0 (log (fl x))) +nan.0))
-
 ;; ============================================================
-;; continuous-dist to integer-dist
+;; real-dist to integer-dist
 
 ;; ----------------------------------------
 ;; discretize
 
+#;
 (define-dist-struct discretize/floor-distx
-  ([dist continuous-dist?])
+  ([dist real-dist?])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (discretize/floor-distx d) self)
@@ -271,7 +270,7 @@
             (if log? (logspace- hi lo) (- hi lo))]
            [else (impossible log?)]))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (discretize/floor-distx d) self)
      (dist-cdf d (+ (floor x) 1.0) log? 1-p?))
@@ -285,8 +284,9 @@
         (integer-range (xexact (floor lo)) (xexact (floor hi)))]
        [_ #f]))])
 
+#;
 (define-dist-struct discretize/round-distx
-  ([dist continuous-dist?])
+  ([dist real-dist?])
   #:methods gen:dist
   [(define (-sample self)
      (match-define (discretize/round-distx d) self)
@@ -300,7 +300,7 @@
             (if log? (logspace- hi lo) (- hi lo))]
            [else (impossible log?)]))]
   #:methods gen:integer-dist []
-  #:methods gen:real-dist
+  #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
      (match-define (discretize/round-distx d) self)
      (define ix (floor x)) ;; floor, not round

@@ -17,7 +17,7 @@
 (define ITEM-HEIGHT 50)
 
 (define (dist->pict dist)
-  (cond [(and (real-dist? dist)
+  (cond [(and (numeric-dist? dist)
               (not (bernoulli-dist? dist)))
          (define-values (xmin0 xmax0)
            (match (dist-support dist)
