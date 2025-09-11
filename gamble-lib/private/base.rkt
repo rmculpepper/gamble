@@ -30,7 +30,7 @@
     sample/weight  ;; -> (values A PosReal)
 
     burn                        ;; Nat -> Void
-    generate-discrete-dist      ;; Nat -> DiscreteDist
+    generate-discrete-dist      ;; Nat [#:normalize? Boolean] -> DiscreteDist
     generate-weighted-samples   ;; Nat -> (values (Vectorof A) (Vectorof PosReal))
     ))
 
@@ -249,28 +249,6 @@
   (make-rename-transformer (quote-syntax dynamic-observe)))
 (define-syntax-parameter fail
   (make-rename-transformer (quote-syntax dynamic-fail)))
-
-#;
-(begin-for-syntax
-  ;; op-transformer : (Listof Nat) Identifier -> Syntax -> Syntax
-  ;; Useful for making sure opid occurs in expanded code only in operator position
-  ;; with correct arity, but also usable like variable.
-  (define ((op-transformer arities opid) stx)
-    (case (syntax-local-context)
-      [(expression)
-       (syntax-parse stx
-         [(_ e:expr ...)
-          (unless (memv (length (syntax->list #'(e ...))) arities)
-            (raise-syntax-error #f "arity mismatch in special operation" stx))
-          (with-syntax ([op opid])
-            #'(#%plain-app op e ...))]
-         [self:id
-          (with-syntax ([op opid]
-                        [((var ...) ...)
-                         (for/list ([arity (in-list arities)])
-                           (generate-temporaries (make-list arity 'tmp)))])
-            #'(case-lambda [(var ...) (#%plain-app op var ...)] ...))])]
-      [else #`(#%expression #,stx)])))
 
 (define-syntax-rule (with-ctx ctx body ...)
   (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model
