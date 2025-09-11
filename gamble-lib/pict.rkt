@@ -17,15 +17,15 @@
 (define ITEM-HEIGHT 50)
 
 (define (dist->pict dist)
-  (cond [(real-dist? dist)
-         (define-values (xmin xmax)
+  (cond [(and (real-dist? dist)
+              (not (bernoulli-dist? dist)))
+         (define-values (xmin0 xmax0)
            (match (dist-support dist)
-             [(integer-range (? rational? lo) (? rational? hi))
-              (values lo hi)]
-             [(real-range (? rational? lo) (? rational? hi))
-              (values (floor lo) (ceiling hi))]
-             [_ (values (floor (sub1 (dist-inv-cdf dist 0.01)))
-                        (ceiling (add1 (dist-inv-cdf dist 0.99))))]))
+             [(integer-range lo hi) (values lo hi)]
+             [(real-range lo hi) (values lo hi)]
+             [_ (values -inf.0 +inf.0)]))
+         (define xmin (if (rational? xmin0) xmin0 (floor (sub1 (dist-inv-cdf dist 0.01)))))
+         (define xmax (if (rational? xmax0) xmax0 (ceiling (add1 (dist-inv-cdf dist 0.99)))))
          (define (pdf x) (dist-pdf dist x))
          (define (cdf x) (dist-cdf dist x))
          (define pdfp (function-interval pdf (lambda (x) 0)))
