@@ -262,83 +262,75 @@
       (define prev-db (trace-db prev-trace))
       (define key (db-random-key prev-db ok-tag?))
       (unless key (error who "no suitable key to change"))
-      (match-define (entry dist prev-value _ _) (hash-ref prev-db key))
-      (log-mcmc-info "Key to change = ~s, ~e" key prev-value)
-      (unless (real-dist? dist)
+      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
+      (unless (numeric-dist? dist)
         (error who "distribution does not support slice sampling\n  dist: ~e" dist))
-      (define slice
-        (new slice% (method method) (Wi Wi) (Wr Wr) (M M) (small-dist small-dist)
-             (mdl mdl) (prev-trace prev-trace) (key key)))
-      (values (send slice sample) (vector who key)))
-    ))
-
-(define slice%
-  (class object%
-    (init-field method Wi Wr M small-dist mdl prev-trace key)
-    (super-new)
-
-    (define prev-db (trace-db prev-trace))
-    (define prev-lj (trace-lj prev-trace))
-    (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
-
-    (define eval-slice (make-eval-slice 'slice-transition mdl prev-db (list key)))
-
-    ;; ----------------------------------------
-
-    (define/public (sample)
+      (log-mcmc-info "Key to change = ~s, ~e" key prev-value)
+      (define prev-lj (trace-lj prev-trace))
       (define lthreshold (+ (log (random)) prev-lj))
       (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
-      (define-values (lo hi) (get-slice-bounds lthreshold))
-      (define new-trace (select lo hi lthreshold))
+      (define eval-trace (make-caching-eval-trace who mdl prev-trace key))
+      (define (eval-lj new-value) (cond [(eval-trace new-value) => trace-lj] [else -inf.0]))
+      ;; --------------------
+      (define-values (lo hi) (get-slice-bounds lthreshold dist prev-value eval-lj))
+      (define new-trace (select dist prev-value eval-trace eval-lj lo hi lthreshold))
       (complete-slice-trace! new-trace prev-db)
-      new-trace)
+      (values new-trace (vector who key)))
 
-    ;; ----------------------------------------
-    ;; Eval trace, lj
+    (define/private (make-caching-eval-trace who mdl prev-trace key)
+      (define prev-db (trace-db prev-trace))
+      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
+      (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
+      (hash-set! trace-cache prev-value prev-trace)
+      (define base-eval-trace (make-eval-trace who mdl prev-trace key))
+      (define (caching-eval-trace new-value)
+        (hash-ref! trace-cache new-value (lambda () (base-eval-trace new-value))))
+      caching-eval-trace)
 
-    (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
-    (hash-set! trace-cache prev-value prev-trace)
+    (define/private (make-eval-trace who mdl prev-trace key)
+      (if #t
+          (make-eval-trace/slice who mdl prev-trace key)
+          (make-eval-trace/full who mdl prev-trace key)))
 
-    (define/private (eval-lj new-value)
-      (cond [(eval-trace new-value) => trace-lj]
-            [else -inf.0]))
+    (define/private (make-eval-trace/slice who mdl prev-trace key)
+      (define prev-db (trace-db prev-trace))
+      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
+      (define eval-slice (make-eval-slice who mdl prev-db (list key)))
+      (define (eval-trace/slice new-value)
+        (log-mcmc-info "Eval at ~e" new-value)
+        (define new-lpr (dist-pdf dist new-value #t))
+        (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag))))
+        (log-mcmc-info "Eval lj ~e" (and new-trace (trace-lj new-trace)))
+        new-trace)
+      eval-trace/slice)
 
-    (define/private (eval-trace new-value)
-      (hash-ref! trace-cache new-value (lambda () (eval-trace* new-value))))
-
-    (define/private (eval-trace* new-value)
-      (eval-trace/full new-value))
-
-    (define/private (eval-trace/slice new-value)
-      (log-mcmc-info "Eval at ~e" new-value)
-      (define new-lpr (dist-pdf dist new-value #t))
-      (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag))))
-      (log-mcmc-info "Eval lj ~e" (and new-trace (trace-lj new-trace)))
-      new-trace)
-
-    (define/private (eval-trace/full new-value)
-      (define new-lpr (dist-pdf dist new-value #t))
-      (cond [(not (logspace-zero? new-lpr))
-             (define delta-db
-               (hash key (entry dist new-value new-lpr entry)))
-             (define ctx
-               (new tracing-stochastic-ctx% 
-                    (prev-db prev-db)
-                    (delta-db delta-db)
-                    (disallow-new/who 'slice)))
-             (match (send ctx run-top mdl)
-               [(list sample-value)
-                (define new-trace (send ctx make-trace sample-value))
-                (unless (traces-same-structure? new-trace prev-trace)
-                  (error 'slice-transition "structural change not allowed"))
-                new-trace]
-               [#f #f])]
-            [else #f]))
+    (define/private (make-eval-trace/full who mdl prev-trace key)
+      (define prev-db (trace-db prev-trace))
+      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
+      (define (eval-trace/full new-value)
+        (define new-lpr (dist-pdf dist new-value #t))
+        (cond [(not (logspace-zero? new-lpr))
+               (define delta-db
+                 (hash key (entry dist new-value new-lpr tag)))
+               (define ctx
+                 (new tracing-stochastic-ctx%
+                      (prev-db prev-db)
+                      (delta-db delta-db)
+                      (disallow-new/who who)))
+               (match (send ctx run-top mdl)
+                 [(list sample-value)
+                  (define new-trace (send ctx make-trace sample-value))
+                  (unless (traces-same-structure? new-trace prev-trace)
+                    (error who "structural change not allowed"))
+                  new-trace]
+                 [#f #f])]
+              [else #f]))
+      eval-trace/full)
 
     ;; ----------------------------------------
     ;; Find slice bounds
 
-    (define/private (get-slice-bounds lthreshold)
+    (define/private (get-slice-bounds lthreshold dist init-value eval-lj)
       (cond [(small-dist? dist)
              (match (dist-support dist)
                [(integer-range lo hi) (values lo hi)])]
@@ -346,26 +338,26 @@
              (define-values (W u)
                (cond [(integer-dist? dist) (values Wi (random (add1 Wi)))]
                      [else (values Wr (* (random) Wr))]))
-             (define lo (- prev-value u))
+             (define lo (- init-value u))
              (define hi (+ lo W))
              (case method
                [(step)
                 (define-values (lo-k hi-k) (random-split-M))
-                (values (step-out lthreshold lo-k lo (- W))
-                        (step-out lthreshold hi-k hi (+ W)))]
+                (values (step-out lthreshold lo-k lo (- W) eval-lj)
+                        (step-out lthreshold hi-k hi (+ W) eval-lj))]
                [(double)
-                (double-out lthreshold lo hi)])]))
+                (double-out lthreshold lo hi eval-lj)])]))
 
     (define/private (random-split-M)
       (cond [(= M +inf.0) (values +inf.0 +inf.0)]
             [else (let ([k (random M)]) (- M 1 k))]))
 
-    (define/private (step-out lthreshold k x delta)
+    (define/private (step-out lthreshold k x delta eval-lj)
       (let loop ([k k] [x x] [x-lj (eval-lj x)])
         (cond [(or (zero? k) (<= x-lj lthreshold)) x]
               [else (let ([x* (+ x delta)]) (loop (sub1 k) x* (eval-lj x*)))])))
 
-    (define/private (double-out lthreshold lo hi)
+    (define/private (double-out lthreshold lo hi eval-lj)
       (let loop ([lo lo] [lo-lj (eval-lj lo)] [hi hi] [hi-lj (eval-lj hi)])
         (cond [(and (<= lo-lj lthreshold) (<= hi-lj lthreshold))
                (values lo hi)]
@@ -379,8 +371,8 @@
     ;; ----------------------------------------
     ;; Select value in slice
 
-    ;; select : Real Real Real -> Trace
-    (define/private (select lo0 hi0 lthreshold)
+    ;; select : ... -> Trace
+    (define/private (select dist init-value eval-trace eval-lj lo0 hi0 lthreshold)
       (let loop ([lo lo0] [hi hi0])
         (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
         (define new-value
@@ -390,25 +382,26 @@
         (define new-trace (eval-trace new-value))
         (cond [(and new-trace
                     (> (trace-lj new-trace) lthreshold)
-                    (acceptable? new-value lo0 hi0 lthreshold))
+                    (acceptable? lo0 hi0 lthreshold init-value new-value eval-lj dist))
                (log-mcmc-info "Selected ~s" new-value)
                new-trace]
               [(integer-dist? dist)
-               (if (< new-value prev-value)
+               (if (< new-value init-value)
                    (loop (add1 new-value) hi)
                    (loop lo (sub1 new-value)))]
               [else
-               (if (< new-value prev-value)
+               (if (< new-value init-value)
                    (loop new-value hi)
                    (loop lo new-value))])))
 
-    (define/private (acceptable? new-value lo hi lthreshold)
+    (define/private (acceptable? lo hi lthreshold init-value new-value eval-lj dist)
       (cond [(small-dist? dist) #t]
             [(eq? method 'double)
-             (acceptable?/double new-value lo hi lthreshold (integer-dist? dist))]
+             (define int? (integer-dist? dist))
+             (acceptable?/double lo hi lthreshold init-value new-value eval-lj int?)]
             [else #t]))
 
-    (define/private (acceptable?/double new-value lo hi lthreshold int?)
+    (define/private (acceptable?/double lo hi lthreshold init-value new-value eval-lj int?)
       (define Wlimit (* 1.1 (if int? Wi Wr))) ;; avoid rounding problems
       (define (get-mid lo hi)
         (if int? (round (/ (+ lo hi) 2)) (* 0.5 (+ lo hi))))
@@ -417,8 +410,8 @@
             (let ([mid (get-mid lo hi)])
               (define lo* (if (< new-value mid) lo mid))
               (define hi* (if (< new-value mid) mid hi))
-              (if (and (or (and (<  prev-value mid) (>= new-value mid))
-                           (and (>= prev-value mid) (<  new-value mid)))
+              (if (and (or (and (<  init-value mid) (>= new-value mid))
+                           (and (>= init-value mid) (<  new-value mid)))
                        (<= (eval-lj lo*) lthreshold)
                        (<= (eval-lj hi*) lthreshold))
                   #f ;; not acceptable

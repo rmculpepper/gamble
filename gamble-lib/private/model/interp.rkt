@@ -603,7 +603,7 @@
       (values (get-slice-proc/interp nodes) slice-lprs slice-lobs))
 
     (define/private (get-slice-proc/interp nodes)
-      (lambda (ctx commit?)
+      (lambda (ctx)
         (for ([node (in-list nodes)])
           (exec-node! node ctx))
         (result->value final-result)))
