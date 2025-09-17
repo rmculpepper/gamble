@@ -96,6 +96,27 @@
   (set-box! (hash-ref lenv var) result))
 
 ;; ============================================================
+;; Store
+
+(define (next-location) (box #f))
+(define (store! loc val) (set-box! loc val))
+(define (fetch loc) (unbox loc))
+
+;; result->value : Result -> Any
+(define (result->value r)
+  (match r
+    [(result:location loc) (fetch loc)]
+    [(result:value val) val]))
+(define (results->values rs)
+  (for/list ([r (in-list rs)]) (result->value r)))
+
+;; lenv-add : LEnv (Listof Var) -> LEnv
+(define (lenv-add lenv vars)
+  (for/fold ([lenv lenv]) ([var (in-list vars)])
+    (define loc (next-location))
+    (hash-set lenv var (result:location loc))))
+
+;; ============================================================
 ;; Result
 
 ;; A Result is one of
@@ -137,14 +158,11 @@
 (struct node:observe (distr valr) #:prefab)
 (struct node:fail (argr) #:prefab)
 
-;; node->expr : Node (Hash Location Symbol) -> Expr
-(define (node->expr node [loc=>name (hasheqv)])
-  (define (loc-ref loc)
-    (cond [(hash-ref loc=>name loc #f) => values]
-          [else `(fetch ,loc)]))
-  (define (loc-set! loc rhs)
-    (cond [(hash-ref loc=>name loc #f) => (lambda (name) `(define ,name ,rhs))]
-          [else `(store! ,loc ,rhs)]))
+;; node->expr : Node (Hash Location Nat) -> Expr
+(define (node->expr node [loc=>index (hasheq)])
+  (define (loc-index loc) (hash-ref! loc=>index loc (lambda () (hash-count loc=>index))))
+  (define (loc-ref loc) `(fetch ,(loc-index loc)))
+  (define (loc-set! loc rhs) `(store! ,(loc-index loc) ,rhs))
   (define (result->expr result)
     (match result
       [(result:location loc) (loc-ref loc)]
@@ -230,51 +248,28 @@
     (init-field ctx)
     (super-new)
 
-    (define the-store (make-hasheqv))       ;; Location => Any
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID)
     (define nodeid=>node (make-hasheqv))    ;; NodeID => Node
     (define key=>nodeid (make-hash))        ;; DBKey => NodeID
     (define final-result #f)                ;; Result, mutated
 
     (define/public (show [expr? #t])
-      (printf "Store:\n")
-      (for ([loc (in-range 0 location-counter)])
-        (when (hash-has-key? the-store loc)
-          (printf "  ~s => ~e\n" loc (hash-ref the-store loc))))
+      (define loc=>index (make-hasheq))
       (printf "Node trace:\n")
       (for ([nodeid (in-range 0 nodeid-counter)])
         (when (hash-has-key? nodeid=>node nodeid)
           (define node (hash-ref nodeid=>node nodeid))
-          (if expr?
-              (printf "  ~s : ~s\n" nodeid (node->expr node))
-              (printf "  ~s : ~e\n" nodeid node))))
+          (define expr (node->expr node loc=>index))
+          (printf "  ~s : ~s\n" nodeid (if expr? expr node))))
+      (printf "Store:\n")
+      (define index=>loc (make-vector (hash-count loc=>index)))
+      (for ([(loc index) (in-hash loc=>index)])
+        (vector-set! index=>loc index loc))
+      (for ([loc (in-vector index=>loc)] [index (in-naturals)])
+        (printf "  ~s => ~e\n" index (unbox loc)))
       (printf "Key mapping:\n")
       (for ([(key nodeid) (in-hash key=>nodeid)])
         (printf "  ~s => ~s\n" key nodeid)))
-
-    ;; ----------------------------------------
-    ;; Store
-
-    (define location-counter 0)
-    (define/private (next-location)
-      (begin0 location-counter (set! location-counter (add1 location-counter))))
-
-    (define/public (store! loc val) (hash-set! the-store loc val))
-    (define/public (fetch loc) (hash-ref the-store loc))
-
-    ;; result->value : Result -> Any
-    (define/private (result->value r)
-      (match r
-        [(result:location loc) (fetch loc)]
-        [(result:value val) val]))
-    (define/private (results->values rs)
-      (for/list ([r (in-list rs)]) (result->value r)))
-
-    ;; lenv-add : LEnv (Listof Var) -> LEnv
-    (define (lenv-add lenv vars)
-      (for/fold ([lenv lenv]) ([var (in-list vars)])
-        (define loc (next-location))
-        (hash-set lenv var (result:location loc))))
 
     ;; ----------------------------------------
     ;; Node trace, nodes
@@ -608,35 +603,23 @@
           (exec-node! node ctx))
         (result->value final-result)))
 
-    (define/private (get-slice-proc/eval nodes updated-locs)
-      (expr->proc the-store (slice->expr nodes updated-locs)))
-
     ;; get-slice-expr : (Listof DBKey) (Listof NodeID) -> Expr
-    (define/public (get-slice-expr keys [nodeids null])
+    (define/public (get-slice-expr #:keys [keys null]
+                                   #:nodeids [nodeids null])
       (define-values (nodes updated-locs) (get-slice keys nodeids))
-      (slice->expr nodes updated-locs))
-
-    ;; slice->expr : (Listof Node) (Hash Location Symbol) -> Expr
-    (define/private (slice->expr nodes updated-locs)
       `(begin
          ,@(for/list ([node (in-list nodes)])
              (node->expr node updated-locs))
-         (when commit?
-           ,@(for/list ([(loc name) (in-hash updated-locs)])
-               `(store! (quote ,loc) ,name))
-           (void))
          ,(match final-result
             [(result:value val) `(quote ,val)]
             [(result:location loc)
-             (or (hash-ref updated-locs loc #f)
-                 `(fetch (quote ,loc)))])))
+             `(fetch ,(hash-ref updated-locs loc '??))])))
 
     ;; get-slice : (Listof DBKey) (Listof NodeID) Boolean
-    ;;           -> (values (Listof NodeID) (Hash Location (U Symbol #t)))
+    ;;           -> (values (Listof NodeID) (Hash Location (U Nat #t)))
     (define/private (get-slice keys nodeids [make-names? #t])
       (define seen-nodeids (make-hasheqv))
-      (define updated-locs (make-hasheqv))
-      (define (make-name loc) (string->uninterned-symbol (format "a_~s" loc)))
+      (define updated-locs (make-hasheq))
       (define (add-nodeids! nodeids)
         (for ([nodeid (in-list nodeids)])
           (unless (hash-ref seen-nodeids nodeid #f)
@@ -647,7 +630,7 @@
       (define (add-locs! locs)
         (for ([loc (in-list locs)])
           (unless (hash-ref updated-locs loc #f)
-            (hash-set! updated-locs loc (if make-names? (make-name loc) #t))
+            (hash-set! updated-locs loc (if make-names? (hash-count updated-locs) #t))
             (add-nodeids! (hash-ref loc=>nodeids loc null)))))
       (add-nodeids! nodeids)
       (for ([key (in-list keys)])
@@ -660,33 +643,6 @@
 
 ;; ============================================================
 
-;; expr->proc : Store Expr -> (StochasticCtx Boolean -> Any)
-(define (expr->proc store update-expr)
-  (define outer-expr
-    `(lambda (get-ctx-functions the-store commit?)
-       (define (fetch loc) (hash-ref the-store loc))
-       (define-values (ctx-sample
-                       ctx-dscore
-                       ctx-lscore
-                       ctx-observe
-                       ctx-fail
-                       ctx-mem
-                       ctx-run-model)
-         (get-ctx-functions))
-       (let-values () ,update-expr)))
-  (define outer-proc
-    (parameterize ((current-namespace (namespace-anchor->namespace eval-anchor)))
-      (eval outer-expr)))
-  (define (slice-eval ctx commit?)
-    (define (get-ctx-functions) (send ctx get-functions))
-    (outer-proc get-ctx-functions store commit?))
-  slice-eval)
-
-(module eval-support racket/base
-  (require "../addr.rkt")
-  (provide (all-defined-out))
-  (define-namespace-anchor eval-anchor)
-  (struct structural-change (kind))
-  (define (raise-structural-change kind)
-    (raise (structural-change kind))))
-(require (submod "." eval-support))
+(struct structural-change (kind))
+(define (raise-structural-change kind)
+  (raise (structural-change kind)))
