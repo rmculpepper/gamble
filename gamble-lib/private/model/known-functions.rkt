@@ -154,8 +154,6 @@
      procedure?
      ;; Void
      void?
-     ;; Other
-     values
      )))
 
 ;; constant-folding : (Hash CanonicalModulePath (cons Boolean (Hasheq Symbol Boolean)))
