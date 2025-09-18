@@ -477,7 +477,7 @@
                              [else #f])]
              [(mem)    (and (= argc 1) (ast:mem cs (car args)))]
              [(run-model) (and (= argc 1) (ast:run-model cs (car args)))]
-             [(begin-structural) (and (= argc 1) (ast:structural (car args)))]
+             [(structural) (and (= argc 1) (ast:structural (car args)))]
              [else #f])
            (cond [(and (identifier? #'f) (constant-folding-procedure-id? #'f))
                   (ast:app/cf (loop #'f) args)]
@@ -515,7 +515,7 @@
        (free-id-table-set! special-env #'ctx-run-model 'run-model)
        (free-id-table-set! special-env #'ctx-sample/addr 'sample/addr)
        ;; ----
-       (free-id-table-set! special-env #'begin-structural 'begin-structural)
+       (free-id-table-set! special-env #'structural 'structural)
        ;; ----
        (loop #'body)]))
   (values (top stx)

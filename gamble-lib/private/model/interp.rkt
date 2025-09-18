@@ -18,13 +18,13 @@
 ;; - the closure/procedure value of a call to `mem`
 ;; - the argument values in an application of a memoized function
 ;; - the model value of a call to `run-model`
-;; - the value of an expression wrapped with `begin-structural`
+;; - the value of an expression wrapped with `structural`
 
 
-;; IDEA: add `begin-structural` hint, produces node:same, treat value as const
-;;   (define n (begin-structural (sample (binomial-dist 10 1/2))))
+;; IDEA: add `structural` hint, produces node:same, treat value as const
+;;   (define n (structural (sample (binomial-dist 10 1/2))))
 ;;   (for/sum ([i n]) (sample (uniform-dist 0 1)))
-;; Without begin-structural, there is a separate node:same-if for each iteration
+;; Without `structural`, there is a separate node:same-if for each iteration
 ;; of the for/sum loop; each comparison takes a location, etc.
 
 ;; IDEA: track `box` contents by location
@@ -530,10 +530,15 @@
            [(? model/ast? m)
             (define ast (model/ast-ast m))
             (init-eval ast m (hasheqv) mv addr*)])]
-        [(ast:structural arg)
-         (define result (recur1 arg))
-         (do! (node:same "declared structural" (result->value result) result))
-         (one (result:value (result->value result)))]
+        [(ast:structural args)
+         (define argrs (map recur1 argrs))
+         (unless (or (eq? mv #f) (= mv (length argrs)))
+           (error 'interpreter "wrong result arity\n  expected: ~s\n  received: 1"
+                  mv (length argrs)))
+         (define argvs (results->values argrs))
+         (for ([argv (in-list argvs)] [argr (in-list argrs)])
+           (do! (node:same "declared structural" argv argr)))
+         (result:value (if (eqv? mv 1) (car argvs) argvs))]
         ))
 
     (define/private (init-apply funr argrs mv addr)

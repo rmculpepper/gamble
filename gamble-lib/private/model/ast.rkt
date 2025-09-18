@@ -25,7 +25,7 @@
 (struct ast:fail (arg) #:prefab)
 (struct ast:mem (cs arg) #:prefab)
 (struct ast:run-model (cs arg) #:prefab)
-(struct ast:structural (arg) #:prefab)
+(struct ast:structural (args) #:prefab)
 
 (define (wrap-begin es)
   (if (and (pair? es) (null? (cdr es))) (car es) (ast:begin es)))

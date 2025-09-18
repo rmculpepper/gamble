@@ -27,7 +27,7 @@
          fail
          mem
          run-model
-         begin-structural
+         structural
 
          current-init-addr
 

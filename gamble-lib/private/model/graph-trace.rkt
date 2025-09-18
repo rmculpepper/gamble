@@ -313,7 +313,7 @@
   (match fun
     [(model-closure proc)
      (apply proc addr argrs)]
-    [(== begin-structural)
+    [(== structural)
      (define args (results->values argrs))
      (for ([arg (in-list args)] [argr (in-list argrs)])
        (send graph do! (node:same "declared structural" arg argr)))

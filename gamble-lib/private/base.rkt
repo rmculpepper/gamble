@@ -266,4 +266,9 @@
 
 ;; ============================================================
 
-(define (begin-structural v) v)
+;; structural : X ... -> (values X ...)
+;; In graph-tracing mode, asserts that arguments are "structural", so the
+;; results are considered "path-constant". Otherwise, equivalent to `values`.
+;; Could be parameterized with tags (structural wrt these RVs but not those),
+;; but probably not worth the complexity.
+(define (structural . vs) (apply values vs))
