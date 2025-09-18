@@ -16,7 +16,8 @@
          racket/stxparam
          "../addr.rkt"
          "../base.rkt")
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (for-syntax (all-defined-out)))
 
 (begin-for-syntax
   (define-logger instr)

@@ -21,6 +21,7 @@
 
 (struct model (proc))
 (struct model/ast model (ast env csbase))
+(struct model/tracing model (gproc csbase))
 
 ;; ============================================================
 ;; Samplers
