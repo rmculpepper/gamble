@@ -79,6 +79,11 @@
       (define result
         (syntax-parse stx
           #:literal-sets (kernel-literals)
+          #:literals (apply void values variable-reference-from-unsafe?)
+          ;; ----------------------------------------
+          ;; Special patterns
+          [(if (#%plain-app variable-reference-from-unsafe? (#%variable-reference)) e2 e3)
+           #'(instrument e3)]
           ;; ----------------------------------------
           ;; Expressions
           [var:id
@@ -118,7 +123,8 @@
            #'(letrec-values ([() (begin (declare-local-variables vars ...) (values))]
                              [vars (instrument rhs)] ...)
                (instrument body) ...)]
-          ;; [(set! ~! var e) _]
+          [(set! ~! var e)
+           (raise-syntax-error #f "unsupported in model with tracing" stx)]
           [(quote ~! d)
            #'(result:value ee)]
           [(quote-syntax . _)
@@ -135,12 +141,12 @@
           ;; --------------------
           ;; Applications
           [(#%plain-app)
-           #'(result:value '())]
-          [(#%plain-app (~literal void) arg:expr ...)
+           #'(result:value null)]
+          [(#%plain-app void arg:expr ...)
            #'(begin (void (instrument arg)) ... (result:value (void)))]
-          [(#%plain-app (~literal values) arg:expr)
-           #'(values (instrument arg))]
-          [(#%plain-app (~literal apply) fun:id arg:expr ...)
+          [(#%plain-app values arg:expr ...)
+           #'(values (instrument arg) ...)]
+          [(#%plain-app apply fun:id arg:expr ...)
            #:when (constant-folding-procedure-id? #'fun)
            #'(graph-apply-cf GRAPH fun (instrument arg) ...)]
           [(#%plain-app fun:id arg:expr ...)
@@ -151,7 +157,7 @@
            (define/with-syntax addr-expr #'(addr-add-call ADDR (+ CSBASE cs)))
            #'(graph-app GRAPH addr-expr (instrument fun) (instrument arg) ...)]
           ;; ----------------------------------------
-          [_ (raise-syntax-error #f "unhandled syntax in instrument" stx)]))
+          [_ (raise-syntax-error #f "unhandled syntax in instrumenter" stx)]))
       (let ([result (relocate result stx)])
         (cond [(eq? result stx) result]
               [(stx-pair? stx) (syntax-track-origin result stx (stx-car stx))]
@@ -307,6 +313,11 @@
   (match fun
     [(model-closure proc)
      (apply proc addr argrs)]
+    [(== begin-structural)
+     (define args (results->values argrs))
+     (for ([arg (in-list args)] [argr (in-list argrs)])
+       (send graph do! (node:same "declared structural" arg argr)))
+     (apply values (map result:value args))]
     [(? procedure? proc)
      (define args (results->values argrs))
      (call-with-values
