@@ -166,11 +166,13 @@
 
 ;; ============================================================
 
-(struct model-closure (proc))
-(struct model-memoized (proc args=>result addr))
+(struct model-function ()
+  #:property prop:procedure
+  (lambda (self . args)
+    (error 'application "model function applied out of context\n  given: ~e" self)))
 
-(define (model-function? v)
-  (or (model-closure? v) (model-memoized? v)))
+(struct model-closure model-function (proc))
+(struct model-memoized model-function (proc args=>result addr))
 
 ;; A Node is one of
 ;; - (node:same-if Boolean result)                  -- enforce same branch
@@ -313,12 +315,22 @@
   (match fun
     [(model-closure proc)
      (apply proc addr argrs)]
+    [(model-memoized mfun args=>result addr)
+     (define args (results->values argrs))
+     (for ([arg (in-list args)] [argr (in-list argrs)])
+       (send graph do! (node:same "memoized function argument" arg argr)))
+     ;; Memo key *must* be actual argument values, not result wrappers:
+     ;; because program could compute same value in two locations.
+     (hash-ref! args=>result args
+                (lambda ()
+                  (define addr* (addr-add-mem addr args))
+                  (graph-app* graph addr* mfun argrs)))]
     [(== structural)
      (define args (results->values argrs))
      (for ([arg (in-list args)] [argr (in-list argrs)])
        (send graph do! (node:same "declared structural" arg argr)))
      (apply values (map result:value args))]
-    [(? procedure? proc)
+    [proc ;; procedure, or else let racket raise non-proc app error
      (define args (results->values argrs))
      (call-with-values
       (lambda () (apply proc args))
@@ -330,17 +342,7 @@
         [vs
          (define locs (map box vs))
          (send graph add! (node:app-mv locs proc argrs))
-         (apply values (map result:location locs))]))]
-    [(model-memoized mfun args=>result addr)
-     (define args (results->values argrs))
-     (for ([arg (in-list args)] [argr (in-list argrs)])
-       (send graph do! (node:same "memoized function argument" arg argr)))
-     ;; Memo key *must* be actual argument values, not result wrappers:
-     ;; because program could compute same value in two locations.
-     (hash-ref! args=>result args
-                (lambda ()
-                  (define addr* (addr-add-mem addr args))
-                  (graph-app* graph addr* mfun argrs)))]))
+         (apply values (map result:location locs))]))]))
 
 ;; ============================================================
 ;; Graph
@@ -390,63 +392,49 @@
     ;; Context functions
 
     (define/public (get-functions)
-      (define sample-prim
-        (model-closure
-         (lambda (addr distr [tagr #f])
-           (define loc (box #f))
-           (when tagr
-             (do! (node:same "sample tag" (result->value tagr) tagr)))
-           (do! (node:sample loc addr distr tagr))
-           (result:location loc))))
-      (define dscore-prim
-        (model-closure
-         (lambda (addr dr)
-           (do! (node:dscore dr))
-           (result:value (void)))))
-      (define lscore-prim
-        (model-closure
-         (lambda (addr llr)
-           (do! (node:lscore llr))
-           (result:value (void)))))
-      (define observe-prim
-        (model-closure
-         (lambda (addr distr valr)
-           (do! (node:observe distr valr))
-           (result:value (void)))))
-      (define fail-prim
-        (model-closure
-         (lambda (addr [reasonr (result:value #f)])
-           (do! (node:fail reasonr))
-           (result:value (void)))))
-      (define mem-prim
-        (model-closure
-         (lambda (addr funr)
-           (define fun (result->value funr))
-           (unless (or (procedure? fun) (model-function? fun))
-             (raise-argument-error 'mem "(or/c procedure? model-function?)" fun))
-           (do! (node:same "function for memoize" fun funr))
-           (model-memoized fun (make-hash) addr))))
-      (define run-model-prim
-        (model-closure
-         (lambda (addr mdlr)
-           (define mdl (result->value mdlr))
-           (unless (model? mdl)
-             (raise-argument-error 'run-model "model?" mdl))
-           (do! (node:same "model" mdl mdlr))
-           (match mdl
-             [(model/tracing _ gproc _)
-              (gproc this addr)]
-             [_ (error 'run-model
-                       (string-append "non-tracing model called from tracing model"
-                                      "\n  model: ~e")
-                       mdl)]))))
-      (values sample-prim
-              dscore-prim
-              lscore-prim
-              observe-prim
-              fail-prim
-              mem-prim
-              run-model-prim
+      (define (trace:sample addr distr [tagr #f])
+        (define loc (box #f))
+        (when tagr
+          (do! (node:same "sample tag" (result->value tagr) tagr)))
+        (do! (node:sample loc addr distr tagr))
+        (result:location loc))
+      (define (trace:dscore addr dr)
+        (do! (node:dscore dr))
+        (result:value (void)))
+      (define (trace:lscore addr llr)
+        (do! (node:lscore llr))
+        (result:value (void)))
+      (define (trace:observe addr distr valr)
+        (do! (node:observe distr valr))
+        (result:value (void)))
+      (define (trace:fail addr [reasonr (result:value #f)])
+        (do! (node:fail reasonr))
+        (result:value (void)))
+      (define (trace:mem addr funr)
+        (define fun (result->value funr))
+        (unless (or (model-function? fun) (procedure? fun))
+          (raise-argument-error 'mem "(or/c model-function? procedure?)" fun))
+        (do! (node:same "function for memoize" fun funr))
+        (result:value (model-memoized fun (make-hash) addr)))
+      (define (trace:run-model addr mdlr)
+        (define mdl (result->value mdlr))
+        (unless (model? mdl)
+          (raise-argument-error 'run-model "model?" mdl))
+        (do! (node:same "model" mdl mdlr))
+        (match mdl
+          [(model/tracing _ gproc _)
+           (gproc this addr)]
+          [_ (error 'run-model
+                    (string-append "non-tracing model called from tracing model"
+                                   "\n  model: ~e")
+                    mdl)]))
+      (values (model-closure trace:sample)
+              (model-closure trace:dscore)
+              (model-closure trace:lscore)
+              (model-closure trace:observe)
+              (model-closure trace:fail)
+              (model-closure trace:mem)
+              (model-closure trace:run-model)
               #f))
 
     ;; ----------------------------------------
