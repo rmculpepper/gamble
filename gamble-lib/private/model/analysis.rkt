@@ -11,7 +11,6 @@
          syntax/stx
          syntax/parse
          syntax/parse/experimental/template
-         "ast.rkt"
          "known-functions.rkt")
 (provide define-ref/set
 
@@ -29,9 +28,7 @@
          lambda-form?
 
          analyze-CALLS-ERP
-         app-calls-erp?
-
-         parse-ast)
+         app-calls-erp?)
 
 ;; ============================================================
 ;; Modification counter (used to find fixed points)
@@ -381,145 +378,3 @@
          => (lambda (lam-tag)
               (hash-ref LAM-CALLS-ERP lam-tag #f))]
         [else (function-may-call-erp? id)]))
-
-;; ============================================================
-
-(define lenv (make-free-id-table))
-(define lvar-counter 1)
-(define (next-lvar)
-  (begin0 lvar-counter (set! lvar-counter (add1 lvar-counter))))
-(define (lenv-add1! var)
-  (let ([n (next-lvar)]) (begin0 n (free-id-table-set! lenv var n))))
-(define (lenv-add! vars)
-  (for/list ([var (in-list (stx->list vars))])
-    (lenv-add1! var)))
-
-(define (parse-ast stx)
-  (define special-env (make-free-id-table))
-  (define ctxenv (make-free-id-table))
-  (define ctxvar-counter 0)
-  (define (next-ctxvar)
-    (begin0 ctxvar-counter (set! ctxvar-counter (add1 ctxvar-counter))))
-  (define (loop stx)
-    (define (loop* stxs) (map loop (stx->list stxs)))
-    (syntax-parse stx
-      #:literal-sets (kernel-literals) #:literals (variable-reference-from-unsafe?)
-      [(if (#%plain-app variable-reference-from-unsafe? (#%variable-reference)) e2 e3)
-       (loop #'e3)]
-      ;; --------------------
-      [var:id
-       (cond [(free-id-table-ref special-env #'var #f)
-              (raise-syntax-error #f "special operation used as variable" #'var)]
-             [(free-id-table-ref lenv #'var #f)
-              => (lambda (index) (ast:lvar index))]
-             [else
-              (define index (free-id-table-ref! ctxenv #'var (lambda () (next-ctxvar))))
-              (ast:ctxvar index)])]
-      [(#%plain-lambda (var:id ...) e ...)
-       (ast:lambda (lenv-add! #'(var ...)) #f
-                   (wrap-begin (loop* #'(e ...))))]
-      [(#%plain-lambda (var:id ... . rest-var:id) e ...)
-       (ast:lambda (lenv-add! #'(var ...)) (lenv-add1! #'rest-var)
-                   (wrap-begin (loop* #'(e ...))))]
-      [(case-lambda clause ...)
-       (ast:case-lambda (for/list ([c (in-list (syntax->list #'(clause ...)))])
-                          (syntax-parse c
-                            [[(var:id ...) e ...]
-                             (ast:lambda (lenv-add! #'(var ...)) #f
-                                         (wrap-begin (loop* #'(e ...))))]
-                            [[(var:id ... . rest-var:id) e ...]
-                             (ast:lambda (lenv-add! #'(var ...)) (lenv-add! #'rest-var)
-                                         (wrap-begin (loop* #'(e ...))))])))]
-      [(if e1 e2 e3)
-       (ast:if (loop #'e1) (loop #'e2) (loop #'e3))]
-      [(begin e ...)
-       (ast:begin (loop* #'(e ...)))]
-      [(begin0 e0 e ...)
-       (ast:begin0 (loop #'e0) (loop* #'(e ...)))]
-      [(let-values ([vars rhs] ...) body ...)
-       (wrap-let-values
-        (for/list ([vars (in-list (stx->list #'(vars ...)))]
-                   [rhs (in-list (stx->list #'(rhs ...)))])
-          (define lvars (lenv-add! vars))
-          (ast:lv-clause lvars (loop rhs)))
-        (wrap-begin (loop* #'(body ...))))]
-      [(letrec-values ([vars rhs] ...) body ...)
-       (define lvarss (for/list ([vars (in-list (stx->list #'(vars ...)))])
-                        (lenv-add! vars)))
-       (ast:letrec-values
-        (for/list ([lvars (in-list lvarss)]
-                   [rhs (in-list (stx->list #'(rhs ...)))])
-          (ast:lv-clause lvars (loop rhs)))
-        (wrap-begin (loop* #'(body ...))))]
-      #;[(set! var e) _]
-      [(quote d)
-       (ast:quote (syntax->datum #'d))]
-      #;[(quote-syntax . _) _]
-      [(with-continuation-mark e1 e2 e3)
-       (ast:wcm (loop #'e1) (loop #'e2) (loop #'e3))]
-      [(#%plain-app (~literal values) e)
-       (ast:values1 (loop #'e))]
-      [(#%plain-app (~literal void) e ...)
-       (ast:void (loop* #'(e ...)))]
-      [(#%plain-app f e ...)
-       (define cs (and (function-may-call-erp? #'f) (CALL-SITE stx)))
-       (define args (loop* #'(e ...)))
-       (define argc (length args))
-       (or (case (and (identifier? #'f) (free-id-table-ref special-env #'f #f))
-             [(sample) (cond [(= argc 1) (ast:sample cs (car args) (ast:quote #f))]
-                             [(= argc 2) (ast:sample cs (car args) (cadr args))]
-                             [else #f])]
-             [(dscore) (and (= argc 1) (ast:dscore (car args)))]
-             [(lscore) (and (= argc 1) (ast:lscore (car args)))]
-             [(observe) (and (= argc 2) (ast:observe (car args) (cadr args)))]
-             [(fail)   (cond [(= argc 0) (ast:fail (ast:quote #f))]
-                             [(= argc 1) (ast:fail (car args))]
-                             [else #f])]
-             [(mem)    (and (= argc 1) (ast:mem cs (car args)))]
-             [(run-model) (and (= argc 1) (ast:run-model cs (car args)))]
-             [(structural) (and (= argc 1) (ast:structural (car args)))]
-             [else #f])
-           (cond [(and (identifier? #'f) (constant-folding-procedure-id? #'f))
-                  (ast:app/cf (loop #'f) args)]
-                 [else (ast:app cs (loop #'f) args)]))]
-      [(#%top . var:id)
-       (loop #'var)]
-      #;[(#%variable-reference . _) _]
-      [(#%expression e)
-       (loop #'e)]
-      [_ (raise-syntax-error #f "unsupported syntax" stx)]
-      ))
-  (define (top stx)
-    (syntax-parse stx
-      #:literal-sets (kernel-literals)
-      #:literals (#;ctx-get-functions)
-      ;; Note: must be kept in sync with `with-ctx` and `model` expressions.
-      [(#%plain-lambda (ctx)
-         (let-values ([(ctx-sample
-                        ctx-dscore
-                        ctx-lscore
-                        ctx-observe
-                        ctx-fail
-                        ctx-mem
-                        ctx-run-model
-                        ctx-sample/addr)
-                       (#%plain-app (~datum ctx-get-functions) ctx2:id)])
-           body:expr))
-       #:when (free-identifier=? #'ctx #'ctx2)
-       (free-id-table-set! special-env #'ctx-sample 'sample)
-       (free-id-table-set! special-env #'ctx-dscore 'dscore)
-       (free-id-table-set! special-env #'ctx-lscore 'lscore)
-       (free-id-table-set! special-env #'ctx-observe 'observe)
-       (free-id-table-set! special-env #'ctx-fail 'fail)
-       (free-id-table-set! special-env #'ctx-mem 'mem)
-       (free-id-table-set! special-env #'ctx-run-model 'run-model)
-       (free-id-table-set! special-env #'ctx-sample/addr 'sample/addr)
-       ;; ----
-       (free-id-table-set! special-env #'structural 'structural)
-       ;; ----
-       (loop #'body)]))
-  (values (top stx)
-          (let ([v (make-vector ctxvar-counter)])
-            (for ([(var index) (in-free-id-table ctxenv)])
-              (vector-set! v index var))
-            (vector->list v))))
