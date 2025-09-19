@@ -244,7 +244,7 @@
 ;; ============================================================
 
 (define interpreter%
-  (class object%
+  (class* object% (slicer<%>)
     (init-field ctx)
     (super-new)
 

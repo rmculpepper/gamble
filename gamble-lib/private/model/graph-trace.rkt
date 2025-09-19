@@ -351,7 +351,7 @@
 ;; (or new type, "model primitives"?)
 
 (define graph%
-  (class object%
+  (class* object% (slicer<%>)
     (init-field ctx)
     (super-new)
 
@@ -381,7 +381,7 @@
     ;; ----------------------------------------
     ;; Run
 
-    (define/public (run mdl)
+    (define/public (eval-top mdl)
       (match mdl
         [(model/tracing _ gproc _)
          (define result (gproc this (current-init-addr)))

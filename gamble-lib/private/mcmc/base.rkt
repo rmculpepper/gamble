@@ -9,7 +9,8 @@
          "../dist.rkt"
          "../base.rkt"
          "../addr.rkt"
-         "../model/interp.rkt"
+         (only-in "../model/interp.rkt" interpreter%)
+         (only-in "../model/graph-trace.rkt" graph%)
          "../util/real.rkt"
          "../util/density.rkt")
 (provide (all-defined-out))
@@ -380,7 +381,12 @@
                         (prev-db prev-db)
                         (delta-db (hash))
                         (disallow-new/who who)))
-  (define interp (new interpreter% (ctx base-ctx)))
+  (define interp
+    (cond [(model/ast? m)
+           (new interpreter% (ctx base-ctx))]
+          [(model/tracing? m)
+           (new graph% (ctx base-ctx))]
+          [else (error who "not supported")]))
   (define base-value (send interp eval-top m))
   (define base-trace (send base-ctx make-trace base-value))
   (define-values (re slice-lprs slice-lobs)

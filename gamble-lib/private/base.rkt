@@ -23,6 +23,13 @@
 (struct model/ast model (ast env csbase))
 (struct model/tracing model (gproc csbase))
 
+(define slicer<%>
+  (interface ()
+    eval-top        ;; (Model X) -> X
+    get-slice-eval  ;; [#:keys (Listof DBKeys)] -> (values ReEval Real Real)
+    ;;                  where ReEval = (StochasticCtx -> X)
+    ))
+
 ;; ============================================================
 ;; Samplers
 
