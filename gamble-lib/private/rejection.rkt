@@ -23,8 +23,7 @@
 
     (define/override (sample)
       (define ctx (new rejection-stochastic-ctx%))
-      (match (parameterize ((current-stochastic-ctx ctx))
-               (send ctx run-top mdl))
+      (match (send ctx run-top mdl)
         [(list v) v]
         [#f (sample)]))
     ))

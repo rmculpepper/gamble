@@ -27,8 +27,7 @@
 
     (define/override (sample/weight)
       (define ctx (new importance-stochastic-ctx% (propose propose)))
-      (match (parameterize ((current-stochastic-ctx ctx))
-               (send ctx run-top mdl))
+      (match (send ctx run-top mdl)
         [(list v)
          (define obs-dn (send ctx get-observation-density))
          (define weight (density->real obs-dn #f))

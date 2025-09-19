@@ -190,6 +190,7 @@
 
 (define scoring-stochastic-ctx%
   (class base-stochastic-ctx%
+    (inherit fail)
     (field [obs-dn one-density])
     (super-new)
 
@@ -200,63 +201,35 @@
       (when (density-zero? obs-dn) (fail who)))
     ))
 
-(define initial-stochastic-ctx%
-  (class base-stochastic-ctx%
-    (inherit -unsupported)
-    (super-new)
-
-    (define/override (-sample dist tag addr)
-      (-unsupported 'sample))
-
-    (define/override (run-model m addr)
-      (define subctx (new scoring-stochastic-ctx%))
-      (define result
-        (parameterize ((current-stochastic-ctx subctx))
-          (send subctx run-top m)))
-      (cond [(list? result)
-             (printf "[run-model] log likelihood = ~s\n"
-                     (density->real (send subctx get-observation-density) #t))
-             (apply values result)]
-            [else
-             (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)
-             (void)]))
-    ))
-
-(define current-stochastic-ctx
-  (make-parameter (new initial-stochastic-ctx%)))
-
-(define (ctx-get-functions ctx)
-  (send ctx get-functions))
+(define (top-level-run-model m)
+  (define subctx (new scoring-stochastic-ctx%))
+  (define result (send subctx run-top m))
+  (cond [(list? result)
+         (printf "[run-model] log likelihood = ~s\n"
+                 (density->real (send subctx get-observation-density) #t))
+         (apply values result)]
+        [else
+         (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)
+         (void)]))
 
 ;; ============================================================
 ;; Primitive operations
 
-(define (dynamic-sample dist [tag #f])
-  (send (current-stochastic-ctx) sample dist tag #f))
+(begin-for-syntax
+  (define (out-of-context stx)
+    (raise-syntax-error #f "used out of model context" stx)))
 
-(define (dynamic-dscore dn) (send (current-stochastic-ctx) dscore dn))
-(define (dynamic-lscore ll) (send (current-stochastic-ctx) lscore ll))
-(define (dynamic-observe dist val) (send (current-stochastic-ctx) observe dist val))
-(define (dynamic-fail [reason #f]) (send (current-stochastic-ctx) fail reason))
-
-(define (dynamic-mem f) (send (current-stochastic-ctx) mem f #f))
-(define (dynamic-run-model m) (send (current-stochastic-ctx) run-model m #f))
-
-(define-syntax-parameter sample
-  (make-rename-transformer (quote-syntax dynamic-sample)))
-(define-syntax-parameter mem
-  (make-rename-transformer (quote-syntax dynamic-mem)))
+(define-syntax-parameter sample out-of-context)
+(define-syntax-parameter mem out-of-context)
+(define-syntax-parameter dscore out-of-context)
+(define-syntax-parameter lscore out-of-context)
+(define-syntax-parameter observe out-of-context)
+(define-syntax-parameter fail out-of-context)
 (define-syntax-parameter run-model
-  (make-rename-transformer (quote-syntax dynamic-run-model)))
+  (make-rename-transformer (quote-syntax top-level-run-model)))
 
-(define-syntax-parameter dscore
-  (make-rename-transformer (quote-syntax dynamic-dscore)))
-(define-syntax-parameter lscore
-  (make-rename-transformer (quote-syntax dynamic-lscore)))
-(define-syntax-parameter observe
-  (make-rename-transformer (quote-syntax dynamic-observe)))
-(define-syntax-parameter fail
-  (make-rename-transformer (quote-syntax dynamic-fail)))
+(define (ctx-get-functions ctx)
+  (send ctx get-functions))
 
 (define-syntax-rule (with-ctx ctx body ...)
   (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model
