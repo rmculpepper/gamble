@@ -22,6 +22,46 @@
          "instrument.rkt")
 (provide (all-defined-out))
 
+;; Summary of re-evaluation restrictions: Re-evaluation must not change
+;; - which branch of an `if` expression is taken
+;; - the closure/procedure value of an application expression
+;;   - but the values in a closure's environment are allowed to change
+;; - the tag value of a call to `sample`
+;; - the closure/procedure value of a call to `mem`
+;; - the argument values in an application of a memoized function
+;; - the model value of a call to `run-model`
+;; - the value of an expression wrapped with `structural`
+
+
+;; Memoization issue: if update to memoized computation happens, must update
+;; all dependent computations. Possible restrictions:
+;;  1. arguments must always be same (both on misses and on hits)
+;;  2. arguments must be same for misses, may vary for hits
+;;     but then all hits must depend on some loc for updates
+;; Implement #1 for now.
+
+;; IDEA: `structural` hint, produces node:same, treat value as const
+;;   (define n (structural (sample (binomial-dist 10 1/2))))
+;;   (for/sum ([i n]) (sample (uniform-dist 0 1)))
+;; Without `structural`, there is a separate node:same-if for each iteration
+;; of the for/sum loop; each comparison takes a location, etc.
+
+;; IDEA: track `box` contents by location
+;;   (define vs (for/list ([i 10]) (box (sample (uniform-dist 0 1)))))
+;;   (unbox (list-ref vs 4))
+;; If one element changes, no need to update entire list.
+;; But `set-box!` not allowed! (Even if tracked, not safe to time travel
+;; while sharing one mutable location! Same problem with `set!`.)
+;;
+;; Another problem: can't use a single actual Racket box in multiple threads
+;; simultaneously. Maybe better have new `cell`, `cell-ref`?
+;; Or maybe don't mutate box, just store #<opaque> in it, track identity.
+;;
+;;   (cell v) = (let ([x v]) (lambda () x))
+;;   (cell-ref c) = (c)
+
+;; ============================================================
+
 (define-syntax-parameter GRAPH
   (lambda (stx) (wrong-syntax stx "used out of context")))
 
@@ -418,16 +458,14 @@
         (result:value (model-memoized fun (make-hash) addr)))
       (define (trace:run-model addr mdlr)
         (define mdl (result->value mdlr))
-        (unless (model? mdl)
-          (raise-argument-error 'run-model "model?" mdl))
-        (do! (node:same "model" mdl mdlr))
         (match mdl
           [(model/tracing _ gproc _)
+           (do! (node:same "model" mdl mdlr))
            (gproc this addr)]
-          [_ (error 'run-model
-                    (string-append "non-tracing model called from tracing model"
-                                   "\n  model: ~e")
-                    mdl)]))
+          [(? model?)
+           (error 'run-model "~a\n  model: ~e"
+                  "non-tracing model called from tracing model" mdl)]
+          [_ (raise-argument-error 'run-model "model?" mdl)]))
       (values (model-closure trace:sample)
               (model-closure trace:dscore)
               (model-closure trace:lscore)
