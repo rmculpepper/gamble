@@ -6,10 +6,10 @@
 @(require scribble/manual
           scribble/basic
           scribble/eval
-          (for-label racket/base racket/contract gamble))
+          (for-label racket/base racket/contract gamble gamble/pict))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require gamble))
+@(the-eval '(require gamble gamble/pict))
 @(the-eval '(random-seed 1))
 
 @(define (wiki url-suffix . pre-content)
@@ -21,6 +21,13 @@
 This section describes the distribution types and operations supported
 by @racketmodname[gamble].
 
+Unless otherwise noted, the distribution types documented in this section
+automatically convert their real-valued parameters to @tech[#:doc '(lib
+"scribblings/reference/reference.scrbl")]{flonum} values, and they report
+probability densities and cumulative probabilities as flonums, except that the
+density of a value that is out of the support type may be represented as exact
+@racket[0].
+
 @; ------------------------------------------------------------
 @section[#:tag "dist-kinds"]{Kinds of Distributions}
 
@@ -30,16 +37,16 @@ Returns @racket[#t] if @racket[v] is a distribution object, @racket[#f]
 otherwise.
 }
 
-@defproc[(real-dist? [v any/c]) boolean?]{
+@defproc[(numeric-dist? [v any/c]) boolean?]{
 
 Returns @racket[#t] if @racket[v] is a distribution object whose support is
 limited to the real numbers or a subset thereof, @racket[#f]
-otherwise. Real-valued dists support additional operations, such as
+otherwise. Numeric distributions support additional operations, such as
 @racket[dist-cdf].
 
-If @racket[(real-dist? v)] is true, then @racket[v] is either an integer
-distribution (@racket[integer-dist?]) or a continuous distribution
-(@racket[continuous-dist?]).
+If @racket[(numeric-dist? v)] is true, then @racket[v] is either an integer
+distribution (@racket[integer-dist?]) or a continuous real distribution
+(@racket[real-dist?]).
 }
 
 @defproc[(integer-dist? [v any/c]) boolean?]{
@@ -51,25 +58,24 @@ The distribution types for which @racket[integer-dist?] returns true consist of
 exactly the ones listed in @secref["integer-dists"]. A discrete distribution
 whose values happen to be integers is not considered an integer distribution.
 
-If @racket[(continuous-dist? v)] is true, then @racket[(real-dist? v)] is also true.
+If @racket[(integer-dist? v)] is true, then @racket[(numeric-dist? v)] is also true.
 }
 
-@defproc[(continuous-dist? [v any/c]) boolean?]{
+@defproc[(real-dist? [v any/c]) boolean?]{
 
 Returns @racket[#t] if @racket[v] is a distribution object whose support is a
 real interval and whose CDF is continuous, @racket[#f] otherwise.
 
-The distribution types for which @racket[continuous-dist?] returns true consist
-of exactly the ones listed in @secref["continuous-dists"].
+The distribution types for which @racket[real-dist?] returns true consist of
+exactly the ones listed in @secref["real-dists"].
 
-If @racket[(continuous-dist? v)] is true, then @racket[(real-dist? v)] is also true.
+If @racket[(real-dist? v)] is true, then @racket[(numeric-dist? v)] is also true.
 }
 
 @defproc[(enumerable-dist? [v any/c]) boolean?]{
 
-Returns @racket[#t] if @racket[v] is a distribution object whose theoretical
-support is finite or countably infinite, @racket[#f] otherwise. See also
-@racket[in-dist].
+Returns @racket[#t] if @racket[v] is a distribution object whose support is
+finite or countably infinite, @racket[#f] otherwise. See also @racket[in-dist].
 }
 
 @defproc[(finite-dist? [v any/c]) boolean?]{
@@ -95,18 +101,6 @@ Produces a sample distributed according to @racket[d].
 (for/list ([i 10]) (dist-sample (bernoulli-dist 1/3)))
 ]}
 
-@defproc[(dist-density [d dist?] [v any/c] [log? any/c #f]) 
-         density?]{
-
-Returns the probability density of the value @racket[v] in the distribution
-@racket[d]. If @racket[log?] is true, the density is represented in logspace.
-
-@examples[#:eval the-eval
-(dist-density (bernoulli-dist 1/3) 0)
-(dist-density (uniform-dist 0 10) 3)
-(dist-density (uniform-dist 0 10) 3 #t)
-]}
-
 @defproc[(dist-pdf [d dist?] [v any/c] [log? any/c #f]) 
          real?]{
 
@@ -120,7 +114,7 @@ log density (or log mass) is returned instead.
 (dist-pdf (uniform-dist 0 10) 3 #t)
 ]}
 
-@defproc[(dist-cdf [d real-dist?] [v real?] [log? any/c #f] [1-p? any/c #f])
+@defproc[(dist-cdf [d numeric-dist?] [v real?] [log? any/c #f] [1-p? any/c #f])
          real?]{
 
 Returns the cumulative probability density (or mass, as appropriate) of the
@@ -163,8 +157,22 @@ Returns a @tech[#:doc '(lib "scribblings/reference/reference.scrbl")]{sequence}
 where each element consists of a value from the support of the distribution.
 }
 
+@defproc[(dist-total-measure [d dist?]) (>=/c 0)]{
+
+Returns the total probability weight of @racket[d]. For standard integer and
+real distributions, this always returns @racket[1], but discrete distributions
+and mixture distributions, it can produce other nonnegative values.
+
+@examples[#:eval the-eval
+(dist-total-measure (bernoulli-dist 1/2))
+(dist-total-measure (hash->discrete-dist (hash)))
+]}
+
 @; ------------------------------------------------------------
 @section[#:tag "integer-dists"]{Integer Distribution Types}
+
+For integer distributions, the results of @racket[dist-sample] and
+@racket[dist-inv-cdf] are exact integers.
 
 @defstruct*[bernoulli-dist
             ([p probability?])]{
@@ -172,7 +180,10 @@ where each element consists of a value from the support of the distribution.
 Represents a @wiki["Bernoulli_distribution"]{Bernoulli distribution} with
 success probability @racket[p]. The distribution's support consists of
 @racket[0] and @racket[1]. See also @racket[boolean-dist].
-}
+
+@examples[#:eval the-eval
+(dist->pict (bernoulli-dist 1/4))
+]}
 
 @defstruct*[binomial-dist
             ([n exact-positive-integer?]
@@ -180,7 +191,10 @@ success probability @racket[p]. The distribution's support consists of
 
 Represents a @wiki["Binomial_distribution"]{binomial distribution} of
 @racket[n] trials each with success probability @racket[p].
-}
+
+@examples[#:eval the-eval
+(dist->pict (binomial-dist 10 1/4))
+]}
 
 @defstruct*[categorical-dist
             ([weights (vectorof (>=/c 0))])]{
@@ -191,13 +205,19 @@ distribution, or multinoulli distribution).
 
 The distribution's support consists of the exact integers {@racket[1], ...,
 @racket[_n]}, where @racket[_n] is the length of @racket[weights].
-}
+
+@examples[#:eval the-eval
+(dist->pict (categorical-dist (vector 0.2 0.3 0.1 0.25 0.15)))
+]}
 
 @defstruct*[geometric-dist
             ([p probability?])]{
 
 Represents a @wiki["Geometric_distribution"]{geometric distribution}.
-}
+
+@examples[#:eval the-eval
+(dist->pict (geometric-dist 1/3))
+]}
 
 @defstruct*[negative-binomial-dist
             ([r exact-positive-integer?]
@@ -206,32 +226,49 @@ Represents a @wiki["Geometric_distribution"]{geometric distribution}.
 Represents a @wiki["Negative_Binomial_distribution"]{negative binomial
 distribution} of the number of failures before @racket[r] successes, with
 success probability @racket[p].
-}
+
+@examples[#:eval the-eval
+(dist->pict (negative-binomial-dist 5 0.6))
+]}
 
 @defstruct*[poisson-dist
             ([mean (>/c 0)])]{
 
 Represents a @wiki["Poisson_distribution"]{Poisson distribution} with
 mean @racket[mean].
-}
+
+@examples[#:eval the-eval
+(dist->pict (poisson-dist 5))
+]}
 
 
 @; ------------------------------------------------------------
-@section[#:tag "continuous-dists"]{Continuous Distribution Types}
+@section[#:tag "real-dists"]{Real Distribution Types}
+
+For real distributions, the results of @racket[dist-sample] and
+@racket[dist-inv-cdf] are flonums.
 
 @defstruct*[beta-dist
             ([a (>=/c 0)]
              [b (>=/c 0)])]{
 
 Represents a @wiki["Beta_distribution"]{beta distribution} with shape
-@racket[a] and scale @racket[b].}
+@racket[a] and scale @racket[b].
+
+@examples[#:eval the-eval
+(dist->pict (beta-dist 4 3))
+]}
 
 @defstruct*[cauchy-dist
             ([mode real?]
              [scale (>/c 0)])]{
 
 Represents a @wiki["Cauchy_distribution"]{Cauchy distribution} with
-mode @racket[mode] and scale @racket[scale].}
+mode @racket[mode] and scale @racket[scale].
+
+@examples[#:eval the-eval
+(dist->pict (cauchy-dist 2 3))
+]}
 
 @defstruct*[exponential-dist
             ([mean (>/c 0)])]{
@@ -240,7 +277,11 @@ Represents an @wiki["Exponential_distribution"]{exponential
 distribution} with mean @racket[mean].
 
 Note: A common alternative parameterization uses the rate @italic{λ} =
-@racket[(/ mean)].}
+@racket[(/ mean)].
+
+@examples[#:eval the-eval
+(dist->pict (exponential-dist 3))
+]}
 
 @defstruct*[gamma-dist
             ([shape (>/c 0)]
@@ -251,14 +292,22 @@ shape (@italic{k}) @racket[shape] and scale (@italic{θ})
 @racket[scale].
 
 Note: A common alternative parameterization uses @italic{α}
-= @racket[shape] and rate @italic{β} = @racket[(/ scale)].}
+= @racket[shape] and rate @italic{β} = @racket[(/ scale)].
+
+@examples[#:eval the-eval
+(dist->pict (gamma-dist 2 1))
+]}
 
 @defstruct*[logistic-dist
             ([mean real?]
              [scale (>/c 0)])]{
 
 Represents a @wiki["Logistic_distribution"]{logistic distribution}
-with mean @racket[mean] and scale @racket[scale].}
+with mean @racket[mean] and scale @racket[scale].
+
+@examples[#:eval the-eval
+(dist->pict (logistic-dist 5 2))
+]}
 
 @defstruct*[normal-dist
             ([mean real?]
@@ -269,13 +318,21 @@ distribution} with mean (@italic{μ}) @racket[mean] and standard
 deviation (@italic{σ}) @racket[stddev].
 
 Note: A common alternative parameterization uses the variance
-@italic{σ@superscript{2}}.}
+@italic{σ@superscript{2}}.
+
+@examples[#:eval the-eval
+(dist->pict (normal-dist 2 3))
+]}
 
 @defstruct*[pareto-dist
             ([scale (>/c 0)]
              [shape (>/c 0)])]{
 
-Represents a @wiki["Pareto_distribution"]{Pareto distribution}.}
+Represents a @wiki["Pareto_distribution"]{Pareto distribution}.
+
+@examples[#:eval the-eval
+(dist->pict (pareto-dist 1 2))
+]}
 
 @defstruct*[student-t-dist
             ([degrees (>/c 0)]
@@ -283,7 +340,10 @@ Represents a @wiki["Pareto_distribution"]{Pareto distribution}.}
              [scale (>/c 0)])]{
 
 Represents a @wiki["Student's_t-distribution"]{Student's t distribution}.
-}
+
+@examples[#:eval the-eval
+(dist->pict (student-t-dist 2 2 1))
+]}
 
 @defstruct*[triangle-dist
             ([lo real?]
@@ -294,7 +354,10 @@ Represents a @wiki["Triangle_distribution"]{triangle distribution} with lower
 bound @racket[lo], upper bound @racket[hi], and mode at @racket[mode].
 
 Must satisfy @racket[(< lo hi)] and @racket[(<= lo mode hi)].
-}
+
+@examples[#:eval the-eval
+(dist->pict (triangle-dist 0 5 4))
+]}
 
 @defstruct*[uniform-dist
             ([lo real?]
@@ -304,27 +367,33 @@ Represents a @wiki["Uniform_distribution"]{uniform distribution} with
 lower bound @racket[lo] and upper bound @racket[hi].
 
 Must satisfy @racket[(< lo hi)].
-}
+
+@examples[#:eval the-eval
+(dist->pict (uniform-dist 0 3))
+]}
 
 @; ------------------------------------------------------------
-@section[#:tag "dist-transformers"]{Real Distribution Transformers}
+@section[#:tag "dist-transformers"]{Real to Real Distribution Transformers}
 
-The following constructors take and produce real-valued distributions.
+The following constructors produce real-valued distributions.
 
 @defstruct*[affine-distx
-            ([dist continuous-dist?]
+            ([dist real-dist?]
              [a real?]
              [b real?])]{
 
-Represents the distribution of @racket[(+ (* a _t) b)] where
-@racket[_t] is distributed according to @racket[dist].
+Represents the distribution of @racket[(+ (* a _X) b)] where
+@racket[_X] is distributed according to @racket[dist].
 
 @emph{Note:} The affine transformation is applied to generated samples; its
 inverse is applied when evaluating the density, CDF, etc.
-}
+
+@examples[#:eval the-eval
+(dist->pict (affine-distx (triangle-dist 0 5 4) 2 1))
+]}
 
 @defstruct*[clip-distx
-            ([dist continuous-dist?]
+            ([dist real-dist?]
              [a real?]
              [b real?])]{
 
@@ -334,33 +403,25 @@ Clips @racket[dist] to the closed interval [@racket[a],
 If the interval is small, the clipped dist is sampled
 using the @racket[dist-inv-cdf] method of @racket[dist]; otherwise,
 rejection sampling is used.
-}
+
+@examples[#:eval the-eval
+(dist->pict (clip-distx (normal-dist 0 1) -1 1))
+]}
 
 @defstruct*[exp-distx
-            ([dist continuous-dist?])]{
+            ([dist real-dist?])]{
 
-Represents the distribution of @racket[(exp _t)] where @racket[_t] is
+Represents the distribution of @racket[(exp _X)] where @racket[_X] is
 distributed according to @racket[dist].
 
 @emph{Note:} The @racket[exp] in the name refers to the transformation applied
 when sampling. This differs from standard terminology---for example, variables
 distributed according to @racket[(exp-distx (normal-dist 0 1))] are customarily
 called ``Lognormal'' variables.
-}
 
-@defstruct*[discretize/floor-distx
-            ([dist continuous-dist?])]{
-
-Produces an integer-valued distribution whose sampling process consists of
-@racket[(inexact->exact (floor (dist-sample dist)))].
-}
-
-@defstruct*[discretize/round-distx
-            ([dist continuous-dist?])]{
-
-Produces an integer-valued distribution whose sampling process consists of
-@racket[(inexact->exact (round (dist-sample dist)))].
-}
+@examples[#:eval the-eval
+(dist->pict (exp-distx (normal-dist 0 1)))
+]}
 
 @; ------------------------------------------------------------
 @section[#:tag "other-dists"]{Other Distribution Types}
@@ -369,8 +430,14 @@ Produces an integer-valued distribution whose sampling process consists of
             ([p probability?])]{
 
 Like a Bernoulli distribution (@racket[bernoulli-dist]), but the support
-consists of the values @racket[#t] and @racket[#f].
-}
+consists of the values @racket[#t] and @racket[#f]. Unlike
+@racket[bernoulli-dist], this distribution type supports exact success
+probabilities @racket[p].
+
+@examples[#:eval the-eval
+(dist-pdf (boolean-dist 1/3) #f)
+(dist->pict (boolean-dist 0.3))
+]}
 
 @defstruct*[dirichlet-dist
             ([alpha (vectorof (>/c 0))])]{
@@ -378,7 +445,10 @@ consists of the values @racket[#t] and @racket[#f].
 Represents a @wiki["Dirichlet_distribution"]{Dirichlet distribution}.
 The support consists of vectors of the same length as @racket[alpha]
 whose elements are nonnegative reals summing to @racket[1.0].
-}
+
+@examples[#:eval the-eval
+(dist-sample (dirichlet-dist (vector 2 5 1)))
+]}
 
 @defstruct*[multinomial-dist
             ([n exact-nonnegative-integer?]
@@ -389,7 +459,10 @@ distribution}. The support consists of vectors of the same length as
 @racket[weights] representing counts of @racket[n] iterated samples
 from the corresponding categorical distribution with @racket[weights]
 for weights.
-}
+
+@examples[#:eval the-eval
+(dist-sample (multinomial-dist 100 (vector 1/2 1/3 1/6)))
+]}
 
 @; ------------------------------------------------------------
 @section[#:tag "discrete-dist"]{Discrete Distribution Type}
@@ -422,30 +495,48 @@ The total mass of the distribution is @emph{not normalized}. Use
 (discrete-dist ['apple 1/2] ['orange 1/3] ['pear 1/6])
 ]}
 
-@defproc[(hash->discrete-dist [h (hash/c any/c (>=/c 0))])
+@defproc[(hash->discrete-dist [h (hash/c any/c (>=/c 0))]
+                              [#:normalize? normalize? boolean? #t])
          discrete-dist?]{
 
 Produces a discrete distribution, using @racket[h]'s keys as the distrubution's
-values and @racket[h]'s values as the distribution's weights.
+values and @racket[h]'s values as the distribution's weights. If any value's
+weight is zero, that value is dropped from the distribution. If any weight is
+inexact, then all weights are converted to inexact numbers.
 
-The total mass of the distribution is @emph{not normalized}. Use
-@racket[dist-rescore] to normalize if necessary.
-}
+If @racket[normalize?] is true, then the distribution's probability weights are
+normalized to sum to one (or to zero if the distribution is empty). In practice,
+if the weights are inexact, their sum might not be exactly @racket[1.0] even
+after normalization.
+
+@examples[#:eval the-eval
+(hash->discrete-dist (hash 'apple 1/2 'orange 1/3 'pear 1/6))
+(hash->discrete-dist (hash 'apple 0.5 'orange 1/3 'pear 1/6))
+(hash->discrete-dist (hash))
+]}
 
 @defproc[(make-discrete-dist [values vector?]
-                             [weights (or/c #f (vectorof (>=/c 0)))])
+                             [weights (or/c #f (vectorof (>=/c 0))) #f]
+                             [#:normalize? normalize? boolean? #t])
          discrete-dist?]{
 
 Produces a discrete distribution on the elements of @racket[values]. If
 @racket[weights] is a vector, it must be the same length as @racket[values], and
 each element gives the probability of the corresponding value. If
-@racket[weights] is @racket[#f], then every value is equally likely.
+@racket[weights] is @racket[#f], then the weight of each value is treated as
+@racket[1] before normalization. If any weight is inexact, then all weights are
+converted to inexact numbers.
 
-If @racket[weights] are given, the total mass of the distribution is @emph{not
-normalized}. Use @racket[dist-rescore] to normalize if necessary.
+If @racket[normalize?] is true, then the distribution's probability weights are
+normalized to sum to one (or to zero if the distribution is empty). In practice,
+if the weights are inexact, their sum might not be exactly @racket[1.0] even
+after normalization.
 
 @examples[#:eval the-eval
 (make-discrete-dist (vector 'apple 'orange 'pear) (vector 1/2 1/3 1/6))
+(make-discrete-dist (vector 'apple 'orange 'pear) (vector 0.5 1/3 1/6))
+(make-discrete-dist (vector 'red 'blue 'green 'blue) #:normalize? #t)
+(make-discrete-dist (vector 'red 'blue 'green 'blue) #:normalize? #f)
 ]}
 
 @deftogether[[
@@ -456,6 +547,18 @@ normalized}. Use @racket[dist-rescore] to normalize if necessary.
 ]]{
 
 Returns the values and weights of @racket[d], respectively.
+
+@examples[#:eval the-eval
+(define dd (hash->discrete-dist (hash 'apple 1/2 'orange 1/3 'pear 1/6)))
+(discrete-dist-values dd)
+(discrete-dist-weights dd)
+]}
+
+@defproc[(discrete-distof [predicate predicate/c])
+         predicate/c]{
+
+Produces a predicate that returns @racket[#t] if applied to a discrete
+distribution whose values all satisfy @racket[predicate], @racket[#f] otherwise.
 }
 
 @; ------------------------------------------------------------
@@ -480,11 +583,13 @@ probability for @italic{(A,B)}, then marginalizes out @italic{A},
 returning the marginal distribution for @italic{B}.
 
 @examples[#:eval the-eval
+(code:comment "probability of Raining")
+(define raining-dist (boolean-dist 1/4))
+(code:comment "conditional probability of Ground Wet given Raining")
 (define (ground-wet raining)
   (case raining
-    [(0) (bernoulli-dist 9/10)]
-    [(1) (bernoulli-dist 2/10)]))
-(define raining-dist (bernoulli-dist 2/10))
+    [(#t) (boolean-dist 19/20)]
+    [(#f) (boolean-dist 2/10)]))
 (code:comment "marginal probability of Ground Wet")
 (dist-bind raining-dist ground-wet)
 ]}
@@ -496,7 +601,8 @@ returning the marginal distribution for @italic{B}.
 Like @racket[dist-bind], but omits the marginalization step, returning
 the joint distribution.
 
-Equivalent to @racket[(dist-bind d (λ (v1) (dist-fmap (f v1) (λ (v2) (list v1 v2)))))].
+Equivalent to
+@racket[(dist-bind d (λ (_v1) (dist-fmap (f _v1) (λ (_v2) (list _v1 _v2)))))].
 
 @examples[#:eval the-eval
 (code:comment "joint distribution of (Raining, Ground Wet)")
@@ -507,37 +613,33 @@ Equivalent to @racket[(dist-bind d (λ (v1) (dist-fmap (f v1) (λ (v2) (list v1 
                     [f (-> any/c any/c)])
          discrete-dist?]{
 
-Equivalent to @racket[(dist-bind d (compose dist-unit f))].
-}
-
-@;{
-@defproc[(dist-filter [d finite-dist?]
-                      [pred (-> any/c boolean?)])
-         discrete-dist?]{
-
-Returns a distribution like @racket[d] but whose support is narrowed
-to values accepted by the predicate @racket[pred].
-
-@examples[#:eval the-eval
-(dist-filter (binomial-dist 10 1/2) even?)
-(dist-filter (binomial-dist 10 1/2) negative?)
-]}
+Equivalent to @racket[(dist-bind d (λ (_v) (dist-unit (f _v))))].
 }
 
 @defproc[(dist-rescore [d finite-dist?]
-                       [scale (>=/c 0) (/ (dist-total-measure d))])
+                       [scale (-> any/c (>=/c 0))
+                              (lambda (_v) (/ (dist-total-measure d)))])
          discrete-dist?]{
 
-Adjusts the weight of every value in @racket[d], multiplying it by
-@racket[scale]. If @racket[scale] is not given, it defaults to the total
-probability mass of @racket[d], producing a normalized distribution.
+Adjusts the weight of every value @racket[_v] in @racket[d], multiplying it by
+@racket[(scale _v)]. If @racket[scale] is not given, it defaults to a function
+that divides by the the total probability mass of @racket[d], producing a
+normalized distribution.
 }
 
 @defproc[(dist-join [d (discrete-distof finite-dist?)])
          discrete-dist?]{
 
 Equivalent to @racket[(dist-bind d dist-unit)].
-}
+
+@examples[#:eval the-eval
+(code:comment "Ground Wet as a mixture of distributions")
+(define groundwet-mixture
+  (discrete-dist
+   [(boolean-dist 0.95) 0.25]
+   [(boolean-dist 0.2) 0.75]))
+(dist-join groundwet-mixture)
+]}
 
 
 @; ------------------------------------------------------------
