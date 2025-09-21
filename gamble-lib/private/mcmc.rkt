@@ -22,7 +22,7 @@
                                 #:any [ok-tag? #f])
   (new single-site-transition% (ok-tag? ok-tag?) (proposal proposal)))
 
-(define (multi-site-transition #:proposal proposal
+(define (multi-site-transition #:proposal [proposal (resample-proposal)]
                                #:all [ok-tag? #f])
   (new multi-site-transition% (ok-tag? ok-tag?) (proposal proposal)))
 

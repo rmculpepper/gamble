@@ -145,6 +145,7 @@
     (init-field propose1-proc   ;; Tag Dist[X] X -> (U #f (cons X Real) Proposal)
                 propose2-proc   ;; Tag Dist[X] Dist[X] X -> (U #f (cons X Real) Proposal)
                 propose-dist)   ;; Tag Dist[X] X -> (U #f Dist[X])
+    (super-new)
     (define/public (propose1 tag dist prev-value)
       (define r (propose1* tag dist prev-value))
       (if (proposal? r) (send r propose1 tag dist prev-value) r))

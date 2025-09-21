@@ -891,8 +891,10 @@
   (cons (reflect-real lo hi (sample-normal x scale)) 0.0))
 
 (define (reflect-real lo hi x)
+  (define (flmodulo x y) ;; PRE: x, y > 0
+    (- x (* y (floor (/ x y)))))
   (define w (- hi lo))
-  (- hi (abs (- (modulo (- x lo) (* 2.0 w)) w))))
+  (- hi (abs (- (flmodulo (- x lo) (* 2.0 w)) w))))
 
 ;; Rounds away from zero to force different value.
 (define (drift:add-discrete-normal x scale)

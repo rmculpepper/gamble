@@ -92,7 +92,7 @@
       vs)
     ))
 
-(define (sampler->discrete-dist s n #:burn [nburn 0] #:normalize [normalize? #t])
+(define (sampler->discrete-dist s n #:burn [nburn 0] #:normalize? [normalize? #t])
   (send s burn nburn)
   (send s generate-discrete-dist n #:normalize? normalize?))
 (define (generate-samples s n #:burn [nburn 0])
