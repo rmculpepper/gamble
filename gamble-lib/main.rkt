@@ -1,5 +1,6 @@
 #lang racket/base
-(require "dist.rkt"
+(require racket/contract
+         "dist.rkt"
          "private/base.rkt"
          "private/addr.rkt"
          "private/model.rkt"
@@ -16,9 +17,20 @@
          sampler?
          model?
 
-         sampler->discrete-dist
-         generate-samples
-         generate-weighted-samples
+         (contract-out
+          [sampler->discrete-dist
+           (->* [weighted-sampler? exact-nonnegative-integer?]
+                [#:burn exact-nonnegative-integer?
+                 #:normalize? boolean?]
+                any)]
+          [generate-samples
+           (->* [sampler? exact-nonnegative-integer?]
+                [#:burn exact-nonnegative-integer?]
+                any)]
+          [generate-weighted-samples
+           (->* [weighted-sampler? exact-nonnegative-integer?]
+                [#:burn exact-nonnegative-integer?]
+                any)])
 
          sample
          dscore
@@ -33,19 +45,76 @@
 
          (rename-out [model* model])
 
-         rejection-sampler
-         importance-sampler
-         mcmc-sampler
-         enumerate
+         (contract-out
+          [rejection-sampler
+           (-> model? any)]
+          [importance-sampler
+           (->* [model?]
+                [#:propose (or/c #f (-> any/c dist? (or/c #f dist?)))]
+                any)]
+          [mcmc-sampler
+           (->* [model?]
+                [#:initialize mcmc-transition?
+                 #:transition mcmc-transition?]
+                any)]
+          [enumerate
+           (->* [model?]
+                [#:stop (>=/c 0)
+                 #:normalize? boolean?]
+                any)])
 
          proposal?
-         proposal
-         resample-proposal
-         drift-proposal
+         (contract-out
+          [proposal
+           (->* []
+                [#:propose1 (or/c #f propose1/c)
+                 #:propose2 (or/c #f propose2/c)
+                 #:propose-dist (or/c #f propose-dist/c)]
+                any)]
+          [resample-proposal
+           (-> any)]
+          [drift-proposal
+           (->* []
+                [#:params? boolean?
+                 #:scale (or/c (>/c 0) (-> any/c dist? (>/c 0)))]
+                any)])
 
          mcmc-transition?
-         initialize-transition
-         single-site-transition
-         multi-site-transition
-         enumerative-gibbs-transition
-         slice-transition)
+         (contract-out
+          [initialize-transition
+           (->* [] [(-> any/c dist? (or/c #f (list/c any/c)))] any)]
+          [single-site-transition
+           (->* []
+                [#:proposal proposal?
+                 #:any (or/c #f (-> any/c dist? any))]
+                any)]
+          [multi-site-transition
+           (->* []
+                [#:proposal proposal?
+                 #:all (or/c #f (-> any/c dist? any))]
+                any)]
+          [enumerative-gibbs-transition
+           (->* []
+                [#:any (or/c #f (-> any/c dist? any))]
+                any)]
+          [slice-transition
+           (->* []
+                [#:method (or/c 'double 'step)
+                 #:W (>/c 0)
+                 #:Wi exact-positive-integer?
+                 #:M exact-positive-integer?
+                 #:small-dist-limit exact-nonnegative-integer?
+                 #:any (or/c #f (-> any/c dist? any))]
+                any)]))
+
+(define propose1/c
+  (-> any/c dist? any/c
+      (or/c #f (cons/c any/c real?) proposal?)))
+
+(define propose2/c
+  (-> any/c dist? dist? any/c
+      (or/c #f (cons/c any/c real?) proposal?)))
+
+(define propose-dist/c
+  (-> any/c dist? any/c
+      (or/c #f dist?)))
