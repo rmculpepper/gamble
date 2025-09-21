@@ -60,6 +60,7 @@
           [enumerate
            (->* [model?]
                 [#:stop (>=/c 0)
+                 #:discretize (or/c #f (-> any/c real-dist? (or/c #f enumerable-dist?)))
                  #:normalize? boolean?]
                 any)])
 

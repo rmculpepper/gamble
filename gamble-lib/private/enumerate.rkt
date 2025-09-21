@@ -16,9 +16,10 @@
 ;; enumerate : (Model A) -> (Discrete-Dist A)
 (define (enumerate mdl
                    #:stop [quit-weight 0]
+                   #:discretize [discretize #f]
                    #:normalize? [normalize? #f])
   (unless (model? mdl) (raise-argument-error 'enumerate "model?" mdl))
-  (define ctx (new enumerate-stochastic-ctx%))
+  (define ctx (new enumerate-stochastic-ctx% (discretize discretize)))
   (define (init-thunk) (send ctx run-top mdl))
   (define dh
     (cond [(> quit-weight 0)
@@ -91,6 +92,7 @@
 
 (define enumerate-stochastic-ctx%
   (class base-stochastic-ctx%
+    (init-field discretize) ;; #f or (Tag RealDist -> (U #f EnumerableDist))
     (inherit run-model)
     (super-new)
 
@@ -98,26 +100,33 @@
     (define ctag (make-continuation-prompt-tag))
 
     (define/override (-sample dist tag addr)
-      (call/restore 'sample
-       (lambda (restore)
-         (cond [(finite-dist? dist)
-                (for/list ([(v w) (in-dist dist)])
-                  (define wdn (density #f w))
-                  (list* wdn wdn (lambda () (restore v))))]
-               [(enumerable-dist? dist)
-                (define str (sequence->stream (in-dist dist)))
-                ;; FIXME: maybe need to start tdn from dist-total-measure?
-                (let loop ([str str] [n SAMPLE-ELEMS] [tdn one-density])
-                  (cond [(stream-empty? str) null]
-                        [(zero? n)
-                         (list (list* tdn one-density (lambda () (loop str SAMPLE-ELEMS tdn))))]
-                        [else
-                         (define-values (v w) (stream-first str))
-                         (define wdn (density #f w))
-                         (cons (list* wdn wdn (lambda () (restore v)))
-                               (loop (stream-rest str) (sub1 n) (density- tdn wdn)))]))]
-               [else
-                (error 'enumerate "cannot sample from non-enumerable dist\n  dist: ~e" dist)]))))
+      (cond [(finite-dist? dist)
+             (call/restore 'sample
+               (lambda (restore)
+                 (for/list ([(v w) (in-dist dist)])
+                   (define wdn (density #f w))
+                   (list* wdn wdn (lambda () (restore v))))))]
+            [(enumerable-dist? dist)
+             (call/restore 'sample
+               (lambda (restore)
+                 (define str (sequence->stream (in-dist dist)))
+                 ;; FIXME: maybe need to start tdn from dist-total-measure?
+                 (let loop ([str str] [n SAMPLE-ELEMS] [tdn one-density])
+                   (cond [(stream-empty? str) null]
+                         [(zero? n)
+                          (list (list* tdn one-density (lambda () (loop str SAMPLE-ELEMS tdn))))]
+                         [else
+                          (define-values (v w) (stream-first str))
+                          (define wdn (density #f w))
+                          (cons (list* wdn wdn (lambda () (restore v)))
+                                (loop (stream-rest str) (sub1 n) (density- tdn wdn)))]))))]
+            [(and discretize (real-dist? dist) (discretize tag dist))
+             => (lambda (ddist)
+                  (-sample ddist tag addr))]
+            [else
+             (call/restore 'sample
+               (lambda (restore)
+                 (error 'enumerate "cannot sample from non-enumerable dist\n  dist: ~e" dist)))]))
 
     (define/override (-dscore who dn)
       (if (density-zero? dn)

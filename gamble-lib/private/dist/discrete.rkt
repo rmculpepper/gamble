@@ -319,6 +319,20 @@
   (make-variable-like-transformer #'make-discrete-dist))
 
 ;; ----------------------------------------
+;; discretize
+
+(define (dist-discretize/quantile dist n)
+  (define who 'dist-discretize/quantile)
+  (unless (real-dist? dist)
+    (raise-argument-error who "real-dist?" dist))
+  (unless (exact-positive-integer? n)
+    (raise-argument-error who "exact-positive-integer?" n))
+  (define delta (/ (fl n)))
+  (define vs (for/list ([i (in-range n)])
+               (dist-inv-cdf dist (* (+ i 0.5) delta))))
+  (make-discrete-dist (list->vector vs)))
+
+;; ----------------------------------------
 ;; printer
 
 (define (print-discrete-dist name h port mode)
