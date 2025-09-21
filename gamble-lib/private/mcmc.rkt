@@ -18,24 +18,19 @@
 (define (initialize-transition [get-value (lambda (tag dist) #f)])
   (new initialize-transition% (get-value get-value)))
 
-(define (single-site-transition #:proposal [proposal (resample-proposal)]
+(define (single-site-transition [transition #f]
                                 #:any [ok-tag? #f])
-  (new single-site-transition% (ok-tag? ok-tag?) (proposal proposal)))
+  (new single-site-transition% (ok-tag? ok-tag?) (transition transition)))
 
-(define (multi-site-transition #:proposal [proposal (resample-proposal)]
-                               #:all [ok-tag? #f])
-  (new multi-site-transition% (ok-tag? ok-tag?) (proposal proposal)))
-
-(define (enumerative-gibbs-transition #:any [ok-tag? #f])
-  (new enumerative-gibbs-transition% (ok-tag? ok-tag?)))
+(define (enumerative-gibbs-transition)
+  (new enumerative-gibbs-transition%))
 
 (define (slice-transition #:method [method 'double]
                           #:W [Wr 1.0]
                           #:Wi [Wi (exact (ceiling Wr))]
                           #:M [M +inf.0]
-                          #:small-dist-limit [small-dist 10]
-                          #:any [ok-tag? #f])
-  (new slice-transition% (ok-tag? ok-tag?) (method method)
+                          #:small-dist-limit [small-dist 10])
+  (new slice-transition% (method method)
        (Wr Wr) (Wi Wi) (M M) (small-dist small-dist)))
 
 ;; ============================================================
@@ -99,9 +94,12 @@
     ))
 
 (define (mcmc-sampler mdl
-                      #:initialize [initialize (single-site-transition)]
+                      #:initialize [initialize (initialize-transition)]
                       #:transition [transition (single-site-transition)])
-  (define s (new mcmc-sampler% (mdl mdl) (transition transition)))
-  (when initialize
-    (send s initialize initialize))
-  s)
+  (let ([transition
+         (cond [(mcmc-transition? transition) transition]
+               [else (single-site-transition transition)])])
+    (define s (new mcmc-sampler% (mdl mdl) (transition transition)))
+    (when initialize
+      (send s initialize initialize))
+    s))

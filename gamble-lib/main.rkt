@@ -11,8 +11,6 @@
          "private/samples.rkt")
 (provide (all-from-out "dist.rkt")
 
-         weighted-sampler<%>
-         sampler<%>
          weighted-sampler?
          sampler?
          model?
@@ -55,7 +53,7 @@
           [mcmc-sampler
            (->* [model?]
                 [#:initialize mcmc-transition?
-                 #:transition mcmc-transition?]
+                 #:transition (or/c mcmc-transition? mcmc-transition/single-site/c)]
                 any)]
           [enumerate
            (->* [model?]
@@ -64,58 +62,36 @@
                  #:normalize? boolean?]
                 any)])
 
-         proposal?
-         (contract-out
-          [proposal
-           (->* []
-                [#:propose1 (or/c #f propose1/c)
-                 #:propose2 (or/c #f propose2/c)
-                 #:propose-dist (or/c #f propose-dist/c)]
-                any)]
-          [resample-proposal
-           (-> any)]
-          [drift-proposal
-           (->* []
-                [#:params? boolean?
-                 #:scale (or/c (>/c 0) (-> any/c dist? (>/c 0)))]
-                any)])
-
          mcmc-transition?
+         mcmc-transition/single-site?
          (contract-out
           [initialize-transition
            (->* [] [(-> any/c dist? (or/c #f (list/c any/c)))] any)]
           [single-site-transition
            (->* []
-                [#:proposal proposal?
+                [mcmc-transition/single-site/c
                  #:any (or/c #f (-> any/c dist? any))]
                 any)]
-          [multi-site-transition
-           (->* []
-                [#:proposal proposal?
-                 #:all (or/c #f (-> any/c dist? any))]
-                any)]
           [enumerative-gibbs-transition
-           (->* []
-                [#:any (or/c #f (-> any/c dist? any))]
-                any)]
+           (-> any)]
           [slice-transition
            (->* []
                 [#:method (or/c 'double 'step)
                  #:W (>/c 0)
                  #:Wi exact-positive-integer?
                  #:M exact-positive-integer?
-                 #:small-dist-limit exact-nonnegative-integer?
-                 #:any (or/c #f (-> any/c dist? any))]
-                any)]))
+                 #:small-dist-limit exact-nonnegative-integer?]
+                any)]
+          [struct proposal-value
+            ([value any/c]
+             [l-R/F real?])]
+          [struct proposal-kernel
+            ([kernel (-> any/c dist?)])]))
 
-(define propose1/c
-  (-> any/c dist? any/c
-      (or/c #f (cons/c any/c real?) proposal?)))
-
-(define propose2/c
-  (-> any/c dist? dist? any/c
-      (or/c #f (cons/c any/c real?) proposal?)))
-
-(define propose-dist/c
-  (-> any/c dist? any/c
-      (or/c #f dist?)))
+(define mcmc-transition/single-site/c
+  (or/c #f
+        proposal-value?
+        proposal-kernel?
+        mcmc-transition/single-site?
+        (-> any/c dist? any/c
+            (recursive-contract mcmc-transition/single-site/c))))

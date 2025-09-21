@@ -102,34 +102,49 @@
     run  ;; (Model A) Trace -> (values (U Trace #f) TxInfo)
     ))
 
+;; Transition/SingleSite[X] =
+;; - #f                                           -- resample from prior
+;; - (proposal-value X Real)                      -- new value, log(R/F)
+;; - (proposal-kernel (Tag Dist[X] X -> Dist[X])  -- proposal kernel
+;; - (Tag Dist[X] X -> Transition/SingleSite[X])  -- depends on chosen key
+;; - implementation of mcmc-transition/single-site<%>
+
+(define (mcmc-transition/single-site? v)
+  (is-a? v mcmc-transition/single-site<%>))
+
+(define mcmc-transition/single-site<%>
+  (interface ()
+    run/key    ;; Model Trace DBKey Entry -> (values Trace/#f TxInfo)
+    ))
 
 ;; ============================================================
 ;; Proposals
 
-(define (proposal? v)
-  (is-a? v proposal<%>))
+;; A ProposalValue[X] is (propose-value X Real)
+;; - l-R/F represents log(R/F) component of MH accept ratio.
+(struct proposal-value (value l-R/F) #:transparent)
 
-(define proposal<%>
-  (interface ()
-    propose1    ;; Tag Dist[X] X -> (U #f (cons X Real))
-    ;; Used for single-site proposal, or when adjusted variables are
-    ;; known to be independent (dist parameters will not change from
-    ;; previous values).
+;; A ProposalKernel[X] is (proposal-kernel (X -> Dist[X]))
+(struct proposal-kernel (kernel) #:transparent)
 
-    propose2    ;; Tag Dist[X] Dist[X] X -> (U #f (cons X Real))
-    ;; Used for multi-site proposal, when change to one variable might
-    ;; affect parameters of other proposal variables.
-    ))
+;; propose/kernel : (X -> Dist[X]) X -> (values X Real)
+(define (propose/kernel kernel prev-value)
+  (define dF (kernel prev-value))
+  (define new-value (dist-sample dF))
+  (define dR (kernel new-value))
+  (define lF (dist-pdf dF new-value #t))
+  (define lR (dist-pdf dR prev-value #t))
+  (values new-value (- lR lF)))
 
-;; propose1:resample : Dist[X] X -> (cons X Real)
-(define (propose1:resample dist prev-value)
+;; propose/resample : Dist[X] X -> (values X Real)
+(define (propose/resample dist prev-value)
   ;; Just resample from same dist.
   ;; Then Kt(x|x') = Kt(x)  = (dist-pdf dist prev-value)
   ;;  and Kt(x'|x) = Kt(x') = (dist-pdf dist new-value)
-  (propose2:resample dist dist prev-value))
+  (propose2/resample dist dist prev-value))
 
-;; propose2:resample : Dist[X] Dist[X] X -> (cons X Real)
-(define (propose2:resample new-dist old-dist old-value)
+;; propose2/resample : Dist[X] Dist[X] X -> (values X Real)
+(define (propose2/resample new-dist old-dist old-value)
   ;; If multiple variables changed, earlier changes may have affected dist params.
   ;; - (Forward) So resample from new-dist.
   ;; - (Reverse) Earlier reverse changes produce old-dist, so use old-dist pdf.
@@ -138,74 +153,7 @@
   (define new-value (dist-sample new-dist))
   (define lR (dist-pdf old-dist old-value #t))
   (define lF (dist-pdf new-dist new-value #t))
-  (cons new-value (- lR lF)))
-
-(define proposal%
-  (class* object% (proposal<%>)
-    (init-field propose1-proc   ;; Tag Dist[X] X -> (U #f (cons X Real) Proposal)
-                propose2-proc   ;; Tag Dist[X] Dist[X] X -> (U #f (cons X Real) Proposal)
-                propose-dist)   ;; Tag Dist[X] X -> (U #f Dist[X])
-    (super-new)
-    (define/public (propose1 tag dist prev-value)
-      (define r (propose1* tag dist prev-value))
-      (if (proposal? r) (send r propose1 tag dist prev-value) r))
-    (define/private (propose1* tag dist prev-value)
-      (or (and propose1-proc (propose1-proc tag dist prev-value))
-          (propose2* tag dist dist prev-value)))
-    (define/public (propose2 tag new-dist prev-dist prev-value)
-      (define r (propose2* tag new-dist prev-dist prev-value))
-      (if (proposal? r) (send r propose2 tag new-dist prev-dist prev-value) r))
-    (define/private (propose2* tag new-dist prev-dist prev-value)
-      (or (and propose2-proc (propose2-proc tag new-dist prev-dist prev-value))
-          (and propose-dist
-               (cond [(propose-dist tag new-dist prev-value)
-                      => (lambda (fd)
-                           (define new-value (dist-sample fd))
-                           (cond [(propose-dist tag prev-dist new-value)
-                                  => (lambda (rd)
-                                       (define lF (dist-pdf fd new-value #t))
-                                       (define lR (dist-pdf rd prev-value #t))
-                                       (cons new-value (- lR lF)))]
-                                 [else #f]))]
-                     [else #f]))))
-    ))
-
-(define resample-proposal%
-  (class* object% (proposal<%>)
-    (super-new)
-    (define/public (propose1 tag dist value)
-      (propose1:resample dist value))
-    (define/public (propose2 tag new-dist prev-dist prev-value)
-      (propose2:resample new-dist prev-dist prev-value))
-    ))
-
-(define drift-proposal%
-  (class* object% (proposal<%>)
-    (init-field params?     ;; Boolean
-                scale)      ;; PosReal or (Tag Dist -> PosReal)
-    (super-new)
-    (define/public (propose1 tag dist value)
-      (dist-drift1 dist value params? (get-scale tag dist)))
-    (define/public (propose2 tag new-dist old-dist old-value)
-      (dist-drift2 new-dist old-dist old-value params? (get-scale tag new-dist)))
-    (define/private (get-scale tag dist)
-      (if (real? scale) scale (scale tag dist)))
-    ))
-
-(define (proposal #:propose1 [propose1 #f]
-                  #:propose2 [propose2 #f]
-                  #:propose-dist [propose-dist #f])
-  (new proposal%
-       (propose1-proc propose1)
-       (propose2-proc propose2)
-       (propose-dist propose-dist)))
-
-(define (resample-proposal)
-  (new resample-proposal%))
-
-(define (drift-proposal #:params? [params? #t] #:scale [scale 1.0])
-  (new drift-proposal% (params? params?) (scale scale)))
-
+  (values new-value (- lR lF)))
 
 ;; ============================================================
 ;; Tracing stochastic context
@@ -254,26 +202,25 @@
 
     (define/private (sample/delta dist tag addr delta-e prev-e)
       (unless prev-e (error 'sample "internal error: in delta, not in previous"))
-      (cond [(entry? delta-e)
-             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
-                            (entry-dist prev-e) (entry-value prev-e)
-                            (entry-dist delta-e) (entry-value delta-e))
-             (unless (equal? (entry-dist delta-e) dist)
-               (error 'sample "internal error: delta has wrong dist"))
-             (db-add! addr delta-e prev-e)
-             (entry-value delta-e)]
-            [(proposal? proposal)
-             (match-define (entry prev-dist prev-value _ _) prev-e)
-             (match-define (cons new-value proposal-l-R/F)
-               (or (send proposal propose2 tag dist prev-dist prev-value)
-                   (begin (log-mcmc-info "Late proposal returned #f; resampling")
-                          (propose2:resample dist prev-dist prev-value))))
-             (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
-                            prev-dist prev-value dist new-value (exp l-R/F))
-             (define new-lpr (dist-pdf dist new-value #t))
-             (db-add! addr (entry dist new-value new-lpr tag) prev-e)
-             (set! l-R/F (+ l-R/F proposal-l-R/F))
-             new-value]))
+      (match-define (entry prev-dist prev-value _ _) prev-e)
+      (match delta-e
+        [(entry delta-dist delta-value _ _)
+         (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e" addr
+                        prev-dist prev-value
+                        delta-dist delta-value)
+         (unless (equal? delta-dist dist)
+           (error 'sample "internal error: delta has wrong dist"))
+         (db-add! addr delta-e prev-e)
+         delta-value]
+        [(proposal-kernel kernel)
+         (define-values (new-value proposal-l-R/F)
+           (propose/kernel kernel prev-value))
+         (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
+                        prev-dist prev-value dist new-value (exp proposal-l-R/F))
+         (define new-lpr (dist-pdf dist new-value #t))
+         (db-add! addr (entry dist new-value new-lpr tag) prev-e)
+         (set! l-R/F (+ l-R/F proposal-l-R/F))
+         new-value]))
 
     (define/private (sample/prev dist tag addr prev-e)
       (cond [(equal? (entry-dist prev-e) dist)
