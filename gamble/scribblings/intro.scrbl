@@ -119,9 +119,14 @@ corresponding vector of likelihood weights. Those can be visualized using
  (lambda (vs ws) (samples->pict vs ws)))
 ]
 
-Alternatively, we can collect the weighted samples as an @emph{empirical
-distribution} (a discrete distribution). Then that distribution can be
-visualized with @racket[dist->pict].
+The plot shows the sample points (blue circles), the
+@wiki["Empirical_distribution_function"]{empirical CDF}, and
+@wiki["Kernel_density_estimation"]{Gaussian kernel density estimators} with
+various smoothing bandwidths.
+
+Alternatively, we can collect the weighted samples as a discrete @emph{empirical
+distribution}. Then that distribution can be visualized with
+@racket[dist->pict].
 
 @interaction[#:eval the-eval
 (dist->pict (sampler->discrete-dist coin-bias/s 100))
@@ -228,21 +233,21 @@ use that value as the basis for generating the next value. This is the rough
 idea behind the @wiki["Markov_chain_Monte_Carlo"]{Markov-chain Monte Carlo
 (MCMC)} family of techniques. Within the MCMC framework, there are different
 ways of generating the next sample based on the previous state; this library
-represents each technique as a @emph{transition} (@racket[transition?]) object.
-In general, if the next value is ``better'' (more likely), it is kept; otherwise
-it is randomly kept or discarded, with a probability based on its likelihood. It
-is necessary to sometimes take ``bad'' steps to actually explore the posterior
-distribution. Since the likelihood is used to determine whether to keep or
-discard the new sample, it must not be reused to weight the sample's importance,
-so all samples from an MCMC sampler have the same weight. Instead, when a
-proposed value is discarded, the previous value is repeated; thus high
+represents each technique as a @emph{transition} (@racket[mcmc-transition?])
+object.  In general, if the next value is ``better'' (more likely), it is kept;
+otherwise it is randomly kept or discarded, with a probability based on its
+likelihood. It is necessary to sometimes take ``bad'' steps to actually explore
+the posterior distribution. Since the likelihood is used to determine whether to
+keep or discard the new sample, it must not be reused to weight the sample's
+importance, so all samples from an MCMC sampler have the same weight. Instead,
+when a proposed value is discarded, the previous value is repeated; thus high
 likelihood translates to frequency of repeated values.
 
-The default transition is @racket[(single-site-transition)]. It selects a single
-random variable from the model, resamples from its prior distribution, and
-re-evaluates the model. Random variables not selected for change retain their
-values from the previous run. We typically discard (``burn'') the first few
-samples so the sampler is more likely to start in a high-probability zone.
+The default transition selects a single random variable from the model,
+resamples from its prior distribution, and re-evaluates the model. Random
+variables not selected for change retain their values from the previous run. We
+typically discard (``burn'') the first few samples so the sampler is more likely
+to start in a high-probability zone.
 
 @interaction[#:eval the-eval
 (dist->pict
@@ -274,10 +279,8 @@ anyway.
 (dist->pict
  (sampler->discrete-dist
   (mcmc-sampler thermo/m
-                #:transition (single-site-transition
-                              #:proposal (proposal
-                                          #:propose-dist (lambda (tag dist x)
-                                                           (normal-dist x 20)))))
+                #:transition (proposal-kernel
+                              (lambda (x) (normal-dist x 20))))
   100 #:burn 25))
 ]
 
@@ -293,10 +296,8 @@ Decreasing the step size can result in more motion:
 (dist->pict
  (sampler->discrete-dist
   (mcmc-sampler thermo/m
-                #:transition (single-site-transition
-                              #:proposal (proposal
-                                          #:propose-dist (lambda (tag dist x)
-                                                           (normal-dist x 10)))))
+                #:transition (proposal-kernel
+                              (lambda (x) (normal-dist x 10))))
   100 #:burn 25))
 ]
 
