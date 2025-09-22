@@ -21,13 +21,6 @@
 This section describes the distribution types and operations supported
 by @racketmodname[gamble].
 
-Unless otherwise noted, the distribution types documented in this section
-automatically convert their real-valued parameters to @tech[#:doc '(lib
-"scribblings/reference/reference.scrbl")]{flonum} values, and they report
-probability densities and cumulative probabilities as flonums, except that the
-density of a value that is out of the support type may be represented as exact
-@racket[0].
-
 @; ------------------------------------------------------------
 @section[#:tag "dist-kinds"]{Kinds of Distributions}
 
@@ -168,8 +161,35 @@ and mixture distributions, it can produce other nonnegative values.
 (dist-total-measure (hash->discrete-dist (hash)))
 ]}
 
+@defproc[(dist-discretize/quantile [d real-dist?]
+                                   [n exact-positive-integer?])
+         discrete-dist?]{
+
+Returns a discrete distribution of @racket[n] values from the support of
+@racket[d]. Each value in the discrete distribution has the same weight,
+@racket[(/ n)].
+
+The values are obtained by dividing the unit interval into @racket[n] equal-size
+segments and calling @racket[dist-inv-cdf] on the @emph{midpoints} of those
+segments.
+
+@examples[#:eval the-eval
+(dist-discretize/quantile (uniform-dist 0 8) 4)
+]}
+
+
 @; ------------------------------------------------------------
-@section[#:tag "integer-dists"]{Integer Distribution Types}
+@section[#:tag "numeric-dist"]{Numeric Distribution Types}
+
+Unless otherwise noted, the distribution types documented in this section
+automatically convert their real-valued parameters to @tech[#:doc '(lib
+"scribblings/reference/reference.scrbl")]{flonum} values, and they report
+probability densities and cumulative probabilities as flonums, except that the
+density of a value that is out of the support type may be represented as exact
+@racket[0].
+
+@; ----------------------------------------
+@subsection[#:tag "integer-dists"]{Integer Distribution Types}
 
 For integer distributions, the results of @racket[dist-sample] and
 @racket[dist-inv-cdf] are exact integers.
@@ -241,9 +261,8 @@ mean @racket[mean].
 (dist->pict (poisson-dist 5))
 ]}
 
-
-@; ------------------------------------------------------------
-@section[#:tag "real-dists"]{Real Distribution Types}
+@; ----------------------------------------
+@subsection[#:tag "real-dists"]{Real Distribution Types}
 
 For real distributions, the results of @racket[dist-sample] and
 @racket[dist-inv-cdf] are flonums.
@@ -372,8 +391,8 @@ Must satisfy @racket[(< lo hi)].
 (dist->pict (uniform-dist 0 3))
 ]}
 
-@; ------------------------------------------------------------
-@section[#:tag "dist-transformers"]{Real to Real Distribution Transformers}
+@; ----------------------------------------
+@subsection[#:tag "dist-transformers"]{Real to Real Distribution Transformers}
 
 The following constructors produce real-valued distributions.
 
@@ -424,48 +443,7 @@ called ``Lognormal'' variables.
 ]}
 
 @; ------------------------------------------------------------
-@section[#:tag "other-dists"]{Other Distribution Types}
-
-@defstruct*[boolean-dist
-            ([p probability?])]{
-
-Like a Bernoulli distribution (@racket[bernoulli-dist]), but the support
-consists of the values @racket[#t] and @racket[#f]. Unlike
-@racket[bernoulli-dist], this distribution type supports exact success
-probabilities @racket[p].
-
-@examples[#:eval the-eval
-(dist-pdf (boolean-dist 1/3) #f)
-(dist->pict (boolean-dist 0.3))
-]}
-
-@defstruct*[dirichlet-dist
-            ([alpha (vectorof (>/c 0))])]{
-
-Represents a @wiki["Dirichlet_distribution"]{Dirichlet distribution}.
-The support consists of vectors of the same length as @racket[alpha]
-whose elements are nonnegative reals summing to @racket[1.0].
-
-@examples[#:eval the-eval
-(dist-sample (dirichlet-dist (vector 2 5 1)))
-]}
-
-@defstruct*[multinomial-dist
-            ([n exact-nonnegative-integer?]
-             [weights (vectorof (>=/c 0))])]{
-
-Represents a @wiki["Multinomial_distribution"]{multinomial
-distribution}. The support consists of vectors of the same length as
-@racket[weights] representing counts of @racket[n] iterated samples
-from the corresponding categorical distribution with @racket[weights]
-for weights.
-
-@examples[#:eval the-eval
-(dist-sample (multinomial-dist 100 (vector 1/2 1/3 1/6)))
-]}
-
-@; ------------------------------------------------------------
-@section[#:tag "discrete-dist"]{Discrete Distribution Type}
+@subsection[#:tag "discrete-dist"]{Discrete Distribution Type}
 
 A discrete distribution is a distribution whose support is a finite collection
 of arbitrary Racket values. The elements of a discrete distribution are
@@ -478,8 +456,9 @@ particular, the empty discrete distribution has zero total probability.
 
 @defproc[(discrete-dist? [v any/c]) boolean?]{
 
-Returns @racket[#t] if @racket[v] is a discrete distribution,
-@racket[#f] otherwise.
+Returns @racket[#t] if @racket[v] is a discrete distribution, @racket[#f]
+otherwise. All discrete distributions are finite (@racket[finite-dist?]) and
+thus enumerable (@racket[enumerable-dist?]).
 }
 
 @defform[(discrete-dist [value-expr weight-expr] ...)
@@ -561,17 +540,62 @@ Produces a predicate that returns @racket[#t] if applied to a discrete
 distribution whose values all satisfy @racket[predicate], @racket[#f] otherwise.
 }
 
+
+@; ------------------------------------------------------------
+@section[#:tag "other-dists"]{Other Distribution Types}
+
+@defstruct*[boolean-dist
+            ([p probability?])]{
+
+Like a Bernoulli distribution (@racket[bernoulli-dist]), but the support
+consists of the values @racket[#t] and @racket[#f]. Unlike
+@racket[bernoulli-dist], this distribution type supports exact success
+probabilities @racket[p].
+
+@examples[#:eval the-eval
+(dist-pdf (boolean-dist 1/3) #f)
+(dist->pict (boolean-dist 0.3))
+]}
+
+@defstruct*[dirichlet-dist
+            ([alpha (vectorof (>/c 0))])]{
+
+Represents a @wiki["Dirichlet_distribution"]{Dirichlet distribution}.
+The support consists of vectors of the same length as @racket[alpha]
+whose elements are nonnegative reals summing to @racket[1.0].
+
+@examples[#:eval the-eval
+(dist-sample (dirichlet-dist (vector 2 5 1)))
+]}
+
+@defstruct*[multinomial-dist
+            ([n exact-nonnegative-integer?]
+             [weights (vectorof (>=/c 0))])]{
+
+Represents a @wiki["Multinomial_distribution"]{multinomial
+distribution}. The support consists of vectors of the same length as
+@racket[weights] representing counts of @racket[n] iterated samples
+from the corresponding categorical distribution with @racket[weights]
+for weights.
+
+@examples[#:eval the-eval
+(dist-sample (multinomial-dist 100 (vector 1/2 1/3 1/6)))
+]}
+
+
 @; ------------------------------------------------------------
 @section[#:tag "dist-monad"]{Finite Distributions as a Monad}
 
-The following operations, despite the @litchar{dist-} in the names,
-may produce @emph{unnormalized} discrete distributions.
+The following operations do not apply normalization to their results.
 
 @defproc[(dist-unit [v any/c]) discrete-dist?]{
 
 Returns a distribution with all probability mass concentrated on
 @racket[v].
-}
+
+@examples[#:eval the-eval
+(dist-unit 'apple)
+]}
 
 @defproc[(dist-bind [d finite-dist?]
                     [f (-> any/c finite-dist?)])
