@@ -64,3 +64,17 @@
 )
 
 ;; ============================================================
+
+(begin-encourage-inline
+  ;; Reference: https://en.wikipedia.org/wiki/Kahan_summation_algorithm
+
+  ;; compensated+ : Flonum Flonum Flonum -> (values Flonum Flonum)
+  ;; Add value x to sum s and compensator c, produce new sum and compensator.
+  (define (compensated+ x s c)
+    (define y (- x c))
+    (define t (+ s y))
+    (values t (- (- t s) y)))
+  ;; compensated-sum : (Listof Flonum) -> (values Flonum Flonum)
+  (define (compensated-sum xs)
+    (for/fold ([s 0.0] [c 0.0]) ([x (in-list xs)])
+      (compensated+ s c x))))

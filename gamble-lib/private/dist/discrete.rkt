@@ -84,43 +84,59 @@
 ;; ----------------------------------------
 ;; Constructor
 
+;; hash->discrete-dist : (Hash X NNReal) -> DiscreteDist
+;; First need to ensure immutable authentic strong hash-equal.
+;; If all exact, can compute wsum in this pass; if inexact, will need
+;; compensated sum, leave to second pass. Assume zero weights rare.
 (define (hash->discrete-dist h #:normalize? [normalize? #t])
   (define who 'hash->discrete-dist)
   (define (bad) (raise-argument-error who "(hash/c any/c (>=/c 0))" h))
   (cond [(and (hash? h) (immutable? h) (not (impersonator? h))
               (hash-equal? h) (hash-strong? h))
-         (define-values (dh ws any-exact?)
-           (for/fold ([dh h] [ws 0] [any-exact? #f])
-                     ([(v w) (in-hash h)])
+         (define-values (dh ewsum) ;; Hash, NNExactReal/#f
+           (for/fold ([dh h] [ewsum 0]) ([(v w) (in-hash h)])
              (unless (and (rational? w) (>= w 0)) (bad))
-             (values (if (zero? w) (hash-remove dh v) dh)
-                     (+ ws w)
-                     (or any-exact? (and (exact? w) (not (zero? w)))))))
-         (-hash->discrete-dist h ws any-exact? normalize?)]
+             (cond [(zero? w) (values (hash-remove dh v) ewsum)]
+                   [else (values dh (and ewsum (exact? w) (+ ewsum w)))])))
+         (-hash->discrete-dist h ewsum normalize?)]
         [(hash? h)
-         (define-values (dh ws any-exact?)
-           (for/fold ([dh (hash)] [ws 0] [any-exact? #f])
-                     ([(v w) (in-hash h)])
+         (define-values (dh ewsum)
+           (for/fold ([dh (hash)] [ewsum 0]) ([(v w) (in-hash h)])
              (unless (and (rational? w) (>= w 0)) (bad))
-             (values (if (zero? w) dh (hash-set dh v (+ w (hash-ref dh v 0))))
-                     (+ ws w)
-                     (or any-exact? (and (exact? w) (not (zero? w)))))))
-         (-hash->discrete-dist h ws any-exact? normalize?)]
+             (cond [(zero? w) (values dh ewsum)]
+                   [else (values (hash-set dh v w)
+                                 (and ewsum (exact? w) (+ ewsum w)))])))
+         (-hash->discrete-dist h ewsum normalize?)]
         [else (bad)]))
 
-(define (-hash->discrete-dist h wsum any-exact? normalize?)
-  (cond [(and any-exact? (inexact? wsum))
-         (define-values (dh ws)
-           (for/fold ([dh (hash)] [ws 0.0]) ([(v w) (in-hash h)])
-             (values (hash-set dh v (fl w)) (+ ws (fl w)))))
-         (-hash->discrete-dist dh ws #f normalize?)]
-        [(and normalize? (not (or (= wsum 1) (= wsum 0))))
-         (define-values (dh ws)
-           (for/fold ([dh (hash)] [ws 0]) ([(v w) (in-hash h)])
-             (define w* (/ w wsum))
-             (values (hash-set dh v w*) (+ ws w*))))
-         (discrete-dist dh ws)]
-        [else (discrete-dist h wsum)]))
+;; -hash->discrete-dist : (Hash X PosReal) NNExactReal/#f Boolean -> DiscreteDist
+;; If ewsum is false, then some inexact weight; else ewsum is exact weight sum.
+;; Prioritize all-exact and all-inexact cases.
+(define (-hash->discrete-dist h ewsum normalize?)
+  (cond [ewsum ;; no inexact weights
+         (cond [(and normalize? (not (= ewsum 1)) (not (= ewsum 0)))
+                (define dh (for/hash ([(v w) (in-hash h)])
+                             (values v (/ w ewsum))))
+                (discrete-dist dh 1)]
+               [else (discrete-dist h ewsum)])]
+        [else ;; need to compute inexact sum, use compensated addition
+         (define-values (dh iwsum)
+           (for/fold ([dh h] [s 0.0] [c 0.0] #:result (values dh s))
+                     ([(v w) (in-hash h)])
+             (define flw (fl w))
+             (define-values (s* c*) (compensated+ flw s c))
+             (define dh* (if (exact? w) (hash-set dh v flw) dh))
+             (values dh* s* c*)))
+         (cond [(and normalize? (not (= iwsum 1.0))) ;; can't be zero
+                (define inv-iwsum (/ iwsum))
+                (define-values (new-dh new-iwsum)
+                  (for/fold ([ddh (hash)] [s 0.0] [c 0.0] #:result (values ddh s))
+                            ([(v w) (in-hash dh)])
+                    (define w* (* w inv-iwsum))
+                    (define-values (s* c*) (compensated+ w* s c))
+                    (values (hash-set ddh v w*) s* c*)))
+                (discrete-dist new-dh new-iwsum)]
+               [else (discrete-dist dh iwsum)])]))
 
 (define empty-discrete-dist (discrete-dist '#hash() 0))
 
@@ -149,13 +165,15 @@
     (define h (discrete-dist-h dist))
     (define len (hash-count h))
     (define vs (make-vector len))
-    (define ws (make-vector len))
-    (define cws (make-vector len))
-    (for/fold ([s 0]) ([(v w) (in-hash h)] [i (in-naturals)])
+    (define ws (make-vector len))   ;; exact or flonum
+    (define cws (make-vector len))  ;; always flonum
+    (for/fold ([s 0.0] [c 0.0])
+              ([(v w) (in-hash h)] [i (in-naturals)])
       (vector-set! vs i v)
       (vector-set! ws i w)
-      (vector-set! cws i (+ s w))
-      (+ s w))
+      (define-values (s* c*) (compensated+ (fl w) s c))
+      (vector-set! cws i s*)
+      (values s* c*))
     (ddext (vector->immutable-vector vs)
            (vector->immutable-vector ws)
            (vector->immutable-vector cws)))
@@ -205,7 +223,7 @@
 (define (-discrete-sample dist)
   (match-define (discrete-dist h wsum) dist)
   (define n (hash-count h))
-  (when (zero? n) (error 'dist-sample:discrete-dist "empty distribution"))
+  (when (zero? n) (error 'dist-sample "empty distribution\n  dist: ~e" dist))
   (cond [(< n LINEAR-SAMPLE-LIMIT)
          (-discrete-sample/linear h wsum)]
         [else
@@ -216,10 +234,14 @@
 (define (-discrete-sample/linear h wsum)
   (define p (* (random) wsum))
   (let loop ([p p] [iter (hash-iterate-first h)])
-    (unless iter (error 'dist-sample:discrete-dist "internal error: out of values"))
-    (define w (hash-iterate-value h iter))
-    (cond [(> p w) (loop (- p w) (hash-iterate-next h iter))]
-          [else (hash-iterate-key h iter)])))
+    (cond [iter
+           (define w (hash-iterate-value h iter))
+           (cond [(> p w) (loop (- p w) (hash-iterate-next h iter))]
+                 [else (hash-iterate-key h iter)])]
+          [else ;; out of values
+           #;(error 'dist-sample "internal error: out of values\n  dist: ~e" dist)
+           ;; Probably floating-point error; just return first value.
+           (hash-iterate-key h (hash-iterate-first h))])))
 
 (define (-discrete-pdf dist x log?)
   (define h (discrete-dist-h dist))
@@ -271,16 +293,16 @@
          (with-syntax ([for/derived for/derived])
            #`(for/derived #,stx
                           ([dh (hash)]
-                           [wsum 0]
-                           [any-exact? #f]
-                           #:result (-hash->discrete-dist dh wsum any-exact? normalize?))
+                           [ewsum 0]
+                           #:result (-hash->discrete-dist dh ewsum normalize?))
                           (clause ...)
                (let-values ([(v w) (let () . body)])
                  (unless (and (rational? w) (>= w 0))
                    (for/dd-bad-weight 'for/dd v w))
-                 (values (for/dd-hash-add dh v w)
-                         (+ wsum w)
-                         (or any-exact? (and (exact? w) (not (zero? w))))))))]))
+                 (if (zero? w)
+                     (values dh ewsum)
+                     (values (hash-set dh v (+ w (hash-ref dh v 0)))
+                             (and ewsum (exact? w) (+ ewsum w)))))))]))
     (values (transformer #'for/fold/derived)
             (transformer #'for*/fold/derived))))
 
