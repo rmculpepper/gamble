@@ -22,6 +22,7 @@
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
   (-count dist)                    ;; Dist -> (U Nat +inf.0), upper bound
+  (-conjugate dist spec data)      ;; Dist DistSpec Vector -> Dist/#f
   #:fallbacks
   [(define (-measure self ms)
      (match-define (measurable atoms ivls) ms)
@@ -75,6 +76,9 @@
 (define (dist-count d)
   (unless (dist? d) (raise-argument-error 'dist-count "dist?" d))
   (-count d))
+
+(define (dist-conjugate d spec data)
+  (-conjugate d spec data))
 
 (define-generics enumerable-dist   ;; extends dist
   ;; Represents discrete, enumerable distributions.

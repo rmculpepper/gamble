@@ -106,7 +106,21 @@
      (-dirichlet-sample alpha))
    (define (-pdf self x log?)
      (match-define (dirichlet-dist alpha) self)
-     (-dirichlet-pdf alpha x log?))]
+     (-dirichlet-pdf alpha x log?))
+   (define (-conjugate self data-d data)
+     (match-define (dirichlet-dist alpha) self)
+     (match data-d
+       [`(categorical-dist _)
+        (define n (vector-length alpha))
+        (define new-alpha (vector-copy alpha))
+        (let/ec return
+          (for ([x (in-vector data)])
+            (cond [(and (integer? x) (<= 1 x n))
+                   (let ([x (exact x)])
+                     (vector-set! new-alpha x (add1 (vector-ref new-alpha x))))]
+                  [else (return #f)]))
+          (dirichlet-dist (vector->immutable-vector new-alpha)))]
+       [_ #f]))]
   #|
   ;; #:support ;; [0,1]^n, components sum to 1
   #:mean (let ([alphasum (vector-sum alpha)])
@@ -119,15 +133,6 @@
                     [denom (* a0 a0 (add1 a0))])
                (for/vector ([ai (in-vector alpha)])
                  (/ (* ai (- a0 ai)) denom)))
-  #:conjugate (lambda (data-d data)
-                (match data-d
-                  [`(categorical-dist _)
-                   (define n (vector-length alpha))
-                   (define countv (make-vector n 0))
-                   (for ([x (in-vector data)] [i (in-range n)])
-                     (vector-set! countv i (add1 (vector-ref countv i))))
-                   (dirichlet-dist (vector-map + alpha countv))]
-                  [_ #f]
   ;; DRIFT: (1 - eps) * value + eps * Dir(alpha)
   ;; ie, weighted avg of current value and new Dirichlet draw
   ;; Q: for alpha, should use either same parameters, OR could use uniform (1 ...)???
