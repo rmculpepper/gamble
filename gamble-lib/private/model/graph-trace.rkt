@@ -398,7 +398,7 @@
     (init-field ctx)
     (super-new)
 
-    (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID)
+    (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID), references
     (define nodeid=>node (make-hasheqv))    ;; NodeID => Node
     (define nodeid=>reach (make-hasheqv))   ;; NodeID => Reach
     (define key=>nodeid (make-hash))        ;; DBKey => NodeID
@@ -555,12 +555,12 @@
          (send ctx fail (result->value argr))]
         ))
 
-    ;; exec-stochastic-nodes! : (Listof Node) -> (Values Real Real)
+    ;; exec-stochastic-nodes! : (Vectorof Node) -> (Values Real Real)
     ;; Replay only sample/observe nodes to calculate priors and likelihoods of given slice.
     (define/public (exec-stochastic-nodes! nodes)
       (define sumlprs 0.0)
       (define sumlobs 0.0)
-      (for ([node (in-list nodes)])
+      (for ([node (in-vector nodes)])
         (match node
           [(node:sample loc addr distr tagr)
            (set! sumlprs
@@ -584,10 +584,10 @@
     ;;               -> (values (StochasticCtx Boolean -> Any) Real Real)
     (define/public (get-slice-eval keys)
       (define nodeids (get-slice keys))
-      (define all-nodes (nodeids->nodes nodeids REACH-ANY))
-      (define min-nodes (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
-      (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! min-nodes))
-      (values (get-slice-proc/interp all-nodes) slice-lprs slice-lobs))
+      (define all-nodev (nodeids->nodes nodeids REACH-ANY))
+      (define min-nodev (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
+      (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! min-nodev))
+      (values (get-slice-proc all-nodev min-nodev) slice-lprs slice-lobs))
 
     ;; show-slice : (Listof DBKey) -> Void
     (define/public (show-slice keys)
@@ -606,11 +606,11 @@
       (eprintf "Posterior dist: ~e\n" (slice-posterior-dist min-nodes)))
 
     ;; get-slice-proc : (Vectorof Node) (Vectorof Node) -> (StochasticCtx Boolean -> Any)
-    (define/private (get-slice-proc/interp all-nodes min-nodes)
-      (define (graph-eval-slice ctx full?)
-        (for ([node (in-vector (if full? all-nodes min-nodes))])
+    (define/private (get-slice-proc all-nodev min-nodev)
+      (define (graph-eval-slice ctx minimal?)
+        (for ([node (in-vector (if minimal? min-nodev all-nodev))])
           (exec-node! node ctx))
-        (if full? (result->value final-result) 'partial-eval))
+        (if minimal? 'partial-eval (result->value final-result)))
       graph-eval-slice)
 
     ;; get-slice : (Listof DBKey) (Listof NodeID)
@@ -687,40 +687,36 @@
 ;; using conjugacy relationships. Returns posterior or #f for failure.
 ;; (If dist returned, can be used for Gibbs step.)
 (define (slice-posterior-dist nodes)
-  (define updated-locs (make-hasheq)) ;; Location => Pattern
+  ;; Pattern = #f | '_ | Real | (dist-symbol Pattern ...)
+  (define loc=>pattern (make-hasheq)) ;; Location => Pattern
   (define (get-pattern r)
     (match r
       [(result:value v) (and (real? v) v)]
       [(result:location loc)
-       (or (hash-ref updated-locs loc #f)
+       (or (hash-ref loc=>pattern loc #f)
            (let ([v (fetch loc)]) (and (real? v) v)))]))
+  (define (fun-pattern fun argps)
+    (and (andmap values argps)
+         (cond [(hash-ref function=>symbol fun #f)
+                => (lambda (name) (cons name argps))]
+               [else #f])))
   ;; ----
   (define dist
     (match (vector-ref nodes 0)
       [(node:sample loc _ distr _)
-       (hash-set! updated-locs loc '_)
+       (hash-set! loc=>pattern loc '_)
        (result->value distr)]))
-  (let/ec escape
-    (define (do-obs ddistp x)
-      (eprintf "** obs ~e, ~e, ~e => ~e\n" dist ddistp x
-               (dist-conjugate dist ddistp (vector x)))
-      (set! dist (dist-conjugate dist ddistp (vector x)))
-      (unless dist (escape #f)))
-    (for ([node (in-vector nodes 1)])
-      (match node
-        [(node:sample loc _ distr _)
-         (do-obs (get-pattern distr) (fetch loc))]
-        [(node:observe distr valr)
-         (do-obs (get-pattern distr) (result->value valr))]
-        [(node:app loc fun argrs)
-         (hash-set! updated-locs loc (make-fun-pattern fun (map get-pattern argrs)))]
-        [_ (escape #f)]))
-    dist))
-
-;; Pattern = #f | '_ | Real | (dist-symbol Pattern ...)
-
-(define (make-fun-pattern fun argps)
-  (and (andmap values argps)
-       (cond [(hash-ref function=>symbol fun #f)
-              => (lambda (name) (cons name argps))]
-             [else #f])))
+  (and (conjugate-dist? dist)
+       (for/and ([node (in-vector nodes 1)])
+         (or (node:sample? node)
+             (node:observe? node)
+             (node:app? node)))
+       (for/fold ([dist dist])
+                 ([node (in-vector nodes 1)] #:break (not dist))
+         (match node
+           [(node:sample loc _ distr _)
+            (-conjugate (get-pattern distr) (vector (fetch loc)))]
+           [(node:observe distr valr)
+            (-conjugate (get-pattern distr) (vector (result->value valr)))]
+           [(node:app loc fun argrs)
+            (hash-set! loc=>pattern loc (fun-pattern fun (map get-pattern argrs)))]))))
