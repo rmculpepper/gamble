@@ -33,35 +33,18 @@
      (match-define (beta-dist a b) self)
      (m:flbeta-pdf a b (fl x) log?))]
   #:methods gen:conjugate-dist
-  [(define (-conjugate self data-d data)
+  [(define (-conjugate self xdistp x)
      (match-define (beta-dist a b) self)
-     (let/ec return
-       (match data-d
-         [`(bernoulli-dist _)
-          (for/fold ([a a] [b b] #:result (beta-dist a b))
-                    ([x (in-vector data)])
-            (cond [(and (real? x) (= x 1)) (values (add1 a) b)]
-                  [(and (real? x) (= x 0)) (values a (add1 b))]
-                  [else (return #f)]))]
-         [`(binomial-dist ,n _)
-          (for/fold ([a a] [b b] #:result (beta-dist a b))
-                    ([x (in-vector data)])
-            (cond [(and (integer? x) (<= 0 x n))
-                   (values (+ a x) (+ a n (- x)))]
-                  [else (return #f)]))]
-         [`(boolean-dist _)
-          (for/fold ([a a] [b b] #:result (beta-dist a b))
-                    ([x (in-vector data)])
-            (cond [(eq? x #t) (values (add1 a) b)]
-                  [(eq? x #f) (values a (add1 b))]
-                  [else (return #f)]))]
-         [`(geometric-dist _)
-          (for/fold ([a a] [b b] #:result (beta-dist a b))
-                    ([x (in-vector data)])
-            (cond [(and (integer? x) (<= 0 x))
-                   (values (add1 a) (+ b x))]
-                  [else (return #f)]))]
-         [_ #f])))]
+     (match xdistp
+       [`(bernoulli-dist _)
+        (if (= x 1) (beta-dist (add1 a) b) (beta-dist a (add1 b)))]
+       [`(binomial-dist ,n _)
+        (beta-dist (+ a x) (+ b n (- x)))]
+       [`(boolean-dist _)
+        (if x (beta-dist (add1 a) b) (beta-dist a (add1 b)))]
+       [`(geometric-dist _)
+        (beta-dist (+ a 1) (+ b x))]
+       [_ #f]))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
@@ -187,26 +170,25 @@
      (match-define (gamma-dist shape scale) self)
      (m:flgamma-pdf shape scale (fl x) log?))]
   #:methods gen:conjugate-dist
-  [(define (-conjugate self data-d data)
+  [(define (-conjugate self xdistp x)
      (match-define (gamma-dist shape scale) self)
-     (match data-d
+     (match xdistp
        [`(poisson-dist _)
-        (gamma-dist (+ shape (vector-sum data))
-                    (/ scale (add1 (* (vector-length data) scale))))]
+        (gamma-dist (+ shape x)
+                    (/ scale (add1 scale)))]
        [`(exponential-dist _)
-        (gamma-dist (+ shape (vector-length data))
-                    (/ (+ (/ scale) (vector-sum data))))]
+        (gamma-dist (+ shape 1)
+                    (/ (+ (/ scale) x)))]
        [`(gamma-dist ,data-shape _)
-        (gamma-dist (+ shape (* data-shape (vector-length data)))
-                    (/ (+ (/ scale) (vector-sum data))))]
+        (gamma-dist (+ shape data-shape)
+                    (/ (+ (/ scale) x)))]
        [`(inverse-gamma-dist ,data-shape _)
-        (gamma-dist (+ shape (* (vector-length data) data-shape))
-                    (/ (+ (/ scale) (for/sum ([x (in-vector data)]) (/ x)))))]
+        (gamma-dist (+ shape data-shape)
+                    (/ (+ (/ scale) (/ x))))]
        [`(normal-dist ,data-mean _)
-        (gamma-dist (+ shape (/ (vector-length data) 2))
+        (gamma-dist (+ shape 0.5)
                     (/ (+ (/ scale)
-                          (* 1/2 (for/sum ([x (in-vector data)])
-                                   (sqr (- x data-mean)))))))]
+                          (* 0.5 (sqr (- x data-mean))))))]
        [_ #f]))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
@@ -299,20 +281,17 @@
      (match-define (normal-dist mean scale) self)
      (m:flnormal-pdf mean scale (fl x) log?))]
   #:methods gen:conjugate-dist
-  [(define (-conjugate self data-d data)
+  [(define (-conjugate self xdistp x)
      (match-define (normal-dist mean scale) self)
-     (match data-d
-       [`(normal-dist _ ,data-scale)
+     (match xdistp
+       [`(normal-dist _ ,xscale)
         (normal-dist (/ (+ (/ mean (sqr scale))
-                           (/ (vector-sum data)
-                              (sqr data-scale)))
+                           (/ x (sqr xscale)))
                         (+ (/ (sqr scale))
-                           (/ (vector-length data)
-                              (sqr data-scale))))
+                           (/ (sqr xscale))))
                      (sqrt
                       (/ (+ (/ (sqr scale))
-                            (/ (vector-length data)
-                               (sqr data-scale))))))]
+                            (/ (sqr xscale))))))]
        [_ #f]))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
@@ -360,9 +339,9 @@
      (m:fluniform-pdf lo hi (fl x) log?))]
   #:methods gen:conjugate-dist
   [(define/generic conjugate -conjugate)
-   (define (-conjugate self data-d data)
+   (define (-conjugate self xdistp x)
      (match-define (uniform-dist lo hi) self)
-     (and (= lo 0.0) (= hi 1.0) (conjugate (beta-dist 1.0 1.0) data-d data)))]
+     (and (= lo 0.0) (= hi 1.0) (conjugate (beta-dist 1.0 1.0) xdistp x)))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
@@ -464,13 +443,11 @@
            -inf.0))
      (if log? lp (exp lp)))]
   #:methods gen:conjugate-dist
-  [(define (-conjugate self data-d data)
+  [(define (-conjugate self xdistp x)
      (match-define (pareto-dist scale shape) self)
-     (match data-d
-       [`(uniform-dist 0 _)
-        (pareto-dist
-         (for/fold ([acc -inf.0]) ([x (in-vector data)]) (max x acc))
-         (+ shape (vector-length data)))]
+     (match xdistp
+       [`(uniform-dist (or 0 0.0) _)
+        (pareto-dist (max scale x) (add1 shape))]
        [_ #f]))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist

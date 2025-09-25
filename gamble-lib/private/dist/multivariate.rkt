@@ -108,19 +108,15 @@
      (match-define (dirichlet-dist alpha) self)
      (-dirichlet-pdf alpha x log?))]
   #:methods gen:conjugate-dist
-  [(define (-conjugate self data-d data)
+  [(define (-conjugate self xdistp x)
      (match-define (dirichlet-dist alpha) self)
-     (match data-d
+     (match xdistp
        [`(categorical-dist _)
         (define n (vector-length alpha))
         (define new-alpha (vector-copy alpha))
-        (let/ec return
-          (for ([x (in-vector data)])
-            (cond [(and (integer? x) (<= 1 x n))
-                   (let ([x (exact x)])
-                     (vector-set! new-alpha x (add1 (vector-ref new-alpha x))))]
-                  [else (return #f)]))
-          (dirichlet-dist (vector->immutable-vector new-alpha)))]
+        (let ([x (exact x)])
+          (vector-set! new-alpha (sub1 x) (add1 (vector-ref new-alpha (sub1 x)))))
+        (dirichlet-dist (vector->immutable-vector new-alpha))]
        [_ #f]))]
   #|
   ;; #:support ;; [0,1]^n, components sum to 1

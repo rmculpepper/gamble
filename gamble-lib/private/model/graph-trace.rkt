@@ -289,6 +289,64 @@
      `(ctx-fail ,(result->expr argr))]
     ))
 
+;; exec-node! : Node StochasticCtx -> Void
+;; Perform node effect.
+(define (exec-node! node ctx)
+  (match node
+    [(node:same-if branch result)
+     (define new-branch (and (result->value result) #t))
+     (unless (eq? new-branch branch)
+       (error 'evaluate-model "structural change (if branch)"))]
+    [(node:same kind val result)
+     (define new-val (result->value result))
+     (unless (equal? new-val val)
+       (error 'evaluate-model "structural change (~a)" kind))]
+    [(node:app loc proc argrs)
+     (store! loc (apply proc (results->values argrs)))]
+    [(node:app-mv locs proc argrs)
+     (call-with-values
+      (lambda () (apply proc (results->values argrs)))
+      (lambda vs
+        (unless (= (length vs) (length locs))
+          (error 'evaluate-model "structural change (result arity)"))
+        (for ([loc (in-list locs)] [v (in-list vs)])
+          (store! loc v))))]
+    [(node:sample loc addr distr tagr)
+     (let ([dist (result->value distr)]
+           [tag (and tagr (result->value tagr))])
+       (store! loc (send ctx sample dist tag addr)))]
+    [(node:dscore argr)
+     (send ctx dscore (result->value argr))]
+    [(node:lscore argr)
+     (send ctx lscore (result->value argr))]
+    [(node:observe distr valr)
+     (send ctx observe (result->value distr) (result->value valr))]
+    [(node:fail argr)
+     (send ctx fail (result->value argr))]
+    ))
+
+;; exec-stochastic-nodes! : (Vectorof Node) -> (Values Real Real)
+;; Replay only sample/observe nodes to calculate priors and likelihoods of given slice.
+(define (exec-stochastic-nodes! nodes)
+  (define sumlprs 0.0)
+  (define sumlobs 0.0)
+  (for ([node (in-vector nodes)])
+    (match node
+      [(node:sample loc addr distr tagr)
+       (set! sumlprs
+             (+ sumlprs (dist-pdf (result->value distr) (fetch loc) #t)))]
+      [(node:dscore argr)
+       (set! sumlobs
+             (+ sumlobs (density->real (result->value argr) #t)))]
+      [(node:lscore argr)
+       (set! sumlobs
+             (+ sumlobs (result->value argr)))]
+      [(node:observe distr valr)
+       (set! sumlobs
+             (+ sumlobs (dist-pdf (result->value distr) (result->value valr) #t)))]
+      [_ (void)]))
+  (values sumlprs sumlobs))
+
 
 ;; ============================================================
 ;; Result
@@ -395,7 +453,7 @@
 
 (define graph%
   (class* object% (slicer<%>)
-    (init-field ctx)
+    (init-field [ctx (new scoring-stochastic-ctx%)])
     (super-new)
 
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID), references
@@ -507,7 +565,7 @@
     ;; (Eg, assignments to constants do not need to be repeated.)
     (define/public (do! node)
       (define (add-and-exec! [node node])
-        (begin0 (add! node) (exec-node! node)))
+        (begin0 (add! node) (exec-node! node ctx)))
       (match node
         [(node:same-if branch result)
          (when (result:location? result) (add-and-exec!))]
@@ -516,66 +574,8 @@
         [(node:sample loc addr distr tagr)
          (define nodeid (add! node))
          (hash-set! key=>nodeid addr nodeid)
-         (exec-node! node)]
+         (exec-node! node ctx)]
         [_ (add-and-exec!)]))
-
-    ;; exec-node! : Node StochasticCtx -> Void
-    ;; Perform node effect.
-    (define/public (exec-node! node [ctx ctx])
-      (match node
-        [(node:same-if branch result)
-         (define new-branch (and (result->value result) #t))
-         (unless (eq? new-branch branch)
-           (error 'evaluate-model "structural change (if branch)"))]
-        [(node:same kind val result)
-         (define new-val (result->value result))
-         (unless (equal? new-val val)
-           (error 'evaluate-model "structural change (~a)" kind))]
-        [(node:app loc proc argrs)
-         (store! loc (apply proc (results->values argrs)))]
-        [(node:app-mv locs proc argrs)
-         (call-with-values
-          (lambda () (apply proc (results->values argrs)))
-          (lambda vs
-            (unless (= (length vs) (length locs))
-              (error 'evaluate-model "structural change (result arity)"))
-            (for ([loc (in-list locs)] [v (in-list vs)])
-              (store! loc v))))]
-        [(node:sample loc addr distr tagr)
-         (let ([dist (result->value distr)]
-               [tag (and tagr (result->value tagr))])
-           (store! loc (send ctx sample dist tag addr)))]
-        [(node:dscore argr)
-         (send ctx dscore (result->value argr))]
-        [(node:lscore argr)
-         (send ctx lscore (result->value argr))]
-        [(node:observe distr valr)
-         (send ctx observe (result->value distr) (result->value valr))]
-        [(node:fail argr)
-         (send ctx fail (result->value argr))]
-        ))
-
-    ;; exec-stochastic-nodes! : (Vectorof Node) -> (Values Real Real)
-    ;; Replay only sample/observe nodes to calculate priors and likelihoods of given slice.
-    (define/public (exec-stochastic-nodes! nodes)
-      (define sumlprs 0.0)
-      (define sumlobs 0.0)
-      (for ([node (in-vector nodes)])
-        (match node
-          [(node:sample loc addr distr tagr)
-           (set! sumlprs
-                 (+ sumlprs (dist-pdf (result->value distr) (fetch loc) #t)))]
-          [(node:dscore argr)
-           (set! sumlobs
-                 (+ sumlobs (density->real (result->value argr) #t)))]
-          [(node:lscore argr)
-           (set! sumlobs
-                 (+ sumlobs (result->value argr)))]
-          [(node:observe distr valr)
-           (set! sumlobs
-                 (+ sumlobs (dist-pdf (result->value distr) (result->value valr) #t)))]
-          [_ (void)]))
-      (values sumlprs sumlobs))
 
     ;; ----------------------------------------
     ;; Re-evaluation
@@ -715,8 +715,9 @@
                  ([node (in-vector nodes 1)] #:break (not dist))
          (match node
            [(node:sample loc _ distr _)
-            (-conjugate (get-pattern distr) (vector (fetch loc)))]
+            (-conjugate dist (get-pattern distr) (fetch loc))]
            [(node:observe distr valr)
-            (-conjugate (get-pattern distr) (vector (result->value valr)))]
+            (-conjugate dist (get-pattern distr) (result->value valr))]
            [(node:app loc fun argrs)
-            (hash-set! loc=>pattern loc (fun-pattern fun (map get-pattern argrs)))]))))
+            (hash-set! loc=>pattern loc (fun-pattern fun (map get-pattern argrs)))
+            dist]))))
