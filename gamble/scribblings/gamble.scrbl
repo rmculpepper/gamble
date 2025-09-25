@@ -50,7 +50,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 @include-section["intro.scrbl"]
 @include-section["dist.scrbl"]
-@include-section["primitive.scrbl"]
+@include-section["model.scrbl"]
 @include-section["solvers.scrbl"]
 @; @include-section["notes.scrbl"]
 
@@ -64,8 +64,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
            #:author "Noah Goodman, Vikash Mansinghka, Daniel Roy, Keith Bonawitz, and Joshua Tenenbaum"
 ]
 
-@bib-entry[#:key "Bher"
-           #:title "Lightweight Imeplementations of Probabilistic Programming Languages Via Transformational Compilation"
+@bib-entry[#:key "LMH"
+           #:title "Lightweight Implementations of Probabilistic Programming Languages Via Transformational Compilation"
            #:author "David Wingate, Andreas Stuhlüller, and Noah Goodman"
            #:location "Proc. of the 14th Artificial Intelligence and Statistics"
            #:url "http://stanford.edu/~ngoodman/papers/WSG-AIStats11.pdf"]

@@ -155,14 +155,14 @@ express the model using a single observation from a binomial distribution
 
 In fact, the posterior probability distribution of this model is exactly a beta
 distribution (@racket[beta-dist]) parameterized by the number of observed
-successes and failures. (The beta distribution is a
+successes and failures (plus one). The beta distribution is a
 @wiki["Conjugate_prior"]{conjugate prior} for a binomial observation, and
-Uniform(0,1) is equivalent to Beta(0,0).)  We can compare the visualizations of
+Uniform(0,1) is equivalent to Beta(1,1).  We can compare the visualizations of
 that distribution to the model's empirical distribution to confirm that our
 sampler produces roughly the right result:
 
 @interaction[#:eval the-eval
-(dist->pict (beta-dist 3 7))
+(dist->pict (beta-dist (add1 3) (add1 7)))
 ]
 
 

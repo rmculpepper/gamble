@@ -14,24 +14,15 @@
 
 @title[#:tag "solvers"]{Samplers and Solvers}
 
-The point of writing a generate model is typically not to simply run
-it to generate data, but rather to do @emph{inference} on it---for
-example, to estimate parameters given observed data. This requires
-wrapping the model in a @tech{sampler} or @tech{solver} of some sort.
-
-A @deftech{sampler} is an object that contains a probabilistic program
+A @deftech{sampler} is an object that contains a probabilistic model
 and produces samples from the posterior distribution of its result
-expression. Samplers can be either unweighted (where each sample is
-equally representative of the posterior distribution) or
-@deftech[#:key "weighted sampler"]{weighted} (where each sample comes
-with a factor that corrects for the ratio of its sampling frequency
-and its probability in the posterior distribution).
+expression. Samplers can be either unweighted or weighted.
 
 The following samplers are supported:
 @itemlist[
 
 @item{@racket[rejection-sampler] --- unweighted sampler, does not support
-observations on continuous random variables}
+observations}
 
 @item{@racket[importance-sampler] --- weighted sampler}
 
@@ -48,19 +39,6 @@ are supported:
 @item{@racket[enumerate] --- exhaustive enumeration, exponential in number of
 random variables, cannot handle sampling from continuous random variables}
 
-]
-
-The examples in the following sections use the following function
-definitions:
-
-@interaction[#:eval the-eval
-(define (count-heads n)
-  (if (zero? n)
-      0
-      (+ (if (sample (boolean-dist 1/2)) 1 0)
-         (count-heads (sub1 n)))))
-(define (geom)
-  (if (sample (boolean-dist 1/2)) 0 (add1 (geom))))
 ]
 
 @section[#:tag "sampler-funs"]{Basic Sampler Functions}
@@ -82,27 +60,20 @@ produces always have weight @racket[1].
 
 @defproc[(generate-samples [s weighted-sampler?]
                            [n exact-nonnegative-integer?]
-                           [f (-> any/c any/c) values]
                            [#:burn burn exact-nonnegative-integer? 0]
                            [#:thin thin exact-nonnegative-integer? 0])
          (vectorof any/c)]{
 
-Generates @racket[n] samples from the sampler @racket[s] passed
-through the optional function @racket[f]. If @racket[s] is not a
-sampler but only a weighted sampler, unweighted samples are produced
-by residual resampling (see @racket[resample]).
-
-The sampler is first called @racket[burn] times and the results are
-discarded. In addition, the sampler is called @racket[thin] times
-before every sample to be retained.
+Generates @racket[n] samples from the sampler @racket[s]. The sampler is first
+called @racket[burn] times and the results are discarded. In addition, the
+sampler is called @racket[thin] times before every sample to be retained.
 }
 
 @defproc[(generate-weighted-samples [s weighted-sampler?] 
                                     [n exact-nonnegative-integer?]
-                                    [f (-> any/c any/c) values]
                                     [#:burn burn exact-nonnegative-integer? 0]
                                     [#:thin thin exact-nonnegative-integer? 0])
-         (vectorof (cons/c any/c (>=/c 0)))]{
+         (values (vectorof any/c) (vectorof (>/c 0)))]{
 
 Generates @racket[n] weighted samples from the @tech{weighted sampler}
 @racket[s] passed through the optional function @racket[f]. The
@@ -111,36 +82,19 @@ weighted samples are returned as a vector of value-weight pairs.
 
 @defproc[(sampler->discrete-dist [sampler weighted-sampler?]
                                  [n exact-positive-integer?]
-                                 [f (-> any/c any/c) (lambda (x) x)]
                                  [#:burn burn exact-nonnegative-integer? 0]
                                  [#:thin thin exact-nonnegative-integer? 0])
          discrete-dist?]{
 
-Returns the empirical distribution obtained by generating @racket[n]
-samples from @racket[sampler], apply @racket[f] to each result.
-
-@examples[#:eval the-eval
-(sampler->discrete-dist
- (rejection-sampler (lambda () (sample (boolean-dist 1/2))))
- 100)
-(sampler->discrete-dist
- (importance-sampler
-   (lambda ()
-     (define R (sample (binomial-dist 20 1/2)))
-     (observe (normal-dist R 1) 9)
-     R))
- 100)
-]}
+Returns the empirical distribution obtained by generating @racket[n] samples
+from @racket[sampler].
+}
 
 
 @; ============================================================
 @section[#:tag "samplers-basic"]{Basic Sampler Forms}
 
-The samplers supported by this language consist of simple samplers and
-a more complicated and flexible
-@seclink["mcmc-sampler"]{MCMC sampler framework}.
-
-@defproc[(rejection-sampler [f (-> any/c)]) sampler?]{
+@defproc[(rejection-sampler [m model?]) sampler?]{
 
 Produces a @tech{sampler} that, when applied, returns a value of
 @racket[result-expr] arising from an execution where all observations
@@ -167,7 +121,9 @@ observations (@racket[dscore], @racket[observe]) on them.
 (sampler->discrete-dist rs-count-heads 10)
 ]}
 
-@defproc[(importance-sampler [f (-> any/c)]) weighted-sampler?]{
+@defproc[(importance-sampler [m model?]
+                             [#:propose propose (or/c #f (-> any/c dist? dist?)) #f])
+         weighted-sampler?]{
 
 Like @racket[rejection-sampler], but returns a @emph{weighted sampler}
 that uses weights to represent the quality of a particular sample
