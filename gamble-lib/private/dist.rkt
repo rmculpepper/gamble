@@ -97,3 +97,28 @@
          (struct-out affine-distx)
          (struct-out clip-distx)
          (struct-out exp-distx))
+
+;; ----------------------------------------
+
+(module+ meta
+  (provide dist-conjugate
+           (all-defined-out))
+  ;; Names of likelihood functions used by dist-conjugate.
+  (define function=>symbol
+    (hasheq bernoulli-dist   'bernoulli-dist
+            beta-dist        'beta-dist
+            binomial-dist    'binomial-dist
+            boolean-dist     'boolean-dist
+            categorical-dist 'categorical-dist
+            ;; cauchy-dist      'cauchy-dist
+            dirichlet-dist   'dirichlet-dist
+            exponential-dist 'exponential-dist
+            gamma-dist       'gamma-dist
+            geometric-dist   'geometric-dist
+            ;; logistic-dist    'logistic-dist
+            normal-dist      'normal-dist
+            pareto-dist      'pareto-dist
+            poisson-dist     'poisson-dist
+            ;; student-t-dist   'student-t-dist
+            uniform-dist     'uniform-dist
+            )))

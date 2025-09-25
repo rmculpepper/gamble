@@ -18,6 +18,7 @@
          "../addr.rkt"
          "../base.rkt"
          (only-in "../dist.rkt" dist-pdf)
+         (submod "../dist.rkt" meta)
          (only-in "../util/density.rkt" density->real)
          "instrument.rkt")
 (provide (all-defined-out))
@@ -164,7 +165,9 @@
                              [vars (instrument rhs)] ...)
                (instrument body) ...)]
           [(set! ~! var e)
-           (raise-syntax-error #f "unsupported in model with tracing" stx)]
+           (cond [(free-id-table-ref local-variables #'var #f)
+                  #'(set! var (instrument e))]
+                 [else (raise-syntax-error #f "unsupported in model with tracing" stx)])]
           [(quote ~! d)
            #'(result:value ee)]
           [(quote-syntax . _)
@@ -397,6 +400,7 @@
 
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID)
     (define nodeid=>node (make-hasheqv))    ;; NodeID => Node
+    (define nodeid=>reach (make-hasheqv))   ;; NodeID => Reach
     (define key=>nodeid (make-hash))        ;; DBKey => NodeID
     (define final-result #f)                ;; Result, mutated
 
@@ -407,7 +411,11 @@
         (when (hash-has-key? nodeid=>node nodeid)
           (define node (hash-ref nodeid=>node nodeid))
           (define expr (node->expr node loc=>index))
-          (printf "  ~s : ~s\n" nodeid (if expr? expr node))))
+          (printf "  ~s ~a ~s\n" nodeid
+                  (let ([reach (hash-ref nodeid=>reach nodeid 0)])
+                    (cond [(= reach 0) "="]
+                          [else ":"]))
+                  (if expr? expr node))))
       (printf "Store:\n")
       (define index=>loc (make-vector (hash-count loc=>index)))
       (for ([(loc index) (in-hash loc=>index)])
@@ -426,6 +434,7 @@
         [(model/tracing _ gproc _)
          (define result (gproc this (current-init-addr)))
          (set! final-result result)
+         (calculate-reach!)
          (result->value result)]))
 
     ;; ----------------------------------------
@@ -571,35 +580,42 @@
     ;; ----------------------------------------
     ;; Re-evaluation
 
-    ;; get-slice-eval : (Listof DBKey) (Listof NodeID)
+    ;; get-slice-eval : (Listof DBKey)
     ;;               -> (values (StochasticCtx Boolean -> Any) Real Real)
-    (define/public (get-slice-eval #:keys [keys null]
-                                   #:nodeids [nodeids null])
-      (define-values (nodes updated-locs) (get-slice keys nodeids))
-      (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! nodes))
-      (values (get-slice-proc/interp nodes) slice-lprs slice-lobs))
+    (define/public (get-slice-eval keys)
+      (define nodeids (get-slice keys))
+      (define all-nodes (nodeids->nodes nodeids REACH-ANY))
+      (define min-nodes (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
+      (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! min-nodes))
+      (values (get-slice-proc/interp all-nodes) slice-lprs slice-lobs))
 
-    (define/private (get-slice-proc/interp nodes)
-      (lambda (ctx)
-        (for ([node (in-list nodes)])
+    ;; show-slice : (Listof DBKey) -> Void
+    (define/public (show-slice keys)
+      (begin ;; initialize loc=>index
+        (define loc=>index (make-hasheq))
+        (for ([nodeid (in-range 0 nodeid-counter)])
+          (define node (hash-ref nodeid=>node nodeid #f))
+          (when node (void (node->expr node loc=>index)))))
+      (define nodeids (get-slice keys))
+      (define all-nodes (nodeids->nodes nodeids REACH-ANY))
+      (define min-nodes (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
+      (eprintf "Slice all-nodes:\n")
+      (for ([node all-nodes]) (eprintf "- ~s\n" (node->expr node loc=>index)))
+      (eprintf "Slice min-nodes:\n")
+      (for ([node min-nodes]) (eprintf "- ~s\n" (node->expr node loc=>index)))
+      (eprintf "Posterior dist: ~e\n" (slice-posterior-dist min-nodes)))
+
+    ;; get-slice-proc : (Vectorof Node) (Vectorof Node) -> (StochasticCtx Boolean -> Any)
+    (define/private (get-slice-proc/interp all-nodes min-nodes)
+      (define (graph-eval-slice ctx full?)
+        (for ([node (in-vector (if full? all-nodes min-nodes))])
           (exec-node! node ctx))
-        (result->value final-result)))
+        (if full? (result->value final-result) 'partial-eval))
+      graph-eval-slice)
 
-    ;; get-slice-expr : (Listof DBKey) (Listof NodeID) -> Expr
-    (define/public (get-slice-expr #:keys [keys null]
-                                   #:nodeids [nodeids null])
-      (define-values (nodes updated-locs) (get-slice keys nodeids))
-      `(begin
-         ,@(for/list ([node (in-list nodes)])
-             (node->expr node updated-locs))
-         ,(match final-result
-            [(result:value val) `(quote ,val)]
-            [(result:location loc)
-             `(fetch ,(hash-ref updated-locs loc '??))])))
-
-    ;; get-slice : (Listof DBKey) (Listof NodeID) Boolean
-    ;;           -> (values (Listof NodeID) (Hash Location (U Nat #t)))
-    (define/private (get-slice keys nodeids [make-names? #t])
+    ;; get-slice : (Listof DBKey) (Listof NodeID)
+    ;;           -> (values (Listof NodeID) (Hash Location #t))
+    (define/private (get-slice keys)
       (define seen-nodeids (make-hasheqv))
       (define updated-locs (make-hasheq))
       (define (add-nodeids! nodeids)
@@ -612,15 +628,99 @@
       (define (add-locs! locs)
         (for ([loc (in-list locs)])
           (unless (hash-ref updated-locs loc #f)
-            (hash-set! updated-locs loc (if make-names? (hash-count updated-locs) #t))
+            (hash-set! updated-locs loc #t)
             (add-nodeids! (hash-ref loc=>nodeids loc null)))))
-      (add-nodeids! nodeids)
       (for ([key (in-list keys)])
         (let ([nodeid (hash-ref key=>nodeid key #f)])
           (when nodeid (add-nodeids! (list nodeid)))))
-      (define sorted-nodeids (sort (hash-keys seen-nodeids) <))
-      (values (map (lambda (nodeid) (hash-ref nodeid=>node nodeid)) sorted-nodeids)
-              updated-locs))
+      (sort (hash-keys seen-nodeids) <))
+
+    ;; Reach = Nat[3 bits]
+    (define REACH-ANY        #b001)
+    (define REACH-STOCHASTIC #b010)
+    (define REACH-SAME       #b100)
+
+    ;; calculate-reach! : -> Void
+    (define/private (calculate-reach!)
+      (define loc=>defnodeid (make-hasheq)) ;; Location => NodeID
+      (for ([(nodeid node) (in-hash nodeid=>node)])
+        (define-values (readlocs writelocs) (node-locations node))
+        (for ([writeloc (in-list writelocs)])
+          (hash-set! loc=>defnodeid writeloc nodeid)))
+      ;; ----
+      (define (mark-nodeid nodeid reach)
+        (define oldreach (hash-ref nodeid=>reach nodeid REACH-ANY))
+        (unless (= reach (bitwise-and reach oldreach))
+          (define newreach (bitwise-ior reach oldreach))
+          (hash-set! nodeid=>reach nodeid newreach)
+          (define node (hash-ref nodeid=>node nodeid))
+          (define-values (readlocs writelocs) (node-locations node))
+          (for ([readloc (in-list readlocs)])
+            (define defnodeid (hash-ref loc=>defnodeid readloc))
+            (mark-nodeid defnodeid newreach))))
+      (for ([(nodeid node) (in-hash nodeid=>node)])
+        (cond [(or (node:same? node)
+                   (node:same-if? node))
+               (mark-nodeid nodeid REACH-SAME)]
+              [(or (node:sample? node)
+                   (node:dscore? node)
+                   (node:lscore? node)
+                   (node:observe? node))
+               (mark-nodeid nodeid REACH-STOCHASTIC)]
+              [else (void)]))
+      nodeid=>reach)
+
+    ;; nodeids->nodes : (Listof NodeID) Reach -> (Vectorof Node)
+    ;; Returns nodes, filtered to include only those that overlap wantreach.
+    (define/private (nodeids->nodes nodeids wantreach)
+      (list->vector
+       (for/list ([nodeid (in-list nodeids)]
+                  #:when (let ([reach (hash-ref nodeid=>reach nodeid REACH-ANY)])
+                           (not (zero? (bitwise-and reach wantreach)))))
+         (hash-ref nodeid=>node nodeid))))
     ))
 
 ;; ============================================================
+
+;; slice-posterior-dist : (Listof Node) -> Dist/#f
+;; Calculates the posterior dist of the RV sampled in first node,
+;; using conjugacy relationships. Returns posterior or #f for failure.
+;; (If dist returned, can be used for Gibbs step.)
+(define (slice-posterior-dist nodes)
+  (define updated-locs (make-hasheq)) ;; Location => Pattern
+  (define (get-pattern r)
+    (match r
+      [(result:value v) (and (real? v) v)]
+      [(result:location loc)
+       (or (hash-ref updated-locs loc #f)
+           (let ([v (fetch loc)]) (and (real? v) v)))]))
+  ;; ----
+  (define dist
+    (match (vector-ref nodes 0)
+      [(node:sample loc _ distr _)
+       (hash-set! updated-locs loc '_)
+       (result->value distr)]))
+  (let/ec escape
+    (define (do-obs ddistp x)
+      (eprintf "** obs ~e, ~e, ~e => ~e\n" dist ddistp x
+               (dist-conjugate dist ddistp (vector x)))
+      (set! dist (dist-conjugate dist ddistp (vector x)))
+      (unless dist (escape #f)))
+    (for ([node (in-vector nodes 1)])
+      (match node
+        [(node:sample loc _ distr _)
+         (do-obs (get-pattern distr) (fetch loc))]
+        [(node:observe distr valr)
+         (do-obs (get-pattern distr) (result->value valr))]
+        [(node:app loc fun argrs)
+         (hash-set! updated-locs loc (make-fun-pattern fun (map get-pattern argrs)))]
+        [_ (escape #f)]))
+    dist))
+
+;; Pattern = #f | '_ | Real | (dist-symbol Pattern ...)
+
+(define (make-fun-pattern fun argps)
+  (and (andmap values argps)
+       (cond [(hash-ref function=>symbol fun #f)
+              => (lambda (name) (cons name argps))]
+             [else #f])))
