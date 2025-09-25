@@ -8,6 +8,7 @@
          racket/math
          racket/flonum
          racket/vector
+         racket/generic
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          (prefix-in m: (only-in math/flonum flbinomial fllog-binomial))
@@ -30,8 +31,9 @@
      (flvector-ref (m:flbeta-sample a b 1) 0))
    (define (-pdf self x log?)
      (match-define (beta-dist a b) self)
-     (m:flbeta-pdf a b (fl x) log?))
-   (define (-conjugate self data-d data)
+     (m:flbeta-pdf a b (fl x) log?))]
+  #:methods gen:conjugate-dist
+  [(define (-conjugate self data-d data)
      (match-define (beta-dist a b) self)
      (let/ec return
        (match data-d
@@ -183,8 +185,9 @@
      (flvector-ref (m:flgamma-sample shape scale 1) 0))
    (define (-pdf self x log?)
      (match-define (gamma-dist shape scale) self)
-     (m:flgamma-pdf shape scale (fl x) log?))
-   (define (-conjugate self data-d data)
+     (m:flgamma-pdf shape scale (fl x) log?))]
+  #:methods gen:conjugate-dist
+  [(define (-conjugate self data-d data)
      (match-define (gamma-dist shape scale) self)
      (match data-d
        [`(poisson-dist _)
@@ -294,8 +297,9 @@
      (flvector-ref (m:flnormal-sample mean scale 1) 0))
    (define (-pdf self x log?)
      (match-define (normal-dist mean scale) self)
-     (m:flnormal-pdf mean scale (fl x) log?))
-   (define (-conjugate self data-d data)
+     (m:flnormal-pdf mean scale (fl x) log?))]
+  #:methods gen:conjugate-dist
+  [(define (-conjugate self data-d data)
      (match-define (normal-dist mean scale) self)
      (match data-d
        [`(normal-dist _ ,data-scale)
@@ -353,10 +357,12 @@
      (+ lo (* (- hi lo) (random))))
    (define (-pdf self x log?)
      (match-define (uniform-dist lo hi) self)
-     (m:fluniform-pdf lo hi (fl x) log?))
+     (m:fluniform-pdf lo hi (fl x) log?))]
+  #:methods gen:conjugate-dist
+  [(define/generic conjugate -conjugate)
    (define (-conjugate self data-d data)
      (match-define (uniform-dist lo hi) self)
-     (and (= lo 0.0) (= hi 1.0) (dist-conjugate (beta-dist 1.0 1.0) data-d data)))]
+     (and (= lo 0.0) (= hi 1.0) (conjugate (beta-dist 1.0 1.0) data-d data)))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
@@ -456,8 +462,9 @@
            (- (+ (log shape) (* shape (log scale)))
               (* (add1 shape) (log x)))
            -inf.0))
-     (if log? lp (exp lp)))
-   (define (-conjugate self data-d data)
+     (if log? lp (exp lp)))]
+  #:methods gen:conjugate-dist
+  [(define (-conjugate self data-d data)
      (match-define (pareto-dist scale shape) self)
      (match data-d
        [`(uniform-dist 0 _)

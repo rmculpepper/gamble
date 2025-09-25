@@ -106,8 +106,9 @@
      (-dirichlet-sample alpha))
    (define (-pdf self x log?)
      (match-define (dirichlet-dist alpha) self)
-     (-dirichlet-pdf alpha x log?))
-   (define (-conjugate self data-d data)
+     (-dirichlet-pdf alpha x log?))]
+  #:methods gen:conjugate-dist
+  [(define (-conjugate self data-d data)
      (match-define (dirichlet-dist alpha) self)
      (match data-d
        [`(categorical-dist _)

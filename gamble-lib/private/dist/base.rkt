@@ -22,7 +22,6 @@
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
   (-count dist)                    ;; Dist -> (U Nat +inf.0), upper bound
-  (-conjugate dist spec data)      ;; Dist DistSpec Vector -> Dist/#f
   #:fallbacks
   [(define (-measure self ms)
      (match-define (measurable atoms ivls) ms)
@@ -76,9 +75,6 @@
 (define (dist-count d)
   (unless (dist? d) (raise-argument-error 'dist-count "dist?" d))
   (-count d))
-
-(define (dist-conjugate d spec data)
-  (-conjugate d spec data))
 
 (define-generics enumerable-dist   ;; extends dist
   ;; Represents discrete, enumerable distributions.
@@ -194,6 +190,12 @@
         [(and (integer-dist? dist) (not (integer? x))) #f]
         [(and (real-dist? dist) (not (rational? x))) #f]
         [else (-drift-dist dist x params? scale)]))
+
+(define-generics conjugate-dist           ;; extends dist
+  ;; Represents conjugate priors. The `-conjugate` operation assumes
+  ;; that the data are have non-zero likelihood. The `data` argument
+  ;; is a vector for (currently) no good reason.
+  (-conjugate conjugate-dist spec data))  ;; Dist DistSpec Vector -> Dist/#f
 
 ;; ============================================================
 

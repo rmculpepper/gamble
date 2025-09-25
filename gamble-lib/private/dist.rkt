@@ -101,7 +101,8 @@
 ;; ----------------------------------------
 
 (module+ meta
-  (provide dist-conjugate
+  (provide conjugate-dist?
+           -conjugate
            (all-defined-out))
   ;; Names of likelihood functions used by dist-conjugate.
   (define function=>symbol
