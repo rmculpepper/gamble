@@ -335,11 +335,11 @@
   (define base-value (send interp eval-top m))
   (define base-trace (send base-ctx make-trace base-value))
   (define-values (re slice-lprs slice-lobs)
-    (send interp get-slice-eval #:keys keys))
+    (send interp get-slice-eval keys))
   (define rest-lprs (- (trace-lprs base-trace) slice-lprs))
   (define rest-lobs (- (trace-lobs base-trace) slice-lobs))
   (define base-db (trace-db base-trace))
-  (define (eval-slice delta-db)
+  (define (eval-slice delta-db mini?)
     (define slice-ctx
       (new tracing-stochastic-ctx%
            (prev-db base-db)
@@ -347,7 +347,7 @@
            (sumlprs rest-lprs)
            (sumlobs rest-lobs)
            (disallow-new/who who)))
-    (match (send slice-ctx run-top (lambda () (re slice-ctx)))
+    (match (send slice-ctx run-top (lambda () (re slice-ctx mini?)))
       [(list result) (send slice-ctx make-trace result)]
       [#f #f]))
   eval-slice)

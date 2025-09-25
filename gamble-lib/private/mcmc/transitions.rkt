@@ -166,9 +166,10 @@
       (define conditional-dist
         (log-hash->normalized-discrete-dist
          (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
-           (define new-trace (eval-slice new-value))
+           (define new-trace (eval-slice new-value #t))
            (if new-trace (hash-set lh new-trace (trace-lj new-trace)) lh))))
-      (define new-trace (dist-sample conditional-dist))
+      (define new-value (trace-value (dist-sample conditional-dist)))
+      (define new-trace (eval-slice new-value #f))
       (complete-slice-trace! new-trace prev-db)
       (values new-trace (vector who key tag)))
 
@@ -228,10 +229,11 @@
       (define lthreshold (+ (log (random)) prev-lj))
       (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
       (define eval-trace (make-caching-eval-trace who mdl prev-trace key))
-      (define (eval-lj new-value) (cond [(eval-trace new-value) => trace-lj] [else -inf.0]))
+      (define (eval-lj new-value) (cond [(eval-trace new-value #t) => trace-lj] [else -inf.0]))
       ;; --------------------
       (define-values (lo hi) (get-slice-bounds lthreshold dist prev-value eval-lj))
-      (define new-trace (select dist prev-value eval-trace eval-lj lo hi lthreshold))
+      (define new-value (select dist prev-value eval-lj lo hi lthreshold))
+      (define new-trace (eval-trace new-value #f))
       (complete-slice-trace! new-trace prev-db)
       (values new-trace (vector who key tag)))
 
@@ -241,8 +243,10 @@
       (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
       (hash-set! trace-cache prev-value prev-trace)
       (define base-eval-trace (make-eval-trace who mdl prev-trace key))
-      (define (caching-eval-trace new-value)
-        (hash-ref! trace-cache new-value (lambda () (base-eval-trace new-value))))
+      (define (caching-eval-trace new-value mini?)
+        (if mini?
+            (hash-ref! trace-cache new-value (lambda () (base-eval-trace new-value #t)))
+            (base-eval-trace new-value #f)))
       caching-eval-trace)
 
     (define/private (make-eval-trace who mdl prev-trace key)
@@ -254,10 +258,10 @@
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
       (define eval-slice (make-eval-slice who mdl prev-db (list key)))
-      (define (eval-trace/slice new-value)
+      (define (eval-trace/slice new-value mini?)
         (log-mcmc-info "Eval at ~e" new-value)
         (define new-lpr (dist-pdf dist new-value #t))
-        (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag))))
+        (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag)) mini?))
         (log-mcmc-info "Eval lj ~e" (and new-trace (trace-lj new-trace)))
         new-trace)
       eval-trace/slice)
@@ -265,7 +269,7 @@
     (define/private (make-eval-trace/full who mdl prev-trace key)
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
-      (define (eval-trace/full new-value)
+      (define (eval-trace/full new-value mini?)
         (define new-lpr (dist-pdf dist new-value #t))
         (cond [(not (logspace-zero? new-lpr))
                (define delta-db
@@ -329,20 +333,18 @@
     ;; ----------------------------------------
     ;; Select value in slice
 
-    ;; select : ... -> Trace
-    (define/private (select dist init-value eval-trace eval-lj lo0 hi0 lthreshold)
+    ;; select : Dist[X] X .... -> X
+    (define/private (select dist init-value eval-lj lo0 hi0 lthreshold)
       (let loop ([lo lo0] [hi hi0])
         (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
         (define new-value
           (if (integer-dist? dist)
               (+ lo (random (add1 (- hi lo))))
               (+ lo (* (random) (- hi lo)))))
-        (define new-trace (eval-trace new-value))
-        (cond [(and new-trace
-                    (> (trace-lj new-trace) lthreshold)
+        (cond [(and (> (eval-lj new-value) lthreshold)
                     (acceptable? lo0 hi0 lthreshold init-value new-value eval-lj dist))
                (log-mcmc-info "Selected ~s" new-value)
-               new-trace]
+               new-value]
               [(integer-dist? dist)
                (if (< new-value init-value)
                    (loop (add1 new-value) hi)
