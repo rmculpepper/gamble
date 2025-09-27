@@ -22,9 +22,6 @@
                                 #:any [ok-tag? #f])
   (new single-site-transition% (ok-tag? ok-tag?) (transition transition)))
 
-(define (enumerative-gibbs-transition)
-  (new enumerative-gibbs-transition%))
-
 (define (slice-transition #:method [method 'double]
                           #:W [Wr 1.0]
                           #:Wi [Wi (exact (ceiling Wr))]

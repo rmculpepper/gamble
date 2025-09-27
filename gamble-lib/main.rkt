@@ -72,8 +72,6 @@
                 [mcmc-transition/single-site/c
                  #:any (or/c #f (-> any/c dist? any))]
                 any)]
-          [enumerative-gibbs-transition
-           (-> any)]
           [slice-transition
            (->* []
                 [#:method (or/c 'double 'step)

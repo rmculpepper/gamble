@@ -143,68 +143,6 @@
     ))
 
 ;; ============================================================
-
-(define enumerative-gibbs-transition%
-  (class* object% (mcmc-transition/single-site<%>)
-    (super-new)
-
-    ;; run/key : (Model A) Trace DBKey Entry Real -> (values Trace/#f TxInfo)
-    (define/public (run/key mdl prev-trace key prev-e)
-      (run/slice mdl prev-trace key prev-e))
-
-    ;; run/slice : (Model A) Trace DBKey Entry Real -> (values Trace/#f TxInfo)
-    (define/public (run/slice mdl prev-trace key prev-e)
-      (define who 'enumerative-gibbs-transition)
-      (define prev-db (trace-db prev-trace))
-      (match-define (entry dist prev-value _ tag) prev-e)
-      (unless (finite-dist? dist)
-        (error who "distribution is not finite\n  key: ~e\n  dist: ~e" key dist))
-      (define (make-entry new-value)
-        (entry dist new-value (dist-pdf dist new-value #t) tag))
-      (define eval-slice (make-eval-slice who mdl prev-db (list key)))
-      (define conditional-dist
-        (log-hash->normalized-discrete-dist
-         (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
-           (define new-trace (eval-slice new-value #t))
-           (if new-trace (hash-set lh new-trace (trace-lj new-trace)) lh))))
-      (define new-value (trace-value (dist-sample conditional-dist)))
-      (define new-trace (eval-slice new-value #f))
-      (complete-slice-trace! new-trace prev-db)
-      (values new-trace (vector who key tag)))
-
-    ;; run/full : (Model A) Trace -> (values (U Trace #f) TxInfo)
-    (define/public (run/full mdl prev-trace key prev-e)
-      (define who 'enumerative-gibbs-transition)
-      (define prev-db (trace-db prev-trace))
-      (match-define (entry dist prev-value _ tag) prev-e)
-      (unless (finite-dist? dist)
-        (error who "distribution is not finite\n  key: ~e\n  dist: ~e" key dist))
-      (define (make-entry new-value)
-        (entry dist new-value (dist-pdf dist new-value #t tag)))
-      (define conditional-dist
-        (log-hash->normalized-discrete-dist
-         (for/fold ([lh (hash)]) ([new-value (in-dist-values dist)])
-           (cond [(equal? new-value prev-value)
-                  (hash-set lh prev-trace (trace-lj prev-trace))]
-                 [else
-                  (define new-entry (make-entry new-value))
-                  (define delta-db (hash key new-entry))
-                  (define ctx (new tracing-stochastic-ctx%
-                                   (prev-db prev-db)
-                                   (delta-db delta-db)
-                                   (disallow-new/who who)))
-                  (match (send ctx run-top mdl)
-                    [(list new-result)
-                     (define new-trace (send ctx make-trace new-result))
-                     (unless (traces-same-structure? prev-trace new-trace #t)
-                       (error who "structural change not allowed"))
-                     (hash-set lh new-trace (trace-lj new-trace))]
-                    [#f lh])]))))
-      (define new-trace (dist-sample conditional-dist))
-      (values new-trace (vector who)))
-    ))
-
-;; ============================================================
 ;; Slice sampling
 ;; https://www.cs.toronto.edu/pub/radford/slice-aos.pdf
 
