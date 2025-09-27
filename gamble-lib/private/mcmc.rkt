@@ -40,6 +40,9 @@
 
     (field [mrun (new model-runner% (mdl mdl))])
 
+    (define/public (show)
+      (send mrun show))
+
     ;; step : Transition -> (values Boolean Trace TxInfo)
     (define/public (step transition)
       (log-mcmc-info "START transition ~e" transition)
@@ -82,6 +85,9 @@
 
     (define mcmc (new mcmc% (mdl mdl)))
     (define/public (get-mcmc) mcmc)
+
+    (define/public (show)
+      (send mcmc show))
 
     (define/override (sample)
       (define-values (accepted? trace txinfo)

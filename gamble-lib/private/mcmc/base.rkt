@@ -350,12 +350,6 @@
 ;; ============================================================
 ;; Runner
 
-(define (complete-slice-trace! slice-trace prev-db)
-  (define slice-db (trace-db slice-trace))
-  (for ([(key entry) (in-hash prev-db)])
-    (unless (hash-has-key? slice-db key)
-      (hash-set! slice-db key entry))))
-
 ;; How an MCMC transition runs a model depends on 3 questions:
 ;; - Does transition allow structural changes?
 ;; - Can I reuse existing graph/slice?
@@ -386,6 +380,16 @@
     ;; In eval-cache, box indicates whether graph boxes are ok (consistent).
     ;; If a slice eval fails or partial, then boxes may be left in inconsistent state.
     ;; Then cannot switch slices w/ same graph, must discard (complicated to fix).
+
+    (define/public (show)
+      (when graph-cache
+        (printf "Graph:\n")
+        (send graph-cache show)
+        (match eval-cache
+          [(list* keys _)
+           (eprintf "\nCurrent slice: ~e\n" keys)
+           (send graph-cache show-slice keys)]
+          [#f (void)])))
 
     ;; invalidate-cache! : -> Void
     (define/private (invalidate-cache!)
@@ -496,3 +500,9 @@
           [#f #f]))
       (values eval-slice consistent-b))
     ))
+
+(define (complete-slice-trace! slice-trace prev-db)
+  (define slice-db (trace-db slice-trace))
+  (for ([(key entry) (in-hash prev-db)])
+    (unless (hash-has-key? slice-db key)
+      (hash-set! slice-db key entry))))
