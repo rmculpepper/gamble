@@ -143,7 +143,8 @@
 
 (define slice-transition%
   (class* object% (mcmc-transition/single-site<%>)
-    (init-field [method 'double] ;; (U 'step 'double)
+    (init-field [gibbs? #t]      ;; Boolean, do Gibbs if available
+                [method 'double] ;; (U 'step 'double)
                 [Wi 1]           ;; slice search width for integer dists
                 [Wr 1.0]         ;; slice search width for real dists
                 [M +inf.0]       ;; max # of widths to grow slice by
@@ -152,6 +153,23 @@
 
     ;; run/key : ModelRunner Trace DBKey Entry -> (values (U Trace #f) TxInfo)
     (define/public (run/key mrun prev-trace key prev-e)
+      (define who 'slice-transition)
+      (cond [(and gibbs? (send mrun get-slice-posterior who key prev-trace))
+             => (lambda (pdist) (run/gibbs mrun prev-trace key prev-e pdist))]
+            [else (run/slice mrun prev-trace key prev-e)]))
+
+    (define/private (run/gibbs mrun prev-trace key prev-e pdist)
+      (define who 'slice-transition)
+      (match-define (entry dist prev-value _ tag) prev-e)
+      (define new-value (dist-sample pdist))
+      (log-mcmc-info "Gibbs dist = ~e" pdist)
+      (define new-lpr (dist-pdf dist new-value #t))
+      (define eval-slice (send mrun make-eval-slice who (list key) prev-trace))
+      (define delta-db (hash key (entry dist new-value new-lpr tag)))
+      (values (eval-slice delta-db #f)
+              (vector who key (entry-tag prev-e) 'gibbs)))
+
+    (define/private (run/slice mrun prev-trace key prev-e)
       (define who 'slice-transition)
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) prev-e)
