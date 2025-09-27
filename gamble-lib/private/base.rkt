@@ -15,6 +15,11 @@
 ;; Defines interfaces, base classes, and parameters.
 
 ;; ============================================================
+
+(struct exn:fail:gamble exn:fail (info))
+(struct exn:fail:gamble:structural exn:fail:gamble ())
+
+;; ============================================================
 ;; Stochastic models
 
 ;; (Model X) = (model (StochasticCtx Addr -> X))

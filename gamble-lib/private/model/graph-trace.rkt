@@ -289,6 +289,11 @@
      `(ctx-fail ,(result->expr argr))]
     ))
 
+;; exec-nodes! : (Vectorof Node) StochasticCtx -> Void
+;; Perform node effects.
+(define (exec-nodes! nodev ctx)
+  (for ([node (in-vector nodev)]) (exec-node! node ctx)))
+
 ;; exec-node! : Node StochasticCtx -> Void
 ;; Perform node effect.
 (define (exec-node! node ctx)
@@ -583,11 +588,10 @@
     ;; get-slice-eval : (Listof DBKey)
     ;;               -> (values (StochasticCtx Boolean -> Any) Real Real)
     (define/public (get-slice-eval keys)
-      (define nodeids (get-slice keys))
-      (define all-nodev (nodeids->nodes nodeids REACH-ANY))
-      (define min-nodev (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
-      (define-values (slice-lprs slice-lobs) (exec-stochastic-nodes! min-nodev))
-      (values (get-slice-proc all-nodev min-nodev) slice-lprs slice-lobs))
+      (define s (get-slice keys))
+      (define-values (slice-lprs slice-lobs) (slice->lprs+lobs s))
+      (values (lambda (ctx mini?) (slice-eval s ctx mini?))
+              slice-lprs slice-lobs))
 
     ;; show-slice : (Listof DBKey) -> Void
     (define/public (show-slice keys)
@@ -596,26 +600,22 @@
         (for ([nodeid (in-range 0 nodeid-counter)])
           (define node (hash-ref nodeid=>node nodeid #f))
           (when node (void (node->expr node loc=>index)))))
-      (define nodeids (get-slice keys))
-      (define all-nodes (nodeids->nodes nodeids REACH-ANY))
-      (define min-nodes (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
+      (match-define (slice all-nodes min-nodes _) (get-slice keys))
       (eprintf "Slice all-nodes:\n")
       (for ([node all-nodes]) (eprintf "- ~s\n" (node->expr node loc=>index)))
       (eprintf "Slice min-nodes:\n")
       (for ([node min-nodes]) (eprintf "- ~s\n" (node->expr node loc=>index)))
-      (eprintf "Posterior dist: ~e\n" (slice-posterior-dist min-nodes)))
+      (eprintf "Posterior dist: ~e\n" (slice->posterior-dist min-nodes)))
 
-    ;; get-slice-proc : (Vectorof Node) (Vectorof Node) -> (StochasticCtx Boolean -> Any)
-    (define/private (get-slice-proc all-nodev min-nodev)
-      (define (graph-eval-slice ctx minimal?)
-        (for ([node (in-vector (if minimal? min-nodev all-nodev))])
-          (exec-node! node ctx))
-        (if minimal? 'partial-eval (result->value final-result)))
-      graph-eval-slice)
+    ;; get-slice : (Listof DBKey) -> Slice
+    (define/public (get-slice keys)
+      (define nodeids (get-slice-nodeids keys))
+      (define all-nodev (nodeids->nodes nodeids REACH-ANY))
+      (define min-nodev (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
+      (slice all-nodev min-nodev final-result))
 
-    ;; get-slice : (Listof DBKey) (Listof NodeID)
-    ;;           -> (values (Listof NodeID) (Hash Location #t))
-    (define/private (get-slice keys)
+    ;; get-slice-nodeids : (Listof DBKey) -> (Listof NodeID)
+    (define/private (get-slice-nodeids keys)
       (define seen-nodeids (make-hasheqv))
       (define updated-locs (make-hasheq))
       (define (add-nodeids! nodeids)
@@ -682,11 +682,26 @@
 
 ;; ============================================================
 
-;; slice-posterior-dist : (Listof Node) -> Dist/#f
+;; Slice = (slice (Vectorof Node) (Vectorof Node) Result)
+(struct slice (all-nodes min-nodes result))
+(define no-result (string->uninterned-symbol "<<no-result>>"))
+
+;; slice->lprs+lobs : Slice -> (values Real Real)
+(define (slice->lprs+lobs s)
+  (exec-stochastic-nodes! (slice-min-nodes s)))
+
+;; slice-eval : Slice StochasticCtx Boolean -> Any
+(define (slice-eval s ctx minimal?)
+  (match-define (slice all-nodes min-nodes final-result) s)
+  (exec-nodes! (if minimal? min-nodes all-nodes) ctx)
+  (if minimal? no-result (result->value final-result)))
+
+;; slice->posterior-dist : Slice -> Dist/#f
 ;; Calculates the posterior dist of the RV sampled in first node,
 ;; using conjugacy relationships. Returns posterior or #f for failure.
 ;; (If dist returned, can be used for Gibbs step.)
-(define (slice-posterior-dist nodes)
+(define (slice->posterior-dist s)
+  (define nodes (slice-min-nodes s))
   ;; Pattern = #f | '_ | Real | (dist-symbol Pattern ...)
   (define loc=>pattern (make-hasheq)) ;; Location => Pattern
   (define (get-pattern r)

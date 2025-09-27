@@ -9,7 +9,7 @@
          "../dist.rkt"
          "../base.rkt"
          "../addr.rkt"
-         (only-in "../model/graph-trace.rkt" graph%)
+         "../model/graph-trace.rkt"
          "../util/real.rkt"
          "../util/density.rkt")
 (provide (all-defined-out))
@@ -303,6 +303,8 @@
         (set! diff-lprs (+ diff-lprs (- lpr prev-lpr)))))
     ))
 
+;; initializing-tracing-stochastic-ctx%
+;; Used to initialize model. If get-value fails, sample from prior.
 (define initializing-tracing-stochastic-ctx%
   (class tracing-stochastic-ctx%
     (init-field get-value)  ;; (Tag Dist[X] -> (U #f (list X)))
@@ -318,6 +320,31 @@
          (hash-set! prev-db addr (entry dist value lpr tag))]
         [_ (void)])
       (super -sample dist tag addr))
+    ))
+
+;; replay-stochastic-ctx%
+;; Used to build graph w/o changes to previous db.
+;; PRE: model runs w/o error, w/o failure
+(define replay-stochastic-ctx%
+  (class base-stochastic-ctx%
+    (inherit fail)
+    (init-field who         ;; Symbol
+                prev-db)    ;; DB, not mutated
+    (super-new)
+
+    (define/override (-sample dist tag addr)
+      (cond [(hash-ref prev-db addr #f)
+             => (lambda (e)
+                  (entry-value e))]
+            [addr
+             (error who "structural change (sampling new variable) not allowed")]
+            [else
+             (error 'sample "unique address is required for MCMC sampler~a\n  dist: ~e"
+                    ";\n address management failed because of uninstrumented code"
+                    dist)]))
+
+    (define/override (-dscore who dn)
+      (when (density-zero? dn) (fail who)))
     ))
 
 ;; ============================================================
@@ -357,3 +384,141 @@
   (for ([(key entry) (in-hash prev-db)])
     (unless (hash-has-key? slice-db key)
       (hash-set! slice-db key entry))))
+
+;; How an MCMC transition runs a model depends on 3 questions:
+;; - Does transition allow structural changes?
+;; - Can I reuse existing graph/slice?
+;; - Should I invest effort in creating graph/slice?
+;;
+;; Answers:
+;; - Init:   yes, no,    no
+;; - MH:     yes, try?,  don't care
+;; - EGibbs: no,  reuse, create
+;; - Slice:  no,  reuse, create
+
+(define model-runner%
+  (class object%
+    (init-field m)  ;; Model
+    (super-new)
+
+    ;; EvalSlice = (DeltaDB Boolean -> Trace/#f)
+    ;; If mini? (2nd) arg to eval is true, then only re-eval stochastic parts
+    ;; (skip nodes recomputing result), and return partial trace.
+
+    ;; For fixed values of structural variables, graph is constant.
+    ;; For fixed graph, nodes in slice are constant, but restl{prs,obs} not constant.
+
+    (define graph-cache #f)             ;; #f or Graph
+    (define slice-cache (make-hash))    ;; DBKeys => Slice
+    (define eval-cache #f)              ;; #f or (list* DBKeys (Box Boolean) EvalSlice)
+
+    ;; In eval-cache, box indicates whether graph boxes are ok (consistent).
+    ;; If a slice eval fails or partial, then boxes may be left in inconsistent state.
+    ;; Then cannot switch slices w/ same graph, must discard (complicated to fix).
+
+    ;; invalidate-cache! : -> Void
+    (define/private (invalidate-cache!)
+      ;; Discarding graph, no need for run-fix-graph!.
+      (set! graph-cache #f)
+      (hash-clear! slice-cache)
+      (set! eval-cache #f))
+
+    ;; get-graph : Symbol Trace -> Graph
+    (define/private (get-graph who prev-trace)
+      (or graph-cache
+          (let ()
+            (define base-ctx (new replay-stochastic-ctx%
+                                  (who who) (prev-db (trace-db prev-trace))))
+            (define graph (new graph% (ctx base-ctx)))
+            (void (send graph eval-top m))
+            (set! graph-cache graph)
+            graph)))
+
+    ;; get-slice : (Listof DBKey) -> Slice
+    ;; PRE: graph-cache is set
+    (define/private (get-slice keys)
+      (hash-ref! slice-cache keys (lambda () (send graph-cache get-slice keys))))
+
+    ;; get-cached-eval : (Listof DBKey) -> EvalSlice/#f
+    (define/private (get-cached-eval keys)
+      (let ([eval-cache eval-cache])
+        (and eval-cache
+             (unbox (cadr eval-cache))
+             (equal? (car eval-cache) keys)
+             (cddr eval-cache))))
+
+    ;; ----------------------------------------
+
+    ;; eval/ctx : StochasticCtx -> Trace
+    ;; - invalidate slices, graph; does full eval
+    ;; - allows structural change (if ctx does)
+    (define/public (eval/ctx ctx)
+      (define new-trace (send ctx run-top m))
+      (when new-trace (invalidate-cache!))
+      new-trace)
+
+    ;; eval/fresh : DeltaDB Trace -> Trace
+    ;; - invalidate slices, graph; does full eval
+    ;; - allows structural change
+    (define/public (eval/fresh delta-db prev-trace)
+      (define ctx (new tracing-stochastic-ctx%
+                       (prev-db (trace-db prev-trace))
+                       (delta-db delta-db)))
+      (define new-trace (send ctx run-top m))
+      (when new-trace (invalidate-cache!))
+      new-trace)
+
+    ;; eval/try-reuse : DeltaDB Trace -> Trace
+    ;; - try reuse slice, graph; if reuse fails, do full eval
+    ;; - allows structural change
+    (define/public (eval/try-reuse delta-db prev-trace)
+      (cond [(get-cached-eval (hash-keys delta-db))
+             => (lambda (eval-slice)
+                  (with-handlers* ([exn:fail:gamble:structural?
+                                    (lambda (e) (eval/fresh delta-db prev-trace))])
+                    (eval-slice delta-db #f)))]
+            [else (eval/fresh delta-db prev-trace)]))
+
+    ;; get-slice-posterior : Symbol (Listof DBKey) Trace -> Dist/#f
+    ;; Get dist of key conditioned on rest of trace (suitable for Gibbs).
+    (define/public (get-slice-posterior who keys prev-trace)
+      (define graph (get-graph who prev-trace))
+      (slice->posterior-dist (get-slice keys)))
+
+    ;; make-eval-slice : Symbol (Listof DBKey) Trace -> EvalSlice
+    (define/public (make-eval-slice who keys prev-trace)
+      (cond [(get-cached-eval keys)
+             => values]
+            [else
+             (define-values (eval-slice consistent-b)
+               (make-eval-slice* who keys prev-trace))
+             (set! eval-cache (list* keys consistent-b eval-slice))
+             eval-slice]))
+
+    (define/private (make-eval-slice* who keys prev-trace)
+      (define graph (get-graph who prev-trace))
+      (define s (get-slice keys))
+      (define-values (slice-lprs slice-lobs) (slice->lprs+lobs s))
+      (define rest-lprs (- (trace-lprs prev-trace) slice-lprs))
+      (define rest-lobs (- (trace-lobs prev-trace) slice-lobs))
+      (define prev-db (trace-db prev-trace))
+      (define consistent-b (box #t)) ;; mutated
+      (define (eval-slice delta-db mini?)
+        (define slice-ctx
+          (new tracing-stochastic-ctx%
+               (prev-db prev-db)
+               (delta-db delta-db)
+               (sumlprs rest-lprs)
+               (sumlobs rest-lobs)
+               (disallow-new/who who)))
+        (set-box! consistent-b #f)
+        (match (send slice-ctx run-top (lambda () (slice-eval s slice-ctx mini?)))
+          [(list result)
+           (define new-trace (send slice-ctx make-trace result))
+           (unless mini?
+             (complete-slice-trace! new-trace prev-trace)
+             (set-box! consistent-b #t))
+           new-trace]
+          [#f #f]))
+      (values eval-slice consistent-b))
+    ))
