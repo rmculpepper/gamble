@@ -350,36 +350,6 @@
 ;; ============================================================
 ;; Runner
 
-#;
-(define (make-eval-slice who m prev-db keys)
-  (define base-ctx (new tracing-stochastic-ctx%
-                        (prev-db prev-db)
-                        (delta-db (hash))
-                        (disallow-new/who who)))
-  (define interp
-    (cond [(model/tracing? m)
-           (new graph% (ctx base-ctx))]
-          [else (error who "not supported")]))
-  (define base-value (send interp eval-top m))
-  (define base-trace (send base-ctx make-trace base-value))
-  (define-values (re slice-lprs slice-lobs)
-    (send interp get-slice-eval keys))
-  (define rest-lprs (- (trace-lprs base-trace) slice-lprs))
-  (define rest-lobs (- (trace-lobs base-trace) slice-lobs))
-  (define base-db (trace-db base-trace))
-  (define (eval-slice delta-db mini?)
-    (define slice-ctx
-      (new tracing-stochastic-ctx%
-           (prev-db base-db)
-           (delta-db delta-db)
-           (sumlprs rest-lprs)
-           (sumlobs rest-lobs)
-           (disallow-new/who who)))
-    (match (send slice-ctx run-top (lambda () (re slice-ctx mini?)))
-      [(list result) (send slice-ctx make-trace result)]
-      [#f #f]))
-  eval-slice)
-
 (define (complete-slice-trace! slice-trace prev-db)
   (define slice-db (trace-db slice-trace))
   (for ([(key entry) (in-hash prev-db)])
