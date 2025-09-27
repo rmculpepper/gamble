@@ -34,10 +34,10 @@
 
 (define init-trace (trace #f (hash) -inf.0 -inf.0))
 
-;; trace-lj : Trace -> Real
+;; trace-lj : Trace/#f -> Real
 ;; Returns the log joint probability of the trace (priors and observations).
 (define (trace-lj tr)
-  (+ (trace-lprs tr) (trace-lobs tr)))
+  (if tr (+ (trace-lprs tr) (trace-lobs tr)) -inf.0))
 
 ;; traces-obs-diff : Trace Trace -> Real
 (define (traces-obs-diff tr1 tr2)
@@ -99,7 +99,7 @@
 (define mcmc-transition<%>
   (interface ()
     ;; type TxInfo
-    run  ;; (Model A) Trace -> (values (U Trace #f) TxInfo)
+    run  ;; ModelRunner Trace -> (values (U Trace #f) TxInfo)
     ))
 
 ;; Transition/SingleSite[X] =
@@ -114,7 +114,7 @@
 
 (define mcmc-transition/single-site<%>
   (interface ()
-    run/key    ;; Model Trace DBKey Entry -> (values Trace/#f TxInfo)
+    run/key    ;; ModelRunner Trace DBKey Entry -> (values Trace/#f TxInfo)
     ))
 
 ;; ============================================================
@@ -350,6 +350,7 @@
 ;; ============================================================
 ;; Runner
 
+#;
 (define (make-eval-slice who m prev-db keys)
   (define base-ctx (new tracing-stochastic-ctx%
                         (prev-db prev-db)

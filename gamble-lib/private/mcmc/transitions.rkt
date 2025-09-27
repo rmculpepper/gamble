@@ -18,16 +18,15 @@
     (init-field get-value)  ;; (Tag Dist -> (or/c (list X) #f))
     (super-new)
 
-    ;; run : (Model A) #f -> (values Trace/#f TxInfo)
-    (define/public (run mdl prev-trace)
+    ;; run : ModelRunner #f -> (values Trace/#f TxInfo)
+    (define/public (run mrun prev-trace)
       (define ctx
         (new initializing-tracing-stochastic-ctx%
              (get-value get-value)))
-      (match (send ctx run-top mdl)
-        [(list new-value)
-         (define new-trace (send ctx make-trace new-value))
-         (values new-trace 'initialize-transition)]
-        [#f (values #f 'initialize-transition)]))
+      (cond [(send mrun eval/ctx ctx)
+             => (lambda (new-trace)
+                  (values new-trace 'initialize-transition))]
+            [else (values #f 'initialize-transition)]))
     ))
 
 ;; ============================================================
@@ -39,40 +38,40 @@
                 [tempfactor 1.0])   ;; PositiveReal, inverse of temperature (mh)
     (super-new)
 
-    ;; run : (Model A) Trace -> (values Trace/#f TxInfo)
-    (define/public (run mdl prev-trace)
+    ;; run : ModelRunner Trace -> (values Trace/#f TxInfo)
+    (define/public (run mrun prev-trace)
       (define prev-db (trace-db prev-trace))
       (define key (db-random-key (trace-db prev-trace) ok-tag?))
       (cond [key
              (define prev-e (hash-ref prev-db key))
              (log-mcmc-info "Key to change = ~.s; tag ~e; value ~e"
                             key (entry-tag prev-e) (entry-value prev-e))
-             (run* mdl prev-trace key prev-e)]
+             (run* mrun prev-trace key prev-e)]
             [else (error 'single-site-transition "no suitable key to change")]))
 
     ;; run* : ... -> (values Trace/#f TxInfo)
-    (define/private (run* mdl prev-trace key prev-e)
+    (define/private (run* mrun prev-trace key prev-e)
       (match-define (entry dist prev-value prev-lpr tag) prev-e)
       (let loop ([transition transition])
         (match transition
           [#f
            (log-mcmc-info "No proposal (#f); resampling")
            (define-values (new-value l-R/F) (propose/resample dist prev-value))
-           (mh mdl prev-trace key prev-e new-value l-R/F)]
+           (mh mrun prev-trace key prev-e new-value l-R/F)]
           [(proposal-value new-value l-R/F)
-           (mh mdl prev-trace key prev-e new-value l-R/F)]
+           (mh mrun prev-trace key prev-e new-value l-R/F)]
           [(proposal-kernel kernel)
            (define-values (new-value l-R/F) (propose/kernel kernel prev-value))
-           (mh mdl prev-trace key prev-e new-value l-R/F)]
+           (mh mrun prev-trace key prev-e new-value l-R/F)]
           [(? procedure? get-transition)
            (loop (get-transition tag dist prev-value))]
-          [_ (send transition run/key mdl prev-trace key prev-e)])))
+          [_ (send transition run/key mrun prev-trace key prev-e)])))
 
     ;; ----------------------------------------
     ;; Metropolis-Hastings
 
     ;; mh : ... -> (values Trace/#f TxInfo)
-    (define/private (mh mdl prev-trace key prev-e new-value proposal-l-R/F)
+    (define/private (mh mrun prev-trace key prev-e new-value proposal-l-R/F)
       (match-define (entry dist prev-value prev-lpr tag) prev-e)
       (log-mcmc-info "MH PROPOSED ~.s: ~e, ~e => ~e; log(R/F)=~s" key dist
                      prev-value new-value proposal-l-R/F)
@@ -84,24 +83,23 @@
              (prev-db (trace-db prev-trace))
              (delta-db (hash key (entry dist new-value new-lpr tag)))))
       (define new-txinfo (vector 'mh key tag))
-      (match (send ctx run-top mdl)
-        [(list new-result)
-         (define new-trace (send ctx make-trace new-result))
-         (define l-R/F (+ proposal-l-R/F (send ctx get-l-R/F)))
-         (define diff-lprs (send ctx get-diff-lprs))
-         (define diff-lobs (traces-obs-diff new-trace prev-trace))
-         (define diff-nkeys (nkeys-factor new-trace prev-trace))
-         (define laccept (+ l-R/F diff-nkeys (* tempfactor (+ diff-lprs diff-lobs))))
-         (define u (log (random)))
-         (cond [(< u laccept)
-                (log-mcmc-info "MH ACCEPT with threshold ~s" (exp laccept))
-                (values new-trace new-txinfo)]
-               [else
-                (log-mcmc-info "MH REJECT with threshold ~s" (exp laccept))
-                (values #f new-txinfo)])]
-        [#f
-         (log-mcmc-info "MH FAIL")
-         (values #f new-txinfo)]))
+      (cond [(send mrun eval/ctx ctx)
+             => (lambda (new-trace)
+                  (define l-R/F (+ proposal-l-R/F (send ctx get-l-R/F)))
+                  (define diff-lprs (send ctx get-diff-lprs))
+                  (define diff-lobs (traces-obs-diff new-trace prev-trace))
+                  (define diff-nkeys (nkeys-factor new-trace prev-trace))
+                  (define laccept (+ l-R/F diff-nkeys (* tempfactor (+ diff-lprs diff-lobs))))
+                  (define u (log (random)))
+                  (cond [(< u laccept)
+                         (log-mcmc-info "MH ACCEPT with threshold ~s" (exp laccept))
+                         (values new-trace new-txinfo)]
+                        [else
+                         (log-mcmc-info "MH REJECT with threshold ~s" (exp laccept))
+                         (values #f new-txinfo)]))]
+            [else
+             (log-mcmc-info "MH FAIL")
+             (values #f new-txinfo)]))
 
     ;; nkeys-factor : Trace Trace -> Real
     ;; Account for backward and forward likelihood of selecting key.
@@ -155,8 +153,8 @@
                 [small-dist 10]) ;; limit of small-dist optimization, 0 to disable
     (super-new)
 
-    ;; run/key : (Model A) Trace DBKey Entry -> (values (U Trace #f) TxInfo)
-    (define/public (run/key mdl prev-trace key prev-e)
+    ;; run/key : ModelRunner Trace DBKey Entry -> (values (U Trace #f) TxInfo)
+    (define/public (run/key mrun prev-trace key prev-e)
       (define who 'slice-transition)
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) prev-e)
@@ -165,8 +163,8 @@
       (define prev-lj (trace-lj prev-trace))
       (define lthreshold (+ (log (random)) prev-lj))
       (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
-      (define eval-trace (make-caching-eval-trace who mdl prev-trace key))
-      (define (eval-lj new-value) (cond [(eval-trace new-value #t) => trace-lj] [else -inf.0]))
+      (define eval-trace (make-caching-eval-trace who mrun prev-trace key))
+      (define (eval-lj new-value) (trace-lj (eval-trace new-value #t)))
       ;; --------------------
       (define-values (lo hi) (get-slice-bounds lthreshold dist prev-value eval-lj))
       (define new-value (select dist prev-value eval-lj lo hi lthreshold))
@@ -174,57 +172,29 @@
       (complete-slice-trace! new-trace prev-db)
       (values new-trace (vector who key tag)))
 
-    (define/private (make-caching-eval-trace who mdl prev-trace key)
+    (define/private (make-caching-eval-trace who mrun prev-trace key)
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
       (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
       (hash-set! trace-cache prev-value prev-trace)
-      (define base-eval-trace (make-eval-trace who mdl prev-trace key))
+      (define eval-trace (make-eval-trace who mrun prev-trace key))
       (define (caching-eval-trace new-value mini?)
         (if mini?
-            (hash-ref! trace-cache new-value (lambda () (base-eval-trace new-value #t)))
-            (base-eval-trace new-value #f)))
+            (hash-ref! trace-cache new-value (lambda () (eval-trace new-value #t)))
+            (eval-trace new-value #f)))
       caching-eval-trace)
 
-    (define/private (make-eval-trace who mdl prev-trace key)
-      (if #t
-          (make-eval-trace/slice who mdl prev-trace key)
-          (make-eval-trace/full who mdl prev-trace key)))
-
-    (define/private (make-eval-trace/slice who mdl prev-trace key)
+    (define/private (make-eval-trace who mrun prev-trace key)
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
-      (define eval-slice (make-eval-slice who mdl prev-db (list key)))
-      (define (eval-trace/slice new-value mini?)
+      (define eval-slice (send mrun make-eval-slice who (list key) prev-trace))
+      (define (eval-trace new-value mini?)
         (log-mcmc-info "Eval at ~e" new-value)
         (define new-lpr (dist-pdf dist new-value #t))
         (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag)) mini?))
-        (log-mcmc-info "Eval lj ~e" (and new-trace (trace-lj new-trace)))
+        (log-mcmc-info "Eval lj ~e" (trace-lj new-trace))
         new-trace)
-      eval-trace/slice)
-
-    (define/private (make-eval-trace/full who mdl prev-trace key)
-      (define prev-db (trace-db prev-trace))
-      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
-      (define (eval-trace/full new-value mini?)
-        (define new-lpr (dist-pdf dist new-value #t))
-        (cond [(not (logspace-zero? new-lpr))
-               (define delta-db
-                 (hash key (entry dist new-value new-lpr tag)))
-               (define ctx
-                 (new tracing-stochastic-ctx%
-                      (prev-db prev-db)
-                      (delta-db delta-db)
-                      (disallow-new/who who)))
-               (match (send ctx run-top mdl)
-                 [(list sample-value)
-                  (define new-trace (send ctx make-trace sample-value))
-                  (unless (traces-same-structure? new-trace prev-trace)
-                    (error who "structural change not allowed"))
-                  new-trace]
-                 [#f #f])]
-              [else #f]))
-      eval-trace/full)
+      eval-trace)
 
     ;; ----------------------------------------
     ;; Find slice bounds

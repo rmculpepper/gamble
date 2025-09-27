@@ -38,11 +38,13 @@
                 [last-trace init-trace])
     (super-new)
 
+    (field [mrun (new model-runner% (mdl mdl))])
+
     ;; step : Transition -> (values Boolean Trace TxInfo)
     (define/public (step transition)
       (log-mcmc-info "START transition ~e" transition)
       (define-values (new-trace new-txinfo)
-        (send transition run mdl last-trace))
+        (send transition run mrun last-trace))
       (cond [new-trace
              (set! last-trace new-trace)
              (values #t new-trace new-txinfo)]
