@@ -456,11 +456,11 @@
                     (values new-trace (unbox ctx-b))))]
             [else (eval/fresh delta-db prev-trace)]))
 
-    ;; get-slice-posterior : Symbol (Listof DBKey) Trace -> Dist/#f
+    ;; get-slice-posterior : Symbol DBKey Trace -> Dist/#f
     ;; Get dist of key conditioned on rest of trace (suitable for Gibbs).
-    (define/public (get-slice-posterior who keys prev-trace)
+    (define/public (get-slice-posterior who key prev-trace)
       (define graph (get-graph who prev-trace))
-      (slice->posterior-dist (get-slice keys)))
+      (slice->posterior-dist (get-slice (list key))))
 
     ;; make-eval-slice : Symbol (Listof DBKey) Trace -> EvalSlice
     (define/public (make-eval-slice who keys prev-trace)
