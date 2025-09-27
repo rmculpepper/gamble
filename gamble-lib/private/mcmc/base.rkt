@@ -460,15 +460,16 @@
          (send ctx make-trace new-value)]
         [_ #f]))
 
-    ;; eval/fresh : DeltaDB Trace -> Trace/#f
+    ;; eval/fresh : DeltaDB Trace -> (values Trace/#f StochasticCtx)
     ;; - invalidate slices, graph; does full eval
     ;; - allows structural change
     (define/public (eval/fresh delta-db prev-trace)
-      (eval/ctx (new tracing-stochastic-ctx%
-                     (prev-db (trace-db prev-trace))
-                     (delta-db delta-db))))
+      (define ctx (new tracing-stochastic-ctx%
+                       (prev-db (trace-db prev-trace))
+                       (delta-db delta-db)))
+      (values (eval/ctx ctx) ctx))
 
-    ;; eval/try-reuse : DeltaDB Trace -> Trace/#f
+    ;; eval/try-reuse : DeltaDB Trace -> (values Trace/#f StochasticCtx)
     ;; - try reuse slice, graph; if reuse fails, do full eval
     ;; - allows structural change
     (define/public (eval/try-reuse delta-db prev-trace)
@@ -476,7 +477,9 @@
              => (lambda (eval-slice)
                   (with-handlers* ([exn:fail:gamble:structural?
                                     (lambda (e) (eval/fresh delta-db prev-trace))])
-                    (eval-slice delta-db #f)))]
+                    (define ctx-b (box #f))
+                    (define new-trace (eval-slice delta-db #f ctx-b))
+                    (values new-trace (unbox ctx-b))))]
             [else (eval/fresh delta-db prev-trace)]))
 
     ;; get-slice-posterior : Symbol (Listof DBKey) Trace -> Dist/#f
@@ -503,7 +506,7 @@
       (define rest-lobs (- (trace-lobs prev-trace) slice-lobs))
       (define prev-db (trace-db prev-trace))
       (define consistent-b (box #t)) ;; mutated
-      (define (eval-slice delta-db mini?)
+      (define (eval-slice delta-db mini? [ctx-b #f])
         (define slice-ctx
           (new tracing-stochastic-ctx%
                (prev-db prev-db)
@@ -515,6 +518,7 @@
         (match (send slice-ctx run-top (lambda () (slice-eval s slice-ctx mini?)))
           [(list result)
            (define new-trace (send slice-ctx make-trace result))
+           (when ctx-b (set-box! ctx-b slice-ctx))
            (unless mini?
              (complete-slice-trace! new-trace prev-db)
              (set-box! consistent-b #t))

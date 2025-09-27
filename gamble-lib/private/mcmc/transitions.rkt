@@ -78,25 +78,22 @@
       (define new-lpr (dist-pdf dist new-value #t))
       (when (logspace-zero? new-lpr)
         (log-mcmc-info "proposed impossible value: ~e, ~e" dist new-value))
-      (define ctx
-        (new tracing-stochastic-ctx%
-             (prev-db (trace-db prev-trace))
-             (delta-db (hash key (entry dist new-value new-lpr tag)))))
+      (define delta-db (hash key (entry dist new-value new-lpr tag)))
       (define new-txinfo (vector 'mh key tag))
-      (cond [(send mrun eval/ctx ctx)
-             => (lambda (new-trace)
-                  (define l-R/F (+ proposal-l-R/F (send ctx get-l-R/F)))
-                  (define diff-lprs (send ctx get-diff-lprs))
-                  (define diff-lobs (traces-obs-diff new-trace prev-trace))
-                  (define diff-nkeys (nkeys-factor new-trace prev-trace))
-                  (define laccept (+ l-R/F diff-nkeys (* tempfactor (+ diff-lprs diff-lobs))))
-                  (define u (log (random)))
-                  (cond [(< u laccept)
-                         (log-mcmc-info "MH ACCEPT with threshold ~s" (exp laccept))
-                         (values new-trace new-txinfo)]
-                        [else
-                         (log-mcmc-info "MH REJECT with threshold ~s" (exp laccept))
-                         (values #f new-txinfo)]))]
+      (define-values (new-trace ctx) (send mrun eval/try-reuse delta-db prev-trace))
+      (cond [new-trace
+             (define l-R/F (+ proposal-l-R/F (send ctx get-l-R/F)))
+             (define diff-lprs (send ctx get-diff-lprs))
+             (define diff-lobs (traces-obs-diff new-trace prev-trace))
+             (define diff-nkeys (nkeys-factor new-trace prev-trace))
+             (define laccept (+ l-R/F diff-nkeys (* tempfactor (+ diff-lprs diff-lobs))))
+             (define u (log (random)))
+             (cond [(< u laccept)
+                    (log-mcmc-info "MH ACCEPT with threshold ~s" (exp laccept))
+                    (values new-trace new-txinfo)]
+                   [else
+                    (log-mcmc-info "MH REJECT with threshold ~s" (exp laccept))
+                    (values #f new-txinfo)])]
             [else
              (log-mcmc-info "MH FAIL")
              (values #f new-txinfo)]))
