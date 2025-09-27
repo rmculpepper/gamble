@@ -398,7 +398,7 @@
 
 (define model-runner%
   (class object%
-    (init-field m)  ;; Model
+    (init-field mdl)  ;; Model
     (super-new)
 
     ;; EvalSlice = (DeltaDB Boolean -> Trace/#f)
@@ -430,7 +430,7 @@
             (define base-ctx (new replay-stochastic-ctx%
                                   (who who) (prev-db (trace-db prev-trace))))
             (define graph (new graph% (ctx base-ctx)))
-            (void (send graph eval-top m))
+            (void (send graph eval-top mdl))
             (set! graph-cache graph)
             graph)))
 
@@ -449,26 +449,25 @@
 
     ;; ----------------------------------------
 
-    ;; eval/ctx : StochasticCtx -> Trace
+    ;; eval/ctx : StochasticCtx -> Trace/#f
     ;; - invalidate slices, graph; does full eval
     ;; - allows structural change (if ctx does)
     (define/public (eval/ctx ctx)
-      (define new-trace (send ctx run-top m))
-      (when new-trace (invalidate-cache!))
-      new-trace)
+      (match (send ctx run-top mdl)
+        [(list new-value)
+         (invalidate-cache!)
+         (send ctx make-trace new-value)]
+        [_ #f]))
 
-    ;; eval/fresh : DeltaDB Trace -> Trace
+    ;; eval/fresh : DeltaDB Trace -> Trace/#f
     ;; - invalidate slices, graph; does full eval
     ;; - allows structural change
     (define/public (eval/fresh delta-db prev-trace)
-      (define ctx (new tracing-stochastic-ctx%
-                       (prev-db (trace-db prev-trace))
-                       (delta-db delta-db)))
-      (define new-trace (send ctx run-top m))
-      (when new-trace (invalidate-cache!))
-      new-trace)
+      (eval/ctx (new tracing-stochastic-ctx%
+                     (prev-db (trace-db prev-trace))
+                     (delta-db delta-db))))
 
-    ;; eval/try-reuse : DeltaDB Trace -> Trace
+    ;; eval/try-reuse : DeltaDB Trace -> Trace/#f
     ;; - try reuse slice, graph; if reuse fails, do full eval
     ;; - allows structural change
     (define/public (eval/try-reuse delta-db prev-trace)
@@ -516,7 +515,7 @@
           [(list result)
            (define new-trace (send slice-ctx make-trace result))
            (unless mini?
-             (complete-slice-trace! new-trace prev-trace)
+             (complete-slice-trace! new-trace prev-db)
              (set-box! consistent-b #t))
            new-trace]
           [#f #f]))
