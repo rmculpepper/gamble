@@ -475,9 +475,7 @@
           (define node (hash-ref nodeid=>node nodeid))
           (define expr (node->expr node loc=>index))
           (printf "  ~s ~a ~s\n" nodeid
-                  (let ([reach (hash-ref nodeid=>reach nodeid 0)])
-                    (cond [(= reach 0) "="]
-                          [else ":"]))
+                  (if (hash-ref nodeid=>reach nodeid #f) ":" "=")
                   (if expr? expr node))))
       (printf "Store:\n")
       (define index=>loc (make-vector (hash-count loc=>index)))
@@ -595,24 +593,25 @@
 
     ;; show-slice : (Listof DBKey) -> Void
     (define/public (show-slice keys)
+      (define s (get-slice keys))
+      (match-define (slice all-nodes min-nodes _) s)
       (begin ;; initialize loc=>index
         (define loc=>index (make-hasheq))
         (for ([nodeid (in-range 0 nodeid-counter)])
           (define node (hash-ref nodeid=>node nodeid #f))
           (when node (void (node->expr node loc=>index)))))
-      (match-define (slice all-nodes min-nodes _) (get-slice keys))
       (eprintf "Slice all-nodes:\n")
       (for ([node all-nodes]) (eprintf "- ~s\n" (node->expr node loc=>index)))
       (eprintf "Slice min-nodes:\n")
       (for ([node min-nodes]) (eprintf "- ~s\n" (node->expr node loc=>index)))
-      (eprintf "Posterior dist: ~e\n" (slice->posterior-dist min-nodes)))
+      (eprintf "Posterior dist: ~e\n" (slice->posterior-dist s)))
 
     ;; get-slice : (Listof DBKey) -> Slice
     (define/public (get-slice keys)
       (define nodeids (get-slice-nodeids keys))
-      (define all-nodev (nodeids->nodes nodeids REACH-ANY))
-      (define min-nodev (nodeids->nodes nodeids (+ REACH-SAME REACH-STOCHASTIC)))
-      (slice all-nodev min-nodev final-result))
+      (define all-nodes (nodeids->nodes nodeids #f))
+      (define min-nodes (nodeids->nodes nodeids #t))
+      (slice all-nodes min-nodes final-result))
 
     ;; get-slice-nodeids : (Listof DBKey) -> (Listof NodeID)
     (define/private (get-slice-nodeids keys)
@@ -635,10 +634,7 @@
           (when nodeid (add-nodeids! (list nodeid)))))
       (sort (hash-keys seen-nodeids) <))
 
-    ;; Reach = Nat[3 bits]
-    (define REACH-ANY        #b001)
-    (define REACH-STOCHASTIC #b010)
-    (define REACH-SAME       #b100)
+    ;; Reach = Boolean, #t if reaches stochastic or same-check node
 
     ;; calculate-reach! : -> Void
     (define/private (calculate-reach!)
@@ -649,34 +645,30 @@
           (hash-set! loc=>defnodeid writeloc nodeid)))
       ;; ----
       (define (mark-nodeid nodeid reach)
-        (define oldreach (hash-ref nodeid=>reach nodeid REACH-ANY))
-        (unless (= reach (bitwise-and reach oldreach))
-          (define newreach (bitwise-ior reach oldreach))
-          (hash-set! nodeid=>reach nodeid newreach)
+        (unless (hash-ref nodeid=>reach nodeid #f)
+          (hash-set! nodeid=>reach nodeid #t)
           (define node (hash-ref nodeid=>node nodeid))
           (define-values (readlocs writelocs) (node-locations node))
           (for ([readloc (in-list readlocs)])
             (define defnodeid (hash-ref loc=>defnodeid readloc))
-            (mark-nodeid defnodeid newreach))))
+            (mark-nodeid defnodeid #t))))
       (for ([(nodeid node) (in-hash nodeid=>node)])
         (cond [(or (node:same? node)
                    (node:same-if? node))
-               (mark-nodeid nodeid REACH-SAME)]
+               (mark-nodeid nodeid #t)]
               [(or (node:sample? node)
                    (node:dscore? node)
                    (node:lscore? node)
                    (node:observe? node))
-               (mark-nodeid nodeid REACH-STOCHASTIC)]
-              [else (void)]))
-      nodeid=>reach)
+               (mark-nodeid nodeid #t)]
+              [else (void)])))
 
     ;; nodeids->nodes : (Listof NodeID) Reach -> (Vectorof Node)
-    ;; Returns nodes, filtered to include only those that overlap wantreach.
-    (define/private (nodeids->nodes nodeids wantreach)
+    ;; If only-reach? is true, only return same/stochastic-reaching nodes.
+    (define/private (nodeids->nodes nodeids only-reach?)
       (list->vector
        (for/list ([nodeid (in-list nodeids)]
-                  #:when (let ([reach (hash-ref nodeid=>reach nodeid REACH-ANY)])
-                           (not (zero? (bitwise-and reach wantreach)))))
+                  #:when (if only-reach? (hash-ref nodeid=>reach nodeid #f) #t))
          (hash-ref nodeid=>node nodeid))))
     ))
 
