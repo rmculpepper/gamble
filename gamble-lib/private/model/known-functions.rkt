@@ -158,7 +158,8 @@
 
 ;; constant-folding : (Hash CanonicalModulePath (cons Boolean (Hasheq Symbol Boolean)))
 (define constant-folding
-  (hash '#%runtime (cons #f constant-folding:runtime)))
+  (hash '#%runtime (cons #f constant-folding:runtime)
+        '#%unsafe (cons #t (hasheq))))
 
 #|
 To get list of '#%runtime exports:
