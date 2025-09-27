@@ -72,23 +72,22 @@
     ;; Metropolis-Hastings
 
     ;; mh : ... -> (values Trace/#f TxInfo)
-    (define/private (mh mdl prev-trace key prev-e new-value l-R/F)
+    (define/private (mh mdl prev-trace key prev-e new-value proposal-l-R/F)
       (match-define (entry dist prev-value prev-lpr tag) prev-e)
       (log-mcmc-info "MH PROPOSED ~.s: ~e, ~e => ~e; log(R/F)=~s" key dist
-                     prev-value new-value l-R/F)
+                     prev-value new-value proposal-l-R/F)
       (define new-lpr (dist-pdf dist new-value #t))
       (when (logspace-zero? new-lpr)
         (log-mcmc-info "proposed impossible value: ~e, ~e" dist new-value))
       (define ctx
         (new tracing-stochastic-ctx%
              (prev-db (trace-db prev-trace))
-             (delta-db (hash key (entry dist new-value new-lpr tag)))
-             (l-R/F l-R/F)))
+             (delta-db (hash key (entry dist new-value new-lpr tag)))))
       (define new-txinfo (vector 'mh key tag))
       (match (send ctx run-top mdl)
         [(list new-result)
          (define new-trace (send ctx make-trace new-result))
-         (define l-R/F (send ctx get-l-R/F))
+         (define l-R/F (+ proposal-l-R/F (send ctx get-l-R/F)))
          (define diff-lprs (send ctx get-diff-lprs))
          (define diff-lobs (traces-obs-diff new-trace prev-trace))
          (define diff-nkeys (nkeys-factor new-trace prev-trace))

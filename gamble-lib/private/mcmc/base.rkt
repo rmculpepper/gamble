@@ -164,12 +164,12 @@
     (inherit-field escape-prompt)
     (init-field prev-db       ;; DB, not mutated
                 delta-db      ;; DB, not mutated
-                [l-R/F 0.0]   ;; real, mutated
                 [sumlprs 0.0] ;; real, mutated; sum of lprior of all entries in current-db
                 [sumlobs 0.0] ;; real, mutated; sum of log likelihoods of all observations
                 [disallow-new/who #f] ;; #f or Symbol
                 [init-addr (current-init-addr)])
     (field [current-db (make-hash)] ;; DB, mutated
+           [l-R/F 0.0]              ;; real, mutated
            [diff-lprs  0.0])        ;; see get-diff-lprs below
 
     (super-new)
