@@ -166,7 +166,6 @@
       (define-values (lo hi) (get-slice-bounds lthreshold dist prev-value eval-lj))
       (define new-value (select dist prev-value eval-lj lo hi lthreshold))
       (define new-trace (eval-trace new-value #f))
-      (complete-slice-trace! new-trace prev-db)
       (values new-trace (vector who key tag)))
 
     (define/private (make-caching-eval-trace who mrun prev-trace key)
