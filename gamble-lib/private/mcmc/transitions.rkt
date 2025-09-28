@@ -145,10 +145,9 @@
   (class* object% (mcmc-transition/single-site<%>)
     (init-field [gibbs? #t]      ;; Boolean, do Gibbs if available
                 [method 'double] ;; (U 'step 'double)
-                [Wi 1]           ;; slice search width for integer dists
-                [Wr 1.0]         ;; slice search width for real dists
-                [M +inf.0]       ;; max # of widths to grow slice by
-                [small-dist 10]) ;; limit of small-dist optimization, 0 to disable
+                [W 1.0]          ;; slice search width
+                [M +inf.0]       ;; max # of steps to grow slice by w/ step-out
+                [SD 5.0])        ;; if prior support < SD wide, use prior support (0 disables)
     (super-new)
 
     ;; run/key : ModelRunner Trace DBKey Entry -> (values (U Trace #f) TxInfo)
@@ -181,8 +180,7 @@
       (define eval-trace (make-caching-eval-trace who mrun prev-trace key))
       (define (eval-lj new-value) (trace-lj (eval-trace new-value #t)))
       ;; --------------------
-      (define-values (lo hi) (get-slice-bounds lthreshold dist prev-value eval-lj))
-      (define new-value (select dist prev-value eval-lj lo hi lthreshold))
+      (define new-value (slice-sample dist prev-value eval-lj lthreshold))
       (define new-trace (eval-trace new-value #f))
       (values new-trace (vector who key tag)))
 
@@ -211,39 +209,60 @@
       eval-trace)
 
     ;; ----------------------------------------
+    ;; Slice Sampling (for X in {Real, ExactInteger})
+
+    ;; slice-sample : Dist[X] X (X -> Real) Real -> X
+    (define/private (slice-sample dist prev-value eval-lj lthreshold)
+      (define-values (lo hi used-doubling?)
+        (get-slice-bounds dist prev-value eval-lj lthreshold))
+      (define check-accept
+        (and used-doubling?
+             (make-check-accept dist prev-value eval-lj lthreshold lo hi)))
+      (select dist prev-value eval-lj lo hi lthreshold check-accept))
+
+    ;; ----------------------------------------
     ;; Find slice bounds
 
-    (define/private (get-slice-bounds lthreshold dist init-value eval-lj)
-      (cond [(small-dist? dist)
-             (match (dist-support dist)
-               [(integer-range lo hi) (values lo hi)])]
+    ;; get-slice-bounds : Dist[X] X (X -> Real) Real -> (values X X Boolean)
+    (define/private (get-slice-bounds dist prev-value eval-lj lthreshold)
+      (cond [(dist-support-bounds dist SD)
+             => (match-lambda [(cons lo hi) (values lo hi #f)])]
+            [(integer-dist? dist)
+             (define Wi (exact (ceiling W)))
+             (define u (random (add1 Wi)))
+             (get-slice-bounds* prev-value eval-lj lthreshold Wi u)]
             [else
-             (define-values (W u)
-               (cond [(integer-dist? dist) (values Wi (random (add1 Wi)))]
-                     [else (values Wr (* (random) Wr))]))
-             (define lo (- init-value u))
-             (define hi (+ lo W))
-             (case method
-               [(step)
-                (define-values (lo-k hi-k) (random-split-M))
-                (values (step-out lthreshold lo-k lo (- W) eval-lj)
-                        (step-out lthreshold hi-k hi (+ W) eval-lj))]
-               [(double)
-                (double-out lthreshold lo hi eval-lj)])]))
+             (define u (* (random) W))
+             (get-slice-bounds* prev-value eval-lj lthreshold W u)]))
+
+    ;; get-slice-bounds* : X (X -> Real) Real X X -> (values X X Boolean)
+    (define/private (get-slice-bounds* prev-value eval-lj lthreshold W u)
+      (define lo (- prev-value u))
+      (define hi (+ lo W))
+      (case method
+        [(step)
+         (define-values (lo-k hi-k) (random-split-M))
+         (values (step-out eval-lj lthreshold lo-k lo (- W))
+                 (step-out eval-lj lthreshold hi-k hi (+ W))
+                 #f)]
+        [(double)
+         (double-out eval-lj lthreshold lo hi)]))
 
     (define/private (random-split-M)
       (cond [(= M +inf.0) (values +inf.0 +inf.0)]
-            [else (let ([k (random M)]) (- M 1 k))]))
+            [else (let ([k (random (add1 M))]) (values k (- M k)))]))
 
-    (define/private (step-out lthreshold k x delta eval-lj)
+    ;; step-out : (X -> Real) Real Nat X X -> X
+    (define/private (step-out eval-lj lthreshold k x delta)
       (let loop ([k k] [x x] [x-lj (eval-lj x)])
         (cond [(or (zero? k) (<= x-lj lthreshold)) x]
               [else (let ([x* (+ x delta)]) (loop (sub1 k) x* (eval-lj x*)))])))
 
-    (define/private (double-out lthreshold lo hi eval-lj)
+    ;; double-out : (X -> Real) Real X X -> (values X X #t)
+    (define/private (double-out eval-lj lthreshold lo hi)
       (let loop ([lo lo] [lo-lj (eval-lj lo)] [hi hi] [hi-lj (eval-lj hi)])
         (cond [(and (<= lo-lj lthreshold) (<= hi-lj lthreshold))
-               (values lo hi)]
+               (values lo hi #t)]
               [(zero? (random 2))
                (let ([lo* (- lo (- hi lo))])
                  (loop lo* (eval-lj lo*) hi hi-lj))]
@@ -255,7 +274,7 @@
     ;; Select value in slice
 
     ;; select : Dist[X] X .... -> X
-    (define/private (select dist init-value eval-lj lo0 hi0 lthreshold)
+    (define/private (select dist init-value eval-lj lo0 hi0 lthreshold check-accept)
       (let loop ([lo lo0] [hi hi0])
         (log-mcmc-info "Slice bounds = [~s,~s]" lo hi)
         (define new-value
@@ -263,7 +282,7 @@
               (+ lo (random (add1 (- hi lo))))
               (+ lo (* (random) (- hi lo)))))
         (cond [(and (> (eval-lj new-value) lthreshold)
-                    (acceptable? lo0 hi0 lthreshold init-value new-value eval-lj dist))
+                    (if check-accept (check-accept new-value) #t))
                (log-mcmc-info "Selected ~s" new-value)
                new-value]
               [(integer-dist? dist)
@@ -275,31 +294,31 @@
                    (loop new-value hi)
                    (loop lo new-value))])))
 
-    (define/private (acceptable? lo hi lthreshold init-value new-value eval-lj dist)
-      (cond [(small-dist? dist) #t]
-            [(eq? method 'double)
-             (define int? (integer-dist? dist))
-             (acceptable?/double lo hi lthreshold init-value new-value eval-lj int?)]
-            [else #t]))
-
-    (define/private (acceptable?/double lo hi lthreshold init-value new-value eval-lj int?)
-      (define Wlimit (* 1.1 (if int? Wi Wr))) ;; avoid rounding problems
-      (define (get-mid lo hi)
-        (if int? (round (/ (+ lo hi) 2)) (* 0.5 (+ lo hi))))
-      (let loop ([lo lo] [hi hi])
-        (or (< (- hi lo) Wlimit)
-            (let ([mid (get-mid lo hi)])
-              (define lo* (if (< new-value mid) lo mid))
-              (define hi* (if (< new-value mid) mid hi))
-              (if (and (or (and (<  init-value mid) (>= new-value mid))
-                           (and (>= init-value mid) (<  new-value mid)))
-                       (<= (eval-lj lo*) lthreshold)
-                       (<= (eval-lj hi*) lthreshold))
-                  #f ;; not acceptable
-                  (loop lo* hi*))))))
-
-    (define/private (small-dist? dist)
-      (match (dist-support dist)
-        [(integer-range lo hi) (< (- hi lo) small-dist)]
-        [_ #f]))
+    ;; make-check-accept : Dist[X] X (X -> Real) Real X X -> (X -> Boolean)
+    ;; Checks whether the new value could have doubled out to the same interval.
+    (define/private (make-check-accept dist init-value eval-lj lthreshold lo hi)
+      (define int? (integer-dist? dist))
+      (lambda (new-value)
+        (define Wlimit (* 1.1 (if int? (exact (ceiling W)) W))) ;; avoid rounding problems
+        (define (get-mid lo hi)
+          (if int? (round (/ (+ lo hi) 2)) (* 0.5 (+ lo hi))))
+        (let loop ([lo lo] [hi hi])
+          (or (< (- hi lo) Wlimit)
+              (let ([mid (get-mid lo hi)])
+                (define lo* (if (< new-value mid) lo mid))
+                (define hi* (if (< new-value mid) mid hi))
+                (if (and (or (and (<  init-value mid) (>= new-value mid))
+                             (and (>= init-value mid) (<  new-value mid)))
+                         (<= (eval-lj lo*) lthreshold)
+                         (<= (eval-lj hi*) lthreshold))
+                    #f ;; not acceptable
+                    (loop lo* hi*)))))))
     ))
+
+;; dist-support-bounds : NumericDist -> (cons Real Real) or #f
+;; Returns bound on width of prior support if width < SD.
+(define (dist-support-bounds dist SD)
+  (match (dist-support dist)
+    [(integer-range lo hi) (and (< (- hi lo) SD) (cons lo hi))]
+    [(real-range lo hi) (and (< (- hi lo) SD) (cons lo hi))]
+    [_ #f]))

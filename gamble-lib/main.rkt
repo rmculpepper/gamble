@@ -74,11 +74,11 @@
                 any)]
           [slice-transition
            (->* []
-                [#:method (or/c 'double 'step)
-                 #:W (>/c 0)
-                 #:Wi exact-positive-integer?
-                 #:M exact-positive-integer?
-                 #:small-dist-limit exact-nonnegative-integer?]
+                [#:gibbs? boolean?
+                 #:method (or/c 'double 'step)
+                 #:W (>/c 0.0)
+                 #:M (or/c exact-nonnegative-integer? +inf.0)
+                 #:SD (>=/c 0.0)]
                 any)]
           [struct proposal-value
             ([value any/c]

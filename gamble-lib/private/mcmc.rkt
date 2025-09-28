@@ -23,12 +23,11 @@
   (new single-site-transition% (ok-tag? ok-tag?) (transition transition)))
 
 (define (slice-transition #:method [method 'double]
-                          #:W [Wr 1.0]
-                          #:Wi [Wi (exact (ceiling Wr))]
+                          #:gibbs? [gibbs? #t]
+                          #:W [W 1.0]
                           #:M [M +inf.0]
-                          #:small-dist-limit [small-dist 10])
-  (new slice-transition% (method method)
-       (Wr Wr) (Wi Wi) (M M) (small-dist small-dist)))
+                          #:SD [SD 5.0])
+  (new slice-transition% (method method) (gibbs? gibbs?) (W W) (M M) (SD SD)))
 
 ;; ============================================================
 
