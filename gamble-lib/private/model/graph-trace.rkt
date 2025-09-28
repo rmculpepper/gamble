@@ -23,6 +23,9 @@
          "instrument.rkt")
 (provide (all-defined-out))
 
+;; If true, all non-model functions are considered constant-folding.
+(define ALL-CONSTANT-FOLDING? #t)
+
 ;; Summary of re-evaluation restrictions: Re-evaluation must not change
 ;; - which branch of an `if` expression is taken
 ;; - the closure/procedure value of an application expression
@@ -438,17 +441,24 @@
      (apply values (map result:value args))]
     [proc ;; procedure, or else let racket raise non-proc app error
      (define args (results->values argrs))
-     (call-with-values
-      (lambda () (apply proc args))
-      (case-lambda
-        [(v)
-         (define loc (box v))
-         (send graph add! (node:app loc proc argrs))
-         (result:location loc)]
-        [vs
-         (define locs (map box vs))
-         (send graph add! (node:app-mv locs proc argrs))
-         (apply values (map result:location locs))]))]))
+     (cond [(and ALL-CONSTANT-FOLDING? (andmap result:value? argrs))
+            (call-with-values
+             (lambda () (apply proc args))
+             (case-lambda
+               [(v) (result:value v)]
+               [vs (apply values (map result:value vs))]))]
+           [else
+            (call-with-values
+             (lambda () (apply proc args))
+             (case-lambda
+               [(v)
+                (define loc (box v))
+                (send graph add! (node:app loc proc argrs))
+                (result:location loc)]
+               [vs
+                (define locs (map box vs))
+                (send graph add! (node:app-mv locs proc argrs))
+                (apply values (map result:location locs))]))])]))
 
 ;; ============================================================
 ;; Graph
