@@ -276,20 +276,21 @@
      `(unless (equal? (quote ,val) ,(result->expr result))
         (raise-structural-change (quote ,kind)))]
     [(node:app loc proc argrs)
-     (loc-set! loc `(#%plain-app (quote ,proc) ,@(map result->expr argrs)))]
+     (loc-set! loc `(#%app (quote ,proc) ,@(map result->expr argrs)))]
     [(node:app-mv locs proc argrs)
-     `(store! ,(map loc-index locs) (#%plain-app (quote ,proc) ,@(map result->expr argrs)))]
+     `(store! ,(map loc-index locs) (#%app (quote ,proc) ,@(map result->expr argrs)))]
     [(node:sample loc addr distr tagr)
-     (loc-set! loc `(ctx-sample ,(result->expr distr)
-                                ,(and tagr (result->expr tagr)) (quote ,addr)))]
+     (loc-set! loc `(sample ,(result->expr distr)
+                            ,(and tagr (result->expr tagr))
+                            (quote ,addr)))]
     [(node:dscore argr)
-     `(ctx-dscore ,(result->expr argr))]
+     `(dscore ,(result->expr argr))]
     [(node:lscore argr)
-     `(ctx-lscore ,(result->expr argr))]
+     `(lscore ,(result->expr argr))]
     [(node:observe distr valr)
-     `(ctx-observe ,(result->expr distr) ,(result->expr valr))]
+     `(observe ,(result->expr distr) ,(result->expr valr))]
     [(node:fail argr)
-     `(ctx-fail ,(result->expr argr))]
+     `(fail ,(result->expr argr))]
     ))
 
 ;; exec-nodes! : (Vectorof Node) StochasticCtx -> Void
@@ -478,24 +479,25 @@
     (define final-result #f)                ;; Result, mutated
 
     (define/public (show [expr? #t])
-      (define loc=>index (make-hasheq))
-      (printf "Node trace:\n")
-      (for ([nodeid (in-range 0 nodeid-counter)])
-        (when (hash-has-key? nodeid=>node nodeid)
-          (define node (hash-ref nodeid=>node nodeid))
-          (define expr (node->expr node loc=>index))
-          (printf "  ~s ~a ~s\n" nodeid
-                  (if (hash-ref nodeid=>reach nodeid #f) ":" "=")
-                  (if expr? expr node))))
-      (printf "Store:\n")
-      (define index=>loc (make-vector (hash-count loc=>index)))
-      (for ([(loc index) (in-hash loc=>index)])
-        (vector-set! index=>loc index loc))
-      (for ([loc (in-vector index=>loc)] [index (in-naturals)])
-        (printf "  ~s => ~e\n" index (unbox loc)))
-      (printf "Key mapping:\n")
-      (for ([(key nodeid) (in-hash key=>nodeid)])
-        (printf "  ~s => ~s\n" key nodeid)))
+      (parameterize ((print-reader-abbreviations #t))
+        (define loc=>index (make-hasheq))
+        (printf "Node trace:\n")
+        (for ([nodeid (in-range 0 nodeid-counter)])
+          (when (hash-has-key? nodeid=>node nodeid)
+            (define node (hash-ref nodeid=>node nodeid))
+            (define expr (node->expr node loc=>index))
+            (printf "  ~s ~a ~s\n" nodeid
+                    (if (hash-ref nodeid=>reach nodeid #f) ":" "=")
+                    (if expr? expr node))))
+        (printf "Store:\n")
+        (define index=>loc (make-vector (hash-count loc=>index)))
+        (for ([(loc index) (in-hash loc=>index)])
+          (vector-set! index=>loc index loc))
+        (for ([loc (in-vector index=>loc)] [index (in-naturals)])
+          (printf "  ~s => ~e\n" index (unbox loc)))
+        (printf "Key mapping:\n")
+        (for ([(key nodeid) (in-hash key=>nodeid)])
+          (printf "  ~s => ~s\n" key nodeid))))
 
     ;; ----------------------------------------
     ;; Run
@@ -611,10 +613,11 @@
           (define node (hash-ref nodeid=>node nodeid #f))
           (when node (void (node->expr node loc=>index)))))
       (eprintf "Slice (+ minimal, - full):\n")
-      (for ([node all-nodes])
-        (eprintf "  ~a ~s\n"
-                 (if (for/or ([n (in-vector min-nodes)]) (eq? n node)) "+" "-")
-                 (node->expr node loc=>index)))
+      (parameterize ((print-reader-abbreviations #t))
+        (for ([node all-nodes])
+          (eprintf "  ~a ~s\n"
+                   (if (for/or ([n (in-vector min-nodes)]) (eq? n node)) "+" "-")
+                   (node->expr node loc=>index))))
       (eprintf "Posterior dist: ~e\n" (slice->posterior-dist s)))
 
     ;; get-slice : (Listof DBKey) -> Slice
