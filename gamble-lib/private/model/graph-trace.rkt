@@ -468,7 +468,7 @@
 
 (define graph%
   (class* object% (slicer<%>)
-    (init-field [ctx (new scoring-stochastic-ctx%)])
+    (init-field [ctx (new scoring-stochastic-ctx% (logspace? #t))])
     (super-new)
 
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID), references

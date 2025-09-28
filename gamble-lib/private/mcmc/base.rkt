@@ -172,7 +172,7 @@
            [l-R/F 0.0]              ;; real, mutated
            [diff-lprs  0.0])        ;; see get-diff-lprs below
 
-    (super-new)
+    (super-new [logspace? #t])
 
     ;; The sample method records random choices by mutating
     ;; current-db. At the end of execution, current-db contains a

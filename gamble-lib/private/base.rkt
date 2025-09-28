@@ -129,6 +129,7 @@
 
 (define base-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
+    (init-field [logspace? #f])
     (field [escape-prompt (make-continuation-prompt-tag)])
     (super-new)
 
@@ -165,7 +166,7 @@
       (-dscore 'lscore (density #t ll)))
     (define/public (observe dist value)
       (unless (dist? dist) (raise-argument-error 'observe "dist?" dist))
-      (-dscore 'observe (dist-density dist value)))
+      (-dscore 'observe (dist-density dist value logspace?)))
 
     (define/public (fail reason)
       (unless (continuation-prompt-available? escape-prompt)
@@ -195,8 +196,10 @@
 (define scoring-stochastic-ctx%
   (class base-stochastic-ctx%
     (inherit fail)
-    (field [obs-dn one-density])
+    (inherit-field logspace?)
     (super-new)
+
+    (field [obs-dn (if logspace? (density #t 0.0) (density #f 1.0))])
 
     (define/public (get-observation-density) obs-dn)
 
