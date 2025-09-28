@@ -25,8 +25,8 @@
              (get-value get-value)))
       (cond [(send mrun eval/ctx ctx)
              => (lambda (new-trace)
-                  (values new-trace 'initialize-transition))]
-            [else (values #f 'initialize-transition)]))
+                  (values new-trace 'initialize))]
+            [else (values #f 'initialize)]))
     ))
 
 ;; ============================================================
@@ -79,7 +79,6 @@
       (when (logspace-zero? new-lpr)
         (log-mcmc-info "proposed impossible value: ~e, ~e" dist new-value))
       (define delta-db (hash key (entry dist new-value new-lpr tag)))
-      (define new-txinfo (vector 'mh key tag))
       (define-values (new-trace ctx) (send mrun eval/try-reuse delta-db prev-trace))
       (cond [new-trace
              (define l-R/F (+ proposal-l-R/F (send ctx get-l-R/F)))
@@ -90,13 +89,13 @@
              (define u (log (random)))
              (cond [(< u laccept)
                     (log-mcmc-info "MH ACCEPT with threshold ~s" (exp laccept))
-                    (values new-trace new-txinfo)]
+                    (values new-trace (vector 'mh key tag #t))]
                    [else
                     (log-mcmc-info "MH REJECT with threshold ~s" (exp laccept))
-                    (values #f new-txinfo)])]
+                    (values #f (vector 'mh key tag #f))])]
             [else
              (log-mcmc-info "MH FAIL")
-             (values #f new-txinfo)]))
+             (values #f (vector 'mh key tag #f))]))
 
     ;; nkeys-factor : Trace Trace -> Real
     ;; Account for backward and forward likelihood of selecting key.
@@ -166,7 +165,7 @@
       (define eval-slice (send mrun make-eval-slice who (list key) prev-trace))
       (define delta-db (hash key (entry dist new-value new-lpr tag)))
       (values (eval-slice delta-db #f)
-              (vector who key (entry-tag prev-e) 'gibbs)))
+              (vector 'gibbs key tag)))
 
     (define/private (run/slice mrun prev-trace key prev-e)
       (define who 'slice-transition)
@@ -182,7 +181,7 @@
       ;; --------------------
       (define new-value (slice-sample dist prev-value eval-lj lthreshold))
       (define new-trace (eval-trace new-value #f))
-      (values new-trace (vector who key tag)))
+      (values new-trace (vector 'slice key tag)))
 
     (define/private (make-caching-eval-trace who mrun prev-trace key)
       (define prev-db (trace-db prev-trace))

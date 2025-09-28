@@ -5,6 +5,8 @@
 #lang racket/base
 (require racket/class
          racket/match
+         racket/flonum
+         racket/vector
          "base.rkt"
          "mcmc/base.rkt"
          "mcmc/transitions.rkt"
@@ -34,6 +36,7 @@
 (define mcmc%
   (class object%
     (init-field mdl
+                [retries 10]
                 [last-trace init-trace])
     (super-new)
 
@@ -42,38 +45,62 @@
     (define/public (show)
       (send mrun show))
 
-    ;; step : Transition -> (values Boolean Trace TxInfo)
+    ;; step : Transition -> (values Trace TxInfo)
     (define/public (step transition)
       (log-mcmc-info "START transition ~e" transition)
       (define-values (new-trace new-txinfo)
         (send transition run mrun last-trace))
       (cond [new-trace
              (set! last-trace new-trace)
-             (values #t new-trace new-txinfo)]
+             (values new-trace new-txinfo)]
             [else
-             (values #f last-trace new-txinfo)]))
+             (values last-trace new-txinfo)]))
 
-    ;; steps : Nat Transition #:collect (Boolean Trace TxInfo -> X)
-    ;;      -> (Vectorof X)
-    (define/public (steps n transition
-                          #:lag [lag 0]
-                          #:collect [collect #f])
-      (define v (and collect (make-vector n)))
+    ;; steps : Nat Transition (Listof Symbol) -> (Hasheq Symbol Any)
+    (define/public (steps n transition fields #:lag [lag 0])
+      ;; Vector-valued fields
+      ;; - 'trace       => 'value 'log-joint 'log-prior 'log-score
+      ;; - 'transition
+      (define tracev (make-vector n))
+      (define txinfov (and (memq 'transition fields) (make-vector n)))
       (for ([i (in-range n)])
         (for ([j (in-range lag)])
           (step transition))
-        (call-with-values
-         (lambda () (step transition))
-         (lambda (accepted? trace txinfo)
-           (when collect
-             (vector-set! v i (collect accepted? trace txinfo))))))
-      (or v (void)))
+        (define-values (trace txinfo) (step transition))
+        (vector-set! tracev i trace)
+        (when txinfov (vector-set! txinfov i txinfo)))
+      (define (vector-fl-map f v) ;; (X -> Real) (Vectorof X) -> FlVector
+        (define flv (make-flvector (vector-length v)))
+        (for ([x (in-vector v)] [i (in-naturals)])
+          (flvector-set! flv i (fl (f x))))
+        flv)
+      (define (trace-fl-value trace)
+        (define value (trace-value trace))
+        (if (real? value) value +nan.0))
+      (define (get-field-value field)
+        (case field
+          [(trace) tracev]
+          [(value) (vector-map trace-value tracev)]
+          [(log-joint) (vector-map trace-lj tracev)]
+          [(log-prior) (vector-map trace-lprs tracev)]
+          [(log-score) (vector-map trace-lobs tracev)]
+          [(fl-value) (vector-fl-map trace-fl-value tracev)]
+          [(fl-log-joint) (vector-fl-map trace-lj tracev)]
+          [(fl-log-prior) (vector-fl-map trace-lprs tracev)]
+          [(fl-log-score) (vector-fl-map trace-lobs tracev)]
+          [(transition) txinfov]
+          [else (error 'steps "unknown result name: ~e" field)]))
+      (for/fold ([h (hasheq)]) ([field (in-list fields)])
+        (hash-set h field (get-field-value field))))
 
     (define/public (initialize transition)
-      (when (eq? last-trace init-trace)
-        (define-values (accepted? trace txinfo)
-          (step transition))
-        (if accepted? (void) (initialize transition))))
+      (let loop ([n 0])
+        (when (eq? last-trace init-trace)
+          (unless (< n retries)
+            (error 'initialize-transition
+                   "initialization failed after ~s attempts" retries))
+          (step transition)
+          (loop (add1 n)))))
     ))
 
 (define mcmc-sampler%
@@ -89,7 +116,7 @@
       (send mcmc show))
 
     (define/override (sample)
-      (define-values (accepted? trace txinfo)
+      (define-values (trace txinfo)
         (send mcmc step transition))
       (trace-value trace))
 
