@@ -167,6 +167,7 @@
                 [sumlprs 0.0] ;; real, mutated; sum of lprior of all entries in current-db
                 [sumlobs 0.0] ;; real, mutated; sum of log likelihoods of all observations
                 [disallow-new/who #f] ;; #f or Symbol
+                [new-keys #f] ;; #f or (Listof DBKey), mutated
                 [init-addr (current-init-addr)])
     (field [current-db (make-hash)] ;; DB, mutated
            [l-R/F 0.0]              ;; real, mutated
@@ -212,6 +213,13 @@
            (error 'sample "internal error: delta has wrong dist"))
          (db-add! addr delta-e prev-e)
          delta-value]
+        [(proposal-value new-value proposal-l-R/F)
+         (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
+                        prev-dist prev-value dist new-value (exp proposal-l-R/F))
+         (define new-lpr (dist-pdf dist new-value #t))
+         (db-add! addr (entry dist new-value new-lpr tag) prev-e)
+         (set! l-R/F (+ l-R/F proposal-l-R/F))
+         new-value]
         [(proposal-kernel kernel)
          (define-values (new-value proposal-l-R/F)
            (propose/kernel kernel prev-value))
@@ -249,6 +257,7 @@
                          dist value)
           (log-mcmc-info "NEW ~s: ~e, ~e" addr dist value))
       (db-add! addr (entry dist value lpr tag) prev-e)
+      (when new-keys (set! new-keys (cons addr new-keys)))
       value)
 
     (define/override (-dscore who dn)
@@ -290,6 +299,9 @@
     ;; Mutated by late proposals, eg from multi-site MH.
     (define/public (get-l-R/F) l-R/F)
 
+    ;; get-new-keys : -> (Listof DBKey) or #f
+    (define/public (get-new-keys) (and new-keys (reverse new-keys)))
+
     ;; db-add! : DBKey Entry (U #f Entry) -> Void
     ;; Add entry to current-db and update sumlprs, sumlobs.
     ;; When prev-e is not #f, also update diff-lprs.
@@ -310,8 +322,8 @@
     (inherit-field prev-db)
     (super-new [delta-db (hash)])
 
-    (define real-prev-db prev-db)   ;; not mutated
-    (set! prev-db (make-hash))       ;; mutated
+    (define real-prev-db prev-db)   ;; DB, not mutated
+    (set! prev-db (make-hash))      ;; DB, mutated
 
     ;; Hack: override -sample to add entries to prev-db on demand.
     (define/override (-sample dist tag addr)
