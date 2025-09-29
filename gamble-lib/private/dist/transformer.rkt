@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/match
+         racket/generic
          "base.rkt"
          (submod "util.rkt" math)
          (submod "util.rkt" define)
@@ -137,6 +138,12 @@
      (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
      (cond [log? (- (dist-pdf d x #t) lw)]
            [else (/ (dist-pdf d x #f) w)]))]
+  #:methods gen:conjugate-dist
+  [(define/generic dist-conjugate -conjugate)
+   (define (-conjugate self xdistp x)
+     (match-define (clip-distx d a b _ _ _ _) self)
+     (define dc (and (conjugate-dist? d) (dist-conjugate d xdistp x)))
+     (and dc (clip-distx dc a b)))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
