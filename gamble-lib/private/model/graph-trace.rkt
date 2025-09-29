@@ -468,7 +468,7 @@
 ;; (or new type, "model primitives"?)
 
 (define graph%
-  (class* object% (slicer<%>)
+  (class object%
     (init-field [ctx (new scoring-stochastic-ctx% (logspace? #t))])
     (super-new)
 
@@ -504,7 +504,7 @@
 
     (define/public (eval-top mdl)
       (match mdl
-        [(model/tracing _ gproc _)
+        [(model _ gproc _)
          (define result (gproc this (current-init-addr)))
          (set! final-result result)
          (calculate-reach!)
@@ -541,7 +541,7 @@
       (define (trace:run-model addr mdlr)
         (define mdl (result->value mdlr))
         (match mdl
-          [(model/tracing _ gproc _)
+          [(model _ gproc _)
            (do! (node:same "model" mdl mdlr))
            (gproc this addr)]
           [(? model?)

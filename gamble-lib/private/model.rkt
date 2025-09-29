@@ -17,7 +17,7 @@
        [(_ e:expr ...)
         (with-syntax ([(aproc gproc csbase)
                        (instrument-model #'(let-values () e ...))])
-          #'(model/tracing aproc gproc csbase))])]
+          #'(model aproc gproc csbase))])]
     [else #`(#%expression #,stx)]))
 
 (begin-for-syntax

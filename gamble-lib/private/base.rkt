@@ -35,16 +35,7 @@
 ;; Stochastic models
 
 ;; (Model X) = (model (StochasticCtx Addr -> X))
-
-(struct model (proc))
-(struct model/tracing model (gproc csbase))
-
-(define slicer<%>
-  (interface ()
-    eval-top        ;; (Model X) -> X
-    get-slice-eval  ;; [#:keys (Listof DBKeys)] -> (values ReEval Real Real)
-    ;;                  where ReEval = (StochasticCtx -> X)
-    ))
+(struct model (proc gproc csbase))
 
 ;; ============================================================
 ;; Samplers
