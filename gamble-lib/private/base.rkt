@@ -19,6 +19,18 @@
 (struct exn:fail:gamble exn:fail (info))
 (struct exn:fail:gamble:structural exn:fail:gamble ())
 
+;; error-structural : Symbol Symbol String -> (escapes)
+(define (error-structural who-op who-disallowed what)
+  (let/ec escape
+    (define cms (continuation-marks escape))
+    (define msg (format "~a: ~a\n  change: ~a\n  disallowed by: ~a"
+                        who-op "structural change not allowed" what who-disallowed))
+    (define info (hasheq 'error 'structural-change
+                         'operation who-op
+                         'disallowed-by who-disallowed
+                         'change what))
+    (raise (exn:fail:gamble:structural msg cms info))))
+
 ;; ============================================================
 ;; Stochastic models
 
@@ -122,10 +134,14 @@
     lscore      ;; LogReal Nat -> Void
     fail        ;; -> escapes
     mem         ;; (X ... -> Y) Addr/#f -> (X ... -> Y)
-    run-model   ;; (Model A ...) Addr/#f -> (values A ...)
+    run-model   ;; (Model A) Addr/#f -> (values A)
 
-    ;; run-top  ;; varies, but often: (-> (values A ...)) -> (U (list A ...) #f)
+    ;; run-top  ;; varies, but often: (-> A) -> (U (list A) #f)
     ))
+
+;; Failure reasons
+;; - `(gamble zero-score ,who)               -- score became zero
+;;       where who = 'dscore | 'lscore | 'observe | 'sample-rescore
 
 (define base-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
@@ -187,7 +203,7 @@
       (match top
         [(? procedure? proc)
          (call-with-continuation-prompt
-          (lambda () (call-with-values proc list))
+          (lambda () (list (proc)))
           escape-prompt)]
         [(? model? m)
          (run-top (lambda () (run-model m #f)))]))
@@ -205,19 +221,19 @@
 
     (define/override (-dscore who dn)
       (set! obs-dn (density* obs-dn dn))
-      (when (density-zero? obs-dn) (fail who)))
+      (when (density-zero? obs-dn) (fail `(gamble zero-score ,who))))
     ))
 
 (define (top-level-run-model m)
   (define subctx (new scoring-stochastic-ctx%))
-  (define result (send subctx run-top m))
-  (cond [(list? result)
-         (printf "[run-model] log likelihood = ~s\n"
-                 (density->real (send subctx get-observation-density) #t))
-         (apply values result)]
-        [else
-         (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)
-         (void)]))
+  (match (send subctx run-top m)
+    [(list v)
+     (printf "[run-model] log likelihood = ~s\n"
+             (density->real (send subctx get-observation-density) #t))
+     v]
+    [#f
+     (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)
+     (void)]))
 
 ;; ============================================================
 ;; Primitive operations

@@ -271,10 +271,10 @@
   (match node
     [(node:same-if branch result)
      `(unless (eq? (quote ,branch) (and ,(result->expr result) #t))
-        (raise-structural-change "if branch"))]
+        (error-structural "if branch"))]
     [(node:same kind val result)
      `(unless (equal? (quote ,val) ,(result->expr result))
-        (raise-structural-change (quote ,kind)))]
+        (error-structural (quote ,kind)))]
     [(node:app loc proc argrs)
      (loc-set! loc `(#%app (quote ,proc) ,@(map result->expr argrs)))]
     [(node:app-mv locs proc argrs)
@@ -293,23 +293,23 @@
      `(fail ,(result->expr argr))]
     ))
 
-;; exec-nodes! : (Vectorof Node) StochasticCtx -> Void
+;; exec-nodes! : Symbol/#f (Vectorof Node) StochasticCtx -> Void
 ;; Perform node effects.
-(define (exec-nodes! nodev ctx)
-  (for ([node (in-vector nodev)]) (exec-node! node ctx)))
+(define (exec-nodes! who nodev ctx)
+  (for ([node (in-vector nodev)]) (exec-node! who node ctx)))
 
-;; exec-node! : Node StochasticCtx -> Void
+;; exec-node! : Symbol/#f Node StochasticCtx -> Void
 ;; Perform node effect.
-(define (exec-node! node ctx)
+(define (exec-node! who node ctx)
   (match node
     [(node:same-if branch result)
      (define new-branch (and (result->value result) #t))
      (unless (eq? new-branch branch)
-       (error 'evaluate-model "structural change (if branch)"))]
+       (error-structural 'evaluate-model who "if branch"))]
     [(node:same kind val result)
      (define new-val (result->value result))
      (unless (equal? new-val val)
-       (error 'evaluate-model "structural change (~a)" kind))]
+       (error-structural 'evaluate-model who kind))]
     [(node:app loc proc argrs)
      (store! loc (apply proc (results->values argrs)))]
     [(node:app-mv locs proc argrs)
@@ -317,7 +317,7 @@
       (lambda () (apply proc (results->values argrs)))
       (lambda vs
         (unless (= (length vs) (length locs))
-          (error 'evaluate-model "structural change (result arity)"))
+          (error-structural 'evaluate-model #f "function result arity"))
         (for ([loc (in-list locs)] [v (in-list vs)])
           (store! loc v))))]
     [(node:sample loc addr distr tagr)
@@ -580,7 +580,7 @@
     ;; (Eg, assignments to constants do not need to be repeated.)
     (define/public (do! node)
       (define (add-and-exec! [node node])
-        (begin0 (add! node) (exec-node! node ctx)))
+        (begin0 (add! node) (exec-node! #f node ctx)))
       (match node
         [(node:same-if branch result)
          (when (result:location? result) (add-and-exec!))]
@@ -589,7 +589,7 @@
         [(node:sample loc addr distr tagr)
          (define nodeid (add! node))
          (hash-set! key=>nodeid addr nodeid)
-         (exec-node! node ctx)]
+         (exec-node! #f node ctx)]
         [_ (add-and-exec!)]))
 
     ;; ----------------------------------------
@@ -696,10 +696,10 @@
 (define (slice->lprs+lobs s)
   (exec-stochastic-nodes! (slice-min-nodes s)))
 
-;; slice-eval : Slice StochasticCtx Boolean -> Any
-(define (slice-eval s ctx minimal?)
+;; slice-eval : Symbol/#f Slice StochasticCtx Boolean -> Any
+(define (slice-eval who s ctx minimal?)
   (match-define (slice all-nodes min-nodes final-result) s)
-  (exec-nodes! (if minimal? min-nodes all-nodes) ctx)
+  (exec-nodes! who (if minimal? min-nodes all-nodes) ctx)
   (if minimal? no-result (result->value final-result)))
 
 ;; slice->posterior-dist : Slice -> Dist/#f

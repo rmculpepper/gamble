@@ -235,13 +235,12 @@
                     (log-mcmc-info "RESCORE ~s: ~e, ~e" addr dist value)
                     (db-add! addr new-e prev-e)
                     value]
-                   [else (fail 'sample-rescore)])]
+                   [else (fail '(gamble zero-score sample-rescore))])]
             [else (sample/new dist addr prev-e)]))
 
     (define/private (sample/new dist tag addr prev-e)
       (when disallow-new/who
-        (error disallow-new/who
-               "structural change (sampling new variable) not allowed"))
+        (error-structural 'sample disallow-new/who "new random variable"))
       (define value (dist-sample dist))
       (define lpr (dist-pdf dist value #t))
       (if prev-e
@@ -254,7 +253,7 @@
 
     (define/override (-dscore who dn)
       (set! sumlobs (+ sumlobs (density->real dn #t)))
-      (when (logspace-zero? sumlobs) (fail who)))
+      (when (logspace-zero? sumlobs) (fail `(gamble zero-score ,who))))
 
     (define/override (mem f addr)
       (define (do-mem addr)
@@ -337,14 +336,14 @@
              => (lambda (e)
                   (entry-value e))]
             [addr
-             (error who "structural change (sampling new variable) not allowed")]
+             (error-structural 'sample who "new random variable")]
             [else
              (error 'sample "unique address is required for MCMC sampler~a\n  dist: ~e"
                     ";\n address management failed because of uninstrumented code"
                     dist)]))
 
     (define/override (-dscore who dn)
-      (when (density-zero? dn) (fail who)))
+      (when (density-zero? dn) (fail `(gamble zero-score ,who))))
     ))
 
 ;; ============================================================
@@ -432,7 +431,7 @@
         [(list new-value)
          (invalidate-cache!)
          (send ctx make-trace new-value)]
-        [_ #f]))
+        [#f #f]))
 
     ;; eval/fresh : DeltaDB Trace -> (values Trace/#f StochasticCtx)
     ;; - invalidate slices, graph; does full eval
@@ -489,7 +488,7 @@
                (sumlobs rest-lobs)
                (disallow-new/who who)))
         (set-box! consistent-b #f)
-        (match (send slice-ctx run-top (lambda () (slice-eval s slice-ctx mini?)))
+        (match (send slice-ctx run-top (lambda () (slice-eval who s slice-ctx mini?)))
           [(list result)
            (define new-trace (send slice-ctx make-trace result))
            (when ctx-b (set-box! ctx-b slice-ctx))
