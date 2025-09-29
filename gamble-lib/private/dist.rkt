@@ -101,25 +101,49 @@
 ;; ----------------------------------------
 
 (module+ meta
+  (require racket/match)
   (provide conjugate-dist?
-           -conjugate
-           (all-defined-out))
-  ;; Names of likelihood functions used by dist-conjugate.
+           dist-posterior
+           function=>symbol)
+
+  ;; Names of likelihood functions used by dist-{conjugate,posterior}.
   (define function=>symbol
     (hasheq bernoulli-dist   'bernoulli-dist
             beta-dist        'beta-dist
             binomial-dist    'binomial-dist
             boolean-dist     'boolean-dist
             categorical-dist 'categorical-dist
-            ;; cauchy-dist      'cauchy-dist
+            cauchy-dist      'cauchy-dist
             dirichlet-dist   'dirichlet-dist
             exponential-dist 'exponential-dist
             gamma-dist       'gamma-dist
             geometric-dist   'geometric-dist
-            ;; logistic-dist    'logistic-dist
+            logistic-dist    'logistic-dist
             normal-dist      'normal-dist
             pareto-dist      'pareto-dist
             poisson-dist     'poisson-dist
-            ;; student-t-dist   'student-t-dist
+            student-t-dist   'student-t-dist
             uniform-dist     'uniform-dist
-            )))
+            ))
+
+  ;; dist-posterior : Dist Pattern X -> Dist
+  (define (dist-posterior dist xdistp x)
+    (cond [(and (conjugate-dist? dist)
+                (-conjugate dist xdistp x))
+           => values]
+          [(uniform-dist? dist)
+           (match-define (uniform-dist lo hi) dist)
+           (let ([d (likelihood-pattern->dist xdistp x)])
+             (and d (clip-distx d lo hi)))]
+          [else #f]))
+
+  ;; likelihood-pattern->dist : Pattern X -> Dist
+  ;; Requires f(x;y,z) = f(y;x,z), where y is '_ parameter.
+  ;; Only handle continuous dists.
+  (define (likelihood-pattern->dist xdistp x)
+    (match xdistp
+      [`(normal-dist _ ,s) (normal-dist x s)]
+      [`(cauchy-dist _ ,s) (cauchy-dist x s)]
+      [`(exponential-dist _) (exponential-dist x)]
+      [`(student-t-dist ,d _ ,s) (student-t-dist d x s)]
+      [_ #f])))

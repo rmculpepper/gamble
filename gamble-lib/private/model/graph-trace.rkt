@@ -736,9 +736,9 @@
                  ([node (in-vector nodes 1)] #:break (not dist))
          (match node
            [(node:sample loc _ distr _)
-            (-conjugate dist (get-pattern distr) (fetch loc))]
+            (dist-posterior dist (get-pattern distr) (fetch loc))]
            [(node:observe distr valr)
-            (-conjugate dist (get-pattern distr) (result->value valr))]
+            (dist-posterior dist (get-pattern distr) (result->value valr))]
            [(node:app loc fun argrs)
             (hash-set! loc=>pattern loc (fun-pattern fun (map get-pattern argrs)))
             dist]))))

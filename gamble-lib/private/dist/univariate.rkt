@@ -338,7 +338,8 @@
      (match-define (uniform-dist lo hi) self)
      (m:fluniform-pdf lo hi (fl x) log?))]
   #:methods gen:conjugate-dist
-  [(define/generic conjugate -conjugate)
+  [;; See also clipping rule in dist-posterior.
+   (define/generic conjugate -conjugate)
    (define (-conjugate self xdistp x)
      (match-define (uniform-dist lo hi) self)
      (and (= lo 0.0) (= hi 1.0) (conjugate (beta-dist 1.0 1.0) xdistp x)))]
