@@ -8,7 +8,7 @@
          "dist/base.rkt"
          "base.rkt"
          "addr.rkt"
-         "util/density.rkt")
+         "util/dnum.rkt")
 (provide (all-defined-out))
 
 ;; ============================================================
@@ -30,7 +30,7 @@
       (match (send ctx run-top mdl)
         [(list v)
          (define obs-dn (send ctx get-observation-density))
-         (define weight (density->real obs-dn #f))
+         (define weight (dnum->linear-real obs-dn))
          (values v weight)]
         [#f
          (sample/weight)]))
@@ -47,8 +47,8 @@
              => (lambda (qdist)
                   (define v (dist-sample qdist))
                   (-dscore 'sample
-                           (density/ (dist-density dist v)
-                                     (dist-density qdist v)))
+                           (dnum/ (dist-density dist v)
+                                  (dist-density qdist v)))
                   v)]
             [else (super sample dist tag addr)]))
     ))

@@ -7,7 +7,7 @@
          racket/generic
          racket/sequence
          "measurable.rkt"
-         "../util/density.rkt"
+         "../util/dnum.rkt"
          (submod "util.rkt" math)
          (submod "util.rkt" define))
 (provide (all-defined-out))
@@ -64,7 +64,7 @@
         [else (-pdf d x (and log? #t))]))
 (define (dist-density d x [log? #f])
   (unless (dist? d) (raise-argument-error 'dist-density "dist?" d))
-  (density log? (dist-pdf d x log?)))
+  (real->dnum (dist-pdf d x log?) log?))
 (define (dist-measure d ms)
   (unless (dist? d) (raise-argument-error 'dist-measure "dist?" d))
   (unless (measurable? ms) (raise-argument-error 'dist-measure "measurable?" ms))

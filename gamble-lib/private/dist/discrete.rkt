@@ -16,7 +16,7 @@
          (submod "util.rkt" weights)
          (submod "util.rkt" search)
          (submod "util.rkt" define)
-         "../util/density.rkt"
+         "../util/dnum.rkt"
          "measurable.rkt")
 (provide (all-defined-out))
 
@@ -505,7 +505,7 @@
     (check-equal? (dist-pdf ed 'a #t) (log 1/2))
     (check-equal? (dist-pdf ed 'z #f) 0)
     (check-equal? (dist-pdf ed 'z #t) -inf.0)
-    (check-equal? (dist-density ed 'a) (density #f 1/2 #;0))
+    (check-equal? (dist-density ed 'a) (dnum #f 1/2 #;0))
     (check-equal? (dist-measure ed (measurable (hash 'a #t 'c #t) null)) (+ 1/2 1/6))
     (check-equal? (dist-total-measure ed) 1)
     (check-equal? (for/hash ([v (in-vector (discrete-dist-values ed))]
@@ -520,7 +520,7 @@
                   (discrete-dist->hash ed))
     (check-equal? (for/discrete-dist ([(v w) (in-discrete-dist ed)]) (values v w)) ed)
     (void))
-  
+
   (let ([md (hash->discrete-dist (hash 'a 0.5 'b 1/3 'c 1/6))])
     (check-equal? (dist-pdf md 'a #f) 0.5)
     (check-equal? (dist-pdf md 'b #f) #i1/3)

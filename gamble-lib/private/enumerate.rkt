@@ -9,7 +9,7 @@
          "dist/base.rkt"
          "dist/discrete.rkt"
          "base.rkt"
-         "util/density.rkt"
+         "util/dnum.rkt"
          "util/real.rkt")
 (provide enumerate)
 
@@ -21,63 +21,63 @@
   (unless (model? mdl) (raise-argument-error 'enumerate "model?" mdl))
   (define ctx (new enumerate-stochastic-ctx% (discretize discretize)))
   (define (init-thunk) (send ctx run-top mdl))
-  (define quit-density (density #f quit-weight))
-  (define dh (simple-enumerate init-thunk quit-density))
+  (define quit-dnum (linear-dnum quit-weight))
+  (define dh (simple-enumerate init-thunk quit-dnum))
   (hash->discrete-dist (for/fold ([h (hash)]) ([(v dn) (in-hash dh)])
-                         (hash-set h v (density->real dn)))
+                         (hash-set h v (dnum->linear-real dn)))
                        #:normalize? normalize?))
 
-;; simple-enumerate : (-> (EnumTree A)) Density -> (Hash A Density)
-;; Handle all paths w/ weight > quit-density first, using DFS.
-;; Then use heap for paths w/ weight <= quit-density, if necessary.
+;; simple-enumerate : (-> (EnumTree A)) Dnum -> (Hash A Dnum)
+;; Handle all paths w/ weight > quit-dnum first, using DFS.
+;; Then use heap for paths w/ weight <= quit-dnum, if necessary.
 (define (simple-enumerate init-thunk quit-dn)
   (define-values (h wl)
-    (let loop ([h (hash)] [wl null] [dn one-density] [thunk init-thunk])
+    (let loop ([h (hash)] [wl null] [dn (linear-dnum 1)] [thunk init-thunk])
       (match (thunk)
         [(done v)
-         (values (hash-set h v (density+ dn (hash-ref h v #f))) wl)]
+         (values (hash-set h v (dnum+ dn (hash-ref h v #f))) wl)]
         [(? list? dn+continue-list)
          (for/fold ([h h] [wl wl]) ([dn+continue (in-list dn+continue-list)])
            (match-define (list* tdn wdn continue) dn+continue)
-           (define tdn* (density* tdn dn))
-           (define wdn* (density* wdn dn))
-           (if (density<=? tdn* quit-dn)
+           (define tdn* (dnum* tdn dn))
+           (define wdn* (dnum* wdn dn))
+           (if (dnum<=? tdn* quit-dn)
                (values h (cons (list* tdn* wdn* continue) wl))
                (loop h wl wdn* continue)))])))
-  (if (null? wl) h (heap-enumerate quit-dn (list->heap wl) (density-sum (map car wl)) h)))
+  (if (null? wl) h (heap-enumerate quit-dn (list->heap wl) (dnum-sum (map car wl)) h)))
 
-;; heap-enumerate : Density (Heap Entry) Density (Hash X Density) -> (Hash X Density)
-;; where Entry = (list* Density Density (-> (EnumTree A)))
-(define (heap-enumerate quit-density heap heapdn h)
+;; heap-enumerate : Dnum (Heap Entry) Dnum (Hash X Dnum) -> (Hash X Dnum)
+;; where Entry = (list* Dnum Dnum (-> (EnumTree A)))
+(define (heap-enumerate quit-dnum heap heapdn h)
   (define (heaploop heap heapdn h)
-    (cond [(density<=? heapdn quit-density)
+    (cond [(dnum<=? heapdn quit-dnum)
            h]
           [else
            (match (heap-case heap)
              [#f h]
              [(cons (list* tdn wdn continue) heap)
-              (continueloop heap (density- heapdn tdn) h wdn continue)])]))
+              (continueloop heap (dnum- heapdn tdn) h wdn continue)])]))
   (define (continueloop heap heapdn h dn continue)
     (match (continue)
       [(done v)
-       (define h* (hash-set h v (density+ dn (hash-ref h v #f))))
+       (define h* (hash-set h v (dnum+ dn (hash-ref h v #f))))
        (heaploop heap heapdn h*)]
       [(? list? wdn+continue-list)
        (define-values (heap* heapdn*)
          (for/fold ([heap heap] [heapdn heapdn])
                    ([wdn+continue (in-list wdn+continue-list)])
            (match-define (list* tdn wdn continue) wdn+continue)
-           (define tdn* (density* dn tdn))
-           (define wdn* (density* dn wdn))
+           (define tdn* (dnum* dn tdn))
+           (define wdn* (dnum* dn wdn))
            (values (heap-insert heap (list* tdn* wdn* continue))
-                   (density+ heapdn tdn*))))
+                   (dnum+ heapdn tdn*))))
        (heaploop heap* heapdn* h)]))
   (heaploop heap heapdn h))
 
 ;; A (EnumTree A) is one of
 ;; - (done A)
 ;; - (listof ContinueEntry)
-;; where ContinueEntry = (list* Density Density/#f (-> (EnumTree A)))
+;; where ContinueEntry = (list* Dnum Dnum/#f (-> (EnumTree A)))
 
 ;; An entry of (list* tdn wdn continue) means the prior weight of this
 ;; subtree is tdn, and its computed weights should be multiplied by wdn.
@@ -109,22 +109,22 @@
              (call/restore 'sample
                (lambda (restore)
                  (for/list ([(v w) (in-dist dist)])
-                   (define wdn (density #f w))
+                   (define wdn (linear-dnum w))
                    (list* wdn wdn (lambda () (restore v))))))]
             [(enumerable-dist? dist)
              (call/restore 'sample
                (lambda (restore)
                  (define str (sequence->stream (in-dist dist)))
                  ;; FIXME: maybe need to start tdn from dist-total-measure?
-                 (let loop ([str str] [n SAMPLE-ELEMS] [tdn one-density])
+                 (let loop ([str str] [n SAMPLE-ELEMS] [tdn (linear-dnum 1)])
                    (cond [(stream-empty? str) null]
                          [(zero? n)
-                          (list (list* tdn one-density (lambda () (loop str SAMPLE-ELEMS tdn))))]
+                          (list (list* tdn (linear-dnum 1) (lambda () (loop str SAMPLE-ELEMS tdn))))]
                          [else
                           (define-values (v w) (stream-first str))
-                          (define wdn (density #f w))
+                          (define wdn (linear-dnum w))
                           (cons (list* wdn wdn (lambda () (restore v)))
-                                (loop (stream-rest str) (sub1 n) (density- tdn wdn)))]))))]
+                                (loop (stream-rest str) (sub1 n) (dnum- tdn wdn)))]))))]
             [(and discretize (real-dist? dist) (discretize tag dist))
              => (lambda (ddist)
                   (-sample ddist tag addr))]
@@ -134,7 +134,7 @@
                  (error 'enumerate "cannot sample from non-enumerable dist\n  dist: ~e" dist)))]))
 
     (define/override (-dscore who dn)
-      (if (density-zero? dn)
+      (if (dnum-zero? dn)
           (fail who)
           (call/restore who
            (lambda (restore)
@@ -185,10 +185,10 @@
     ))
 
 ;; ============================================================
-;; Pairing heap (max-heap wrt density)
+;; Pairing heap (max-heap wrt dnum)
 
 ;; (Heap A) = null | (heaptree A (listof (Heap A)))
-;; where A = (cons Density X)
+;; where A = (cons Dnum X)
 (struct heaptree (elem heaps))
 
 ;; singleton-heap : A -> (Heap A)
@@ -215,7 +215,7 @@
     [[heap1 '()] heap1]
     [['() heap2] heap2]
     [[(heaptree elem1 heaps1) (heaptree elem2 heaps2)]
-     (if (density<=? (car elem1) (car elem2))
+     (if (dnum<=? (car elem1) (car elem2))
          (heaptree elem2 (cons heap1 heaps2))
          (heaptree elem1 (cons heap2 heaps1)))]))
 

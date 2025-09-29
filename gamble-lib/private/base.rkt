@@ -7,7 +7,7 @@
          racket/class
          racket/match
          racket/stxparam
-         "util/density.rkt"
+         "util/dnum.rkt"
          (only-in "dist/base.rkt" dist? dist-sample dist-density)
          (only-in "dist/discrete.rkt" for/discrete-dist))
 (provide (all-defined-out))
@@ -121,7 +121,7 @@
 
     sample      ;; (Dist A) Tag Addr/#f -> A
     observe     ;; Dist[X] X -> Void
-    dscore      ;; Density -> Void
+    dscore      ;; Dnum -> Void
     lscore      ;; LogReal Nat -> Void
     fail        ;; -> escapes
     mem         ;; (X ... -> Y) Addr/#f -> (X ... -> Y)
@@ -166,11 +166,11 @@
       (-unsupported who))
 
     (define/public (dscore dn)
-      (unless (density? dn) (raise-argument-error 'dscore "density?" dn))
+      (unless (dnum? dn) (raise-argument-error 'dscore "dnum?" dn))
       (-dscore 'dscore dn))
     (define/public (lscore ll)
       (unless (real? ll) (raise-argument-error 'lscore "real?" ll))
-      (-dscore 'lscore (density #t ll)))
+      (-dscore 'lscore (logspace-dnum ll)))
     (define/public (observe dist value)
       (unless (dist? dist) (raise-argument-error 'observe "dist?" dist))
       (-dscore 'observe (dist-density dist value logspace?)))
@@ -206,13 +206,13 @@
     (inherit-field logspace?)
     (super-new)
 
-    (field [obs-dn (if logspace? (density #t 0.0) (density #f 1.0))])
+    (field [obs-dn (if logspace? (logspace-dnum 0.0) (linear-dnum 1.0))])
 
     (define/public (get-observation-density) obs-dn)
 
     (define/override (-dscore who dn)
-      (set! obs-dn (density* obs-dn dn))
-      (when (density-zero? obs-dn) (fail `(gamble zero-score ,who))))
+      (set! obs-dn (dnum* obs-dn dn))
+      (when (dnum-zero? obs-dn) (fail `(gamble zero-score ,who))))
     ))
 
 (define (top-level-run-model m)
@@ -220,7 +220,7 @@
   (match (send subctx run-top m)
     [(list v)
      (printf "[run-model] log likelihood = ~s\n"
-             (density->real (send subctx get-observation-density) #t))
+             (dnum->logspace-real (send subctx get-observation-density)))
      v]
     [#f
      (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)

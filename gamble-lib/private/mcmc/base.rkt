@@ -11,7 +11,7 @@
          "../addr.rkt"
          "../model/graph-trace.rkt"
          "../util/real.rkt"
-         "../util/density.rkt")
+         "../util/dnum.rkt")
 (provide (all-defined-out))
 
 (define-logger mcmc)
@@ -252,7 +252,7 @@
       value)
 
     (define/override (-dscore who dn)
-      (set! sumlobs (+ sumlobs (density->real dn #t)))
+      (set! sumlobs (+ sumlobs (dnum->logspace-real dn)))
       (when (logspace-zero? sumlobs) (fail `(gamble zero-score ,who))))
 
     (define/override (mem f addr)
@@ -343,7 +343,7 @@
                     dist)]))
 
     (define/override (-dscore who dn)
-      (when (density-zero? dn) (fail `(gamble zero-score ,who))))
+      (when (dnum-zero? dn) (fail `(gamble zero-score ,who))))
     ))
 
 ;; ============================================================

@@ -19,7 +19,7 @@
          "../base.rkt"
          (only-in "../dist.rkt" dist-pdf)
          (submod "../dist.rkt" meta)
-         (only-in "../util/density.rkt" density->real)
+         (only-in "../util/dnum.rkt" dnum->logspace-real)
          "instrument.rkt")
 (provide (all-defined-out))
 
@@ -346,7 +346,7 @@
              (+ sumlprs (dist-pdf (result->value distr) (fetch loc) #t)))]
       [(node:dscore argr)
        (set! sumlobs
-             (+ sumlobs (density->real (result->value argr) #t)))]
+             (+ sumlobs (dnum->logspace-real (result->value argr))))]
       [(node:lscore argr)
        (set! sumlobs
              (+ sumlobs (result->value argr)))]
