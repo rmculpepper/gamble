@@ -75,6 +75,9 @@
                     [else (- x1 x2)]))]
     [[dn1 #f] dn1]))
 
+(define (density-sum dns)
+  (foldr density+ #f dns))
+
 (define (density<=? dn1 dn2)
   (match-define (density log1? x1) dn1)
   (match-define (density log2? x2) dn2)

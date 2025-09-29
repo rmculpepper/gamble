@@ -21,29 +21,34 @@
   (unless (model? mdl) (raise-argument-error 'enumerate "model?" mdl))
   (define ctx (new enumerate-stochastic-ctx% (discretize discretize)))
   (define (init-thunk) (send ctx run-top mdl))
-  (define dh
-    (cond [(> quit-weight 0)
-           (heap-enumerate init-thunk quit-weight)]
-          [else (simple-enumerate init-thunk)]))
+  (define quit-density (density #f quit-weight))
+  (define dh (simple-enumerate init-thunk quit-density))
   (hash->discrete-dist (for/fold ([h (hash)]) ([(v dn) (in-hash dh)])
                          (hash-set h v (density->real dn)))
                        #:normalize? normalize?))
 
-;; simple-enumerate : (-> (EnumTree A)) -> (Hash A Density)
-(define (simple-enumerate init-thunk)
-  (let loop ([h (hash)] [dn one-density] [thunk init-thunk])
-    (match (thunk)
-      [(done v)
-       (hash-set h v (density+ dn (hash-ref h v #f)))]
-      [(? list? dn+continue-list)
-       (for/fold ([h h]) ([dn+continue (in-list dn+continue-list)])
-         (match-define (list* _ wdn continue) dn+continue)
-         (loop h (density* wdn dn) continue))])))
+;; simple-enumerate : (-> (EnumTree A)) Density -> (Hash A Density)
+;; Handle all paths w/ weight > quit-density first, using DFS.
+;; Then use heap for paths w/ weight <= quit-density, if necessary.
+(define (simple-enumerate init-thunk quit-dn)
+  (define-values (h wl)
+    (let loop ([h (hash)] [wl null] [dn one-density] [thunk init-thunk])
+      (match (thunk)
+        [(done v)
+         (values (hash-set h v (density+ dn (hash-ref h v #f))) wl)]
+        [(? list? dn+continue-list)
+         (for/fold ([h h] [wl wl]) ([dn+continue (in-list dn+continue-list)])
+           (match-define (list* tdn wdn continue) dn+continue)
+           (define tdn* (density* tdn dn))
+           (define wdn* (density* wdn dn))
+           (if (density<=? tdn* quit-dn)
+               (values h (cons (list* tdn* wdn* continue) wl))
+               (loop h wl wdn* continue)))])))
+  (if (null? wl) h (heap-enumerate quit-dn (list->heap wl) (density-sum (map car wl)) h)))
 
-;; heap-enumerate : (-> (EnumTree A)) Real -> (Hash A Density)
-(define (heap-enumerate init-thunk quit-weight)
-  (define init-heap (singleton-heap (list* one-density one-density init-thunk)))
-  (define quit-density (density #f quit-weight))
+;; heap-enumerate : Density (Heap Entry) Density (Hash X Density) -> (Hash X Density)
+;; where Entry = (list* Density Density (-> (EnumTree A)))
+(define (heap-enumerate quit-density heap heapdn h)
   (define (heaploop heap heapdn h)
     (cond [(density<=? heapdn quit-density)
            h]
@@ -67,7 +72,7 @@
            (values (heap-insert heap (list* tdn* wdn* continue))
                    (density+ heapdn tdn*))))
        (heaploop heap* heapdn* h)]))
-  (heaploop init-heap one-density (hash)))
+  (heaploop heap heapdn h))
 
 ;; A (EnumTree A) is one of
 ;; - (done A)
@@ -188,6 +193,10 @@
 
 ;; singleton-heap : A -> (Heap A)
 (define (singleton-heap elem) (heaptree elem null))
+
+;; list->heap : (Listof A) -> (Heap A)
+(define (list->heap elems)
+  (merge-pairs (map singleton-heap elems)))
 
 ;; heap-case : (Heap A) -> (U #f (cons A (Heap A)))
 (define (heap-case heap)
