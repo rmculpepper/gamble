@@ -17,7 +17,7 @@
 ;; ============================================================
 ;; Transitions
 
-(define (initialize-transition [get-value (lambda (tag dist) #f)])
+(define (initialize-transition [get-value (lambda (tag dist prev) #f)])
   (new initialize-transition% (get-value get-value)))
 
 (define (single-site-transition [transition #f]

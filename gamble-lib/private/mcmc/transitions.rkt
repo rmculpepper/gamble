@@ -15,13 +15,14 @@
 
 (define initialize-transition%
   (class* object% (mcmc-transition<%>)
-    (init-field get-value)  ;; (Tag Dist -> (or/c (list X) #f))
+    (init-field get-value)  ;; (Tag Dist ProposalValue/#f) -> ProposalValue/#f
     (super-new)
 
     ;; run : ModelRunner #f -> (values Trace/#f TxInfo)
     (define/public (run mrun prev-trace)
       (define ctx
         (new initializing-tracing-stochastic-ctx%
+             (prev-db (trace-db prev-trace))
              (get-value get-value)))
       (cond [(send mrun eval/ctx ctx)
              => (lambda (new-trace)

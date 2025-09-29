@@ -306,18 +306,22 @@
 ;; Used to initialize model. If get-value fails, sample from prior.
 (define initializing-tracing-stochastic-ctx%
   (class tracing-stochastic-ctx%
-    (init-field get-value)  ;; (Tag Dist[X] -> (U #f (list X)))
+    (init-field get-value)  ;; (Tag Dist ProposalValue/#f) -> ProposalValue/#f
     (inherit-field prev-db)
-    (super-new [prev-db (make-hash)] ;; mutated
-               [delta-db (hash)])
+    (super-new [delta-db (hash)])
+
+    (define real-prev-db prev-db)   ;; not mutated
+    (set! prev-db (make-hash))       ;; mutated
 
     ;; Hack: override -sample to add entries to prev-db on demand.
     (define/override (-sample dist tag addr)
-      (match (get-value tag dist)
-        [(list value)
+      (define prev-e (hash-ref real-prev-db addr #f))
+      (match (get-value tag dist (and prev-e (proposal-value (entry-value prev-e) 0.0)))
+        [(proposal-value value _)
          (define lpr (dist-pdf dist value #t))
          (hash-set! prev-db addr (entry dist value lpr tag))]
-        [_ (void)])
+        [#f
+         (when prev-e (hash-set! prev-db addr prev-e))])
       (super -sample dist tag addr))
     ))
 
