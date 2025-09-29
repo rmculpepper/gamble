@@ -606,7 +606,7 @@
     ;; show-slice : (Listof DBKey) -> Void
     (define/public (show-slice keys)
       (define s (get-slice keys))
-      (match-define (slice all-nodes min-nodes _) s)
+      (match-define (slice _ all-nodes min-nodes _) s)
       (begin ;; initialize loc=>index
         (define loc=>index (make-hasheq))
         (for ([nodeid (in-range 0 nodeid-counter)])
@@ -625,7 +625,7 @@
       (define nodeids (get-slice-nodeids keys))
       (define all-nodes (nodeids->nodes nodeids #f))
       (define min-nodes (nodeids->nodes nodeids #t))
-      (slice all-nodes min-nodes final-result))
+      (slice keys all-nodes min-nodes final-result))
 
     ;; get-slice-nodeids : (Listof DBKey) -> (Listof NodeID)
     (define/private (get-slice-nodeids keys)
@@ -688,8 +688,8 @@
 
 ;; ============================================================
 
-;; Slice = (slice (Vectorof Node) (Vectorof Node) Result)
-(struct slice (all-nodes min-nodes result))
+;; Slice = (slice (Listof DBKey) (Vectorof Node) (Vectorof Node) Result)
+(struct slice (keys all-nodes min-nodes result))
 (define no-result (string->uninterned-symbol "<<no-result>>"))
 
 ;; slice->lprs+lobs : Slice -> (values Real Real)
@@ -698,7 +698,7 @@
 
 ;; slice-eval : Symbol/#f Slice StochasticCtx Boolean -> Any
 (define (slice-eval who s ctx minimal?)
-  (match-define (slice all-nodes min-nodes final-result) s)
+  (match-define (slice _ all-nodes min-nodes final-result) s)
   (exec-nodes! who (if minimal? min-nodes all-nodes) ctx)
   (if minimal? no-result (result->value final-result)))
 
@@ -707,6 +707,11 @@
 ;; using conjugacy relationships. Returns posterior or #f for failure.
 ;; (If dist returned, can be used for Gibbs step.)
 (define (slice->posterior-dist s)
+  (and (= 1 (length (slice-keys s))) (slice->posterior-dist* s)))
+
+;; slice->posterior-dist* : Slice -> Dist/#f
+(define (slice->posterior-dist* s)
+  ;; PRE: slice over exactly one key
   (define nodes (slice-min-nodes s))
   ;; Pattern = #f | '_ | Real | (dist-symbol Pattern ...)
   (define loc=>pattern (make-hasheq)) ;; Location => Pattern
