@@ -3,7 +3,11 @@
 ;; See the file COPYRIGHT for details.
 
 #lang racket/base
-(require (for-syntax racket/base syntax/parse "model/analysis.rkt")
+(require (for-syntax racket/base
+                     syntax/parse
+                     syntax/free-vars
+                     syntax/transformer
+                     "model/analysis.rkt")
          racket/stxparam
          "base.rkt"
          "model/instrument.rkt"
@@ -26,6 +30,15 @@
     (define ctx-proc-expr
       #`(#%plain-lambda (ctx) (with-ctx ctx #,body-expr)))
     (define ee (local-expand ctx-proc-expr 'expression null))
+    (define fvs (free-vars ee))
+    (define (lift+wrap e)
+      (with-syntax ([(fv ...) fvs] [(tmp ...) (generate-temporaries fvs)] [e e])
+        (define lifted
+          (syntax-local-lift-expression
+           #'(#%plain-lambda (tmp ...)
+               (letrec-syntax ([fv (make-variable-like-transformer (quote-syntax tmp))] ...)
+                 e))))
+        #`(#%plain-app #,lifted fv ...)))
     (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
     (analyze-FUN-EXP tagged-ee)
     (analyze-CALLS-ERP tagged-ee)
@@ -40,7 +53,7 @@
       #`(syntax-parameterize ((CSBASE (make-rename-transformer
                                        (quote-syntax #,csbase-id))))
           (instrument/graph-top #,tagged-ee)))
-    (list aproc-expr gproc-expr csbase-id)))
+    (list (lift+wrap aproc-expr) (lift+wrap gproc-expr) csbase-id)))
 
 (define next-global-call-site 1)
 
