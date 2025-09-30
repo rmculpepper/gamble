@@ -134,3 +134,46 @@
     (when initialize
       (send s initialize initialize))
     s))
+
+;; ============================================================
+
+;; model-slice : (Model A) GetValue
+;;            -> (Listof Tag) Dist[X]/#f (X ... -> Real) (X ... -> (values A Real))
+;; where GetValue = (Tag Dist[X] (U #f (ProposeValue X)) -> (U #f (ProposeValue X))
+(define (model-slice mdl
+                     [get-value (lambda (tag dist prev) #f)]
+                     #:debug? [debug? #f])
+  (define init-ctx
+    (new initializing-tracing-stochastic-ctx%
+         (prev-db (hash)) (new-keys null) (get-value get-value)))
+  (define mrun (new model-runner% (mdl mdl)))
+  (define init-trace (send mrun eval/ctx init-ctx))
+  (define keys (send init-ctx get-new-keys))
+  (define pdist
+    (match keys
+      [(list key) (send mrun get-slice-posterior 'model-slice key init-trace)]
+      [_ #f]))
+  (define eval-slice (send mrun make-eval-slice 'model-slice keys init-trace))
+  (define-values (tags dists)
+    (let ([init-db (trace-db init-trace)])
+      (for/lists (tags dists) ([key (in-list keys)])
+        (let ([e (hash-ref init-db key)]) (values (entry-tag e) (entry-dist e))))))
+  (when debug?
+    (printf "Slice addresses to tags and priors:\n")
+    (for ([key (in-list keys)] [tag (in-list tags)] [dist (in-list dists)])
+      (printf "  ~e : ~e, ~e\n" key tag dist))
+    (send mrun show))
+  (define (eval-slice* xs mini?)
+    (define delta-db (for/hash ([key (in-list keys)] [x (in-list xs)])
+                       (values key (proposal-value x 0.0))))
+    (eval-slice delta-db mini?))
+  (values tags
+          pdist
+          (procedure-reduce-arity
+           (lambda xs (trace-lj (eval-slice* xs #t)))
+           (length keys) 'model-logjoint)
+          (procedure-reduce-arity
+           (lambda xs
+             (define tr (eval-slice* xs #f))
+             (values (and tr (trace-value tr)) (trace-lj tr)))
+           (length keys) 'model-eval+logjoint)))

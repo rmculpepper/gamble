@@ -62,6 +62,14 @@
                  #:normalize? boolean?]
                 any)])
 
+         (contract-out
+          [model-slice
+           (->* [model?]
+                [(-> any/c dist? (or/c #f proposal-value?)
+                     (or/c #f proposal-value?))
+                 #:debug? boolean?]
+                any)])
+
          mcmc-transition?
          mcmc-transition/single-site?
          (contract-out
