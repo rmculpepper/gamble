@@ -345,7 +345,7 @@
     (inherit fail)
     (init-field who         ;; Symbol
                 prev-db)    ;; DB, not mutated
-    (super-new)
+    (super-new [logspace? #t])
 
     (define/override (-sample dist tag addr)
       (cond [(hash-ref prev-db addr #f)
@@ -402,7 +402,7 @@
         (send graph-cache show)
         (match eval-cache
           [(list* keys _)
-           (eprintf "\nCurrent slice: ~e\n" keys)
+           (printf "\nCurrent slice: ~e\n" keys)
            (send graph-cache show-slice keys)]
           [#f (void)])))
 
@@ -420,7 +420,8 @@
             (define base-ctx (new replay-stochastic-ctx%
                                   (who who) (prev-db (trace-db prev-trace))))
             (define graph (new graph% (ctx base-ctx)))
-            (void (send graph eval-top mdl))
+            (unless (send base-ctx run-top (lambda () (send graph eval-top mdl)))
+              (error who "failed to build trace graph"))
             (set! graph-cache graph)
             graph)))
 
