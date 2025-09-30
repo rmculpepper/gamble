@@ -136,7 +136,6 @@
 
 (define base-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
-    (init-field [logspace? #f])
     (field [escape-prompt (make-continuation-prompt-tag)])
     (super-new)
 
@@ -202,11 +201,9 @@
 
 (define scoring-stochastic-ctx%
   (class base-stochastic-ctx%
+    (init-field [obs-dn (linear-dnum 1.0)])
     (inherit fail)
-    (inherit-field logspace?)
     (super-new)
-
-    (field [obs-dn (if logspace? (logspace-dnum 0.0) (linear-dnum 1.0))])
 
     (define/public (get-observation-density) obs-dn)
 

@@ -171,8 +171,7 @@
     (field [current-db (make-hash)] ;; DB, mutated
            [l-R/F 0.0]              ;; real, mutated
            [diff-lprs  0.0])        ;; see get-diff-lprs below
-
-    (super-new [logspace? #t])
+    (super-new)
 
     ;; The sample method records random choices by mutating
     ;; current-db. At the end of execution, current-db contains a
@@ -338,7 +337,7 @@
     (inherit fail)
     (init-field who         ;; Symbol
                 prev-db)    ;; DB, not mutated
-    (super-new [logspace? #t])
+    (super-new)
 
     (define/override (-sample dist tag addr)
       (cond [(hash-ref prev-db addr #f)

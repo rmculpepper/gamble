@@ -470,7 +470,7 @@
 (define graph%
   (class object%
     (init-field [init-addr init-hash-addr]
-                [ctx (new scoring-stochastic-ctx% (logspace? #t))])
+                [ctx (new scoring-stochastic-ctx%)])
     (super-new)
 
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID), references
