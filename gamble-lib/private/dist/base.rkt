@@ -113,6 +113,7 @@
    (define (-modes d) #f)
    (define (-variance d) #f)])
 
+;; dist-cdf : Numeric-Dist Real Boolean Boolean -> Real
 (define (dist-cdf d x [log? #f] [1-p? #f])
   (unless (numeric-dist? d) (raise-argument-error 'dist-cdf "numeric-dist?" d))
   (unless (real? x) (raise-argument-error 'dist-cdf "real?" x))
@@ -129,6 +130,28 @@
 (define (dist-support d)
   (unless (numeric-dist? d) (raise-argument-error 'dist-support "numeric-dist?" d))
   (-support d))
+
+;; For dist-{mean,median,modes,variance}, #f may mean undefined or unknown.
+
+;; dist-mean : Numeric-Dist -> Real/#f
+(define (dist-mean d)
+  (unless (numeric-dist? d) (raise-argument-error 'dist-mean "numeric-dist?" d))
+  (-mean d))
+
+;; dist-median : Numeric-Dist -> Real/#f
+(define (dist-median d)
+  (unless (numeric-dist? d) (raise-argument-error 'dist-median "numeric-dist?" d))
+  (-median d))
+
+;; dist-modes : Numeric-Dist -> (listof Real)/#f
+(define (dist-modes d)
+  (unless (numeric-dist? d) (raise-argument-error 'dist-modes "numeric-dist?" d))
+  (-modes d))
+
+;; dist-variance : Numeric-Dist -> Real/#f
+(define (dist-variance d)
+  (unless (numeric-dist? d) (raise-argument-error 'dist-variance "numeric-dist?" d))
+  (-variance d))
 
 (define-generics real-dist   ;; extends numeric-dist
   ;; Represents normalized, continuous real-valued distributions.

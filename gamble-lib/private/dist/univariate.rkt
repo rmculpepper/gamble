@@ -104,9 +104,9 @@
      (m:flcauchy-inv-cdf mode scale (fl x) log? 1-p?))
    (define (-support self)
      (real-range -inf.0 +inf.0))
-   (define (-mean self) +nan.0)
+   (define (-mean self) #f) ;; undefined
    (define (-modes self) (list (cauchy-dist-mode self)))
-   (define (-variance self) +nan.0)
+   (define (-variance self) #f) ;; undefined
    (define (-denergy self x [dx 1] [dm 0] [ds 0])
      (match-define (cauchy-dist mode scale) self)
      (define x-m (- x mode))
@@ -143,12 +143,12 @@
    (define (-support self)
      (real-range 0.0 +inf.0))
    (define (-mean self)
-     (match-define (exponential-dist mean) self)
-     mean)
-   (define (-modes self) '(0))
+     (exponential-dist-mean self))
+   (define (-median self)
+     (* (exponential-dist-mean self) (log 2.0)))
+   (define (-modes self) '(0.0))
    (define (-variance self)
-     (match-define (exponential-dist mean) self)
-     (expt mean 2))
+     (expt (exponential-dist-mean self) 2))
    (define (-denergy self x [dx 1] [dm 0])
      (match-define (exponential-dist mean) self)
      (define /mean (/ mean))
@@ -211,7 +211,7 @@
      (* shape scale))
    (define (-modes self)
      (match-define (gamma-dist shape scale) self)
-     (if (> shape 1) (list (* (- shape 1) scale)) null))
+     (if (> shape 1) (list (* (- shape 1.0) scale)) '(0.0)))
    (define (-variance self)
      (match-define (gamma-dist shape scale) self)
      (* shape scale scale))
@@ -258,7 +258,7 @@
    (define (-modes self) (list (logistic-dist-mean self)))
    (define (-variance self)
      (match-define (logistic-dist mean scale) self)
-     (* scale scale pi pi 1/3))
+     (/ (* scale scale pi pi) 3.0))
    (define (-denergy self x [dx 1] [dm 0] [ds 0])
      (match-define (logistic-dist mean scale) self)
      (define s scale)
@@ -314,9 +314,7 @@
    (define (-mean self) (normal-dist-mean self))
    (define (-median self) (normal-dist-mean self))
    (define (-modes self) (list (normal-dist-mean self)))
-   (define (-variance self)
-     (match-define (normal-dist mean scale) self)
-     (* scale scale))
+   (define (-variance self) (sqr (normal-dist-stddev self)))
    (define (-denergy self x [dx 1] [dμ 0] [dσ 0])
      (match-define (normal-dist μ σ) self)
      (define x-μ (- x μ))
@@ -364,10 +362,10 @@
      (real-range lo hi))
    (define (-mean self)
      (match-define (uniform-dist lo hi) self)
-     (/ (+ lo hi) 2))
+     (/ (+ lo hi) 2.0))
    (define (-median self)
      (match-define (uniform-dist lo hi) self)
-     (/ (+ lo hi) 2))
+     (/ (+ lo hi) 2.0))
    (define (-variance self)
      (match-define (uniform-dist lo hi) self)
      (let ([w (- hi lo)]) (* w w (fl 1/12))))
@@ -417,15 +415,15 @@
      (real-range lo hi))
    (define (-mean self)
      (match-define (triangle-dist lo hi mode) self)
-     (/ (+ lo hi mode) 3))
+     (/ (+ lo hi mode) 3.0))
    (define (-mode self)
      (match-define (triangle-dist lo hi mode) self)
-     mode)
+     (list mode))
    (define (-variance self)
      (match-define (triangle-dist lo hi mode) self)
      (/ (- (+ (* lo lo) (* hi hi) (* mode mode))
            (+ (* lo hi) (* lo mode) (* hi mode)))
-        18))]
+        18.0))]
   #:methods gen:driftable
   [(define (-drift1 self value params? scale-factor)
      (match-define (triangle-dist lo hi mode) self)
@@ -480,9 +478,7 @@
      (real-range (pareto-dist-scale self) +inf.0))
    (define (-mean self)
      (match-define (pareto-dist scale shape) self)
-     (if (<= shape 1)
-         +inf.0
-         (/ (* scale shape) (sub1 shape))))
+     (if (<= shape 1) +inf.0 (/ (* scale shape) (- shape 1.0))))
    (define (-modes self)
      (list (pareto-dist-scale self)))
    (define (-variance self)
@@ -490,7 +486,7 @@
      (if (<= shape 2)
          +inf.0
          (/ (* scale scale shape)
-            (* (- shape 1) (- shape 1) (- shape 2)))))]
+            (* (- shape 1.0) (- shape 1.0) (- shape 2.0)))))]
   #:methods gen:driftable
   [(define (-drift1 self value params? scale-factor)
      (match-define (pareto-dist scale shape) self)
@@ -516,7 +512,19 @@
    (define (-invcdf self p log? 1-p?)
      (-t-inv-cdf (-t-ext self) p log? 1-p?))
    (define (-support self)
-     (real-range -inf.0 +inf.0))]
+     (real-range -inf.0 +inf.0))
+   (define (-mean self)
+     (match-define (student-t-dist degrees mean scale _) self)
+     (if (> degrees 1) mean #f))
+   (define (-median self)
+     (student-t-dist-mean self))
+   (define (-modes self)
+     (list (student-t-dist-mean self)))
+   (define (-variance self)
+     (define degrees (student-t-dist-degrees self))
+     (cond [(> degrees 2) (/ degrees (- degrees 2.0))]
+           [(> degrees 1) +inf.0]
+           [else #|undefined|# #f]))]
   #:methods gen:driftable
   ;; FIXME: consider additive Cauchy instead?
   [(define (-drift1 self value params? scale-factor)
@@ -580,9 +588,8 @@
      (integer-range 0 +inf.0))
    (define (-mean self)
      (match-define (geometric-dist p) self)
-     (/ (- 1 p) p))
-   (define (-modes self)
-     '(0))
+     (/ (- 1.0 p) p))
+   (define (-modes self) '(0))
    (define (-variance self)
      (match-define (geometric-dist p) self)
      (/ (- 1 p) (* p p)))]
@@ -594,7 +601,7 @@
      (drift:reflecting-discrete-unit 0 +inf.0 value))])
 
 (define-dist-struct poisson-dist
-  ([mean positive-rational? fl])
+  ([mean positive-rational? fl]) ;; aka rate, λ
   #:methods gen:dist
   [(define (-sample self)
      (match-define (poisson-dist mean) self)
@@ -612,16 +619,13 @@
      (exact (m:flpoisson-inv-cdf mean (fl x) log? 1-p?)))
    (define (-support self)
      (integer-range 0 +inf.0))
-   (define (-mean self)
-     (match-define (poisson-dist mean) self)
-     mean)
+   (define (-mean self) (poisson-dist-mean self))
    (define (-modes self)
      (match-define (poisson-dist mean) self)
      (if (integer? mean)
          (list mean (sub1 mean))
          (list (floor mean))))
-   (define (-variance self)
-     (match self [(poisson-dist mean) mean]))]
+   (define (-variance self) (poisson-dist-mean self))]
   #:methods gen:enumerable-dist
   [(define (-enum self)
      (in-naturals))]
@@ -711,7 +715,7 @@
                      (list m (sub1 m)))))
    (define (-variance self)
      (match-define (binomial-dist n p) self)
-     (* n p (- 1 p)))]
+     (* n p (- 1.0 p)))]
   #:methods gen:enumerable-dist
   [(define (-sequence self)
      (match-define (binomial-dist n _) self)
@@ -759,7 +763,16 @@
          (cond [(>= px (if log? 0.0 1.0)) +inf.0]
                [else (find-least-natural (lambda (k) (>= (-cdf self k log? #f) px)))])))
    (define (-support self)
-     (integer-range 0 +inf.0))]
+     (integer-range 0 +inf.0))
+   (define (-mean self)
+     (match-define (negative-binomial-dist r p) self)
+     (/ (* r (- 1.0 p)) p))
+   (define (-modes self)
+     (match-define (negative-binomial-dist r p) self)
+     (if (> r 1) (list (exact (floor (/ (* (- r 1.0) (- 1.0 p)) p)))) '(0)))
+   (define (-variance self)
+     (match-define (negative-binomial-dist r p) self)
+     (/ (* r (- 1.0 p)) (sqr p)))]
   #:methods gen:enumerable-dist
   [(define (-sequence self)
      (in-naturals))]

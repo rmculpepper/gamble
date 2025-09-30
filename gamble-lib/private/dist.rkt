@@ -24,6 +24,10 @@
          dist-cdf
          dist-inv-cdf
          dist-support
+         dist-mean
+         dist-median
+         dist-modes
+         dist-variance
 
          real-dist?
          integer-dist?
