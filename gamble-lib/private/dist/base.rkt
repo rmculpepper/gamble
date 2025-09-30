@@ -155,7 +155,6 @@
 
 (define-generics real-dist   ;; extends numeric-dist
   ;; Represents normalized, continuous real-valued distributions.
-  ;; (-denergy numeric-dist x . d/dts)   ;; Dist Real Param ... -> Real
   #:fallbacks [])
 
 (define-generics integer-dist      ;; extends numeric-dist, enumerable-dist

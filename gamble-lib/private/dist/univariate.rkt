@@ -69,16 +69,7 @@
          '()))
    (define (-variance self)
      (match-define (beta-dist a b) self)
-     (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))
-   (define (-denergy self x [dx 1] [da 0] [db 0])
-     (match-define (beta-dist a b) self)
-     (+ (lazy* dx (+ (/ (- 1 a) x)
-                     (/ (- b 1) (- 1 x))))
-        (lazy* da (- (log x)))
-        (lazy* db (- (log (- 1 x))))
-        (lazy* da (digamma a))
-        (lazy* db (digamma b))
-        (lazy* (+ da db) (- (digamma (+ a b))))))])
+     (/ (* a b) (* (+ a b) (+ a b) (+ a b 1))))])
 
 (define-dist-struct cauchy-dist
   ([mode rational? fl]
@@ -100,16 +91,9 @@
      (m:flcauchy-inv-cdf mode scale (fl x) log? 1-p?))
    (define (-support self)
      (real-range -inf.0 +inf.0))
-   (define (-mean self) #f) ;; undefined
+   (define (-mean self) #|undefined|# #f)
    (define (-modes self) (list (cauchy-dist-mode self)))
-   (define (-variance self) #f) ;; undefined
-   (define (-denergy self x [dx 1] [dm 0] [ds 0])
-     (match-define (cauchy-dist mode scale) self)
-     (define x-m (- x mode))
-     (+ (lazy* ds (/ scale))
-        (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
-           (- (/ (- dx dm) scale)
-              (lazy* ds (/ x-m scale scale))))))])
+   (define (-variance self) #|undefined|# #f)])
 
 (define-dist-struct exponential-dist
   ([mean positive-rational? fl])
@@ -137,12 +121,7 @@
      (* (exponential-dist-mean self) (log 2.0)))
    (define (-modes self) '(0.0))
    (define (-variance self)
-     (expt (exponential-dist-mean self) 2))
-   (define (-denergy self x [dx 1] [dm 0])
-     (match-define (exponential-dist mean) self)
-     (define /mean (/ mean))
-     (+ (lazy* dm (- /mean (* x /mean /mean)))
-        (* dx /mean)))])
+     (expt (exponential-dist-mean self) 2))])
 
 (define-dist-struct gamma-dist
   ([shape positive-rational? fl]
@@ -195,14 +174,7 @@
      (if (> shape 1) (list (* (- shape 1.0) scale)) '(0.0)))
    (define (-variance self)
      (match-define (gamma-dist shape scale) self)
-     (* shape scale scale))
-   (define (-denergy self x [dx 1] [dk 0] [dθ 0])
-     (match-define (gamma-dist shape scale) self)
-     (define k shape)
-     (define θ scale)
-     (+ (lazy* dx (+ (/ (- 1 k) x) (/ θ)))
-        (lazy* dk (+ (digamma k) (log θ) (- (log x))))
-        (lazy* dθ (- (/ k θ) (/ x (* θ θ))))))])
+     (* shape scale scale))])
 
 (define-dist-struct logistic-dist
   ([mean rational? fl]
@@ -229,16 +201,7 @@
    (define (-modes self) (list (logistic-dist-mean self)))
    (define (-variance self)
      (match-define (logistic-dist mean scale) self)
-     (/ (* scale scale pi pi) 3.0))
-   (define (-denergy self x [dx 1] [dm 0] [ds 0])
-     (match-define (logistic-dist mean scale) self)
-     (define s scale)
-     (define x-m (- x mean))
-     (define A (- (/ (- dx dm) s) (lazy* ds (/ x-m (* s s)))))
-     (define B (exp (- (/ x-m s))))
-     (+ A
-        (lazy* ds (/ s))
-        (* 2 (/ (+ 1 B)) B (- A))))])
+     (/ (* scale scale pi pi) 3.0))])
 
 (define-dist-struct normal-dist
   ([mean rational? fl]
@@ -278,13 +241,7 @@
    (define (-mean self) (normal-dist-mean self))
    (define (-median self) (normal-dist-mean self))
    (define (-modes self) (list (normal-dist-mean self)))
-   (define (-variance self) (sqr (normal-dist-stddev self)))
-   (define (-denergy self x [dx 1] [dμ 0] [dσ 0])
-     (match-define (normal-dist μ σ) self)
-     (define x-μ (- x μ))
-     (+ (lazy* dσ (- (/ σ) (/ (* x-μ x-μ) (* σ σ σ))))
-        (lazy* (- dx dμ)
-               (/ x-μ (* σ σ)))))])
+   (define (-variance self) (sqr (normal-dist-stddev self)))])
 
 (define-dist-struct uniform-dist
   ([lo rational? fl]
@@ -325,12 +282,7 @@
      (/ (+ lo hi) 2.0))
    (define (-variance self)
      (match-define (uniform-dist lo hi) self)
-     (let ([w (- hi lo)]) (* w w (fl 1/12))))
-   (define (-denergy self x [dx 1] [dlo 0] [dhi 0])
-     (match-define (uniform-dist lo hi) self)
-     (cond [(<= lo x hi)
-            (lazy* (- dhi dlo) (/ (- hi lo)))]
-           [else 0]))])
+     (let ([w (- hi lo)]) (* w w (fl 1/12))))])
 
 (define-dist-struct triangle-dist
   ([lo rational? fl]
