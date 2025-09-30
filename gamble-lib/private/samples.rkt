@@ -16,6 +16,23 @@
 ;; ------------------------------------------------------------
 ;; Empirical CDF
 
+;; samples->empirical-cdf : SampleFrame -> (Real -> Real)
+(define (samples->empirical-cdf sf)
+  (define vs (hash-ref sf 'value))
+  (define lws (hash-ref sf 'log-weight #f))
+  (cond [lws
+         (define maxlw (for/fold ([maxlw -inf.0]) ([lw (in-vector lws)]) (max maxlw lw)))
+         (define svs (for/vector ([v (in-vector vs)] [lw (in-vector lws)]) (cons v lw)))
+         (vector-sort! svs < #:key car)
+         (define scws (make-vector (vector-length svs)))
+         (for/fold ([s 0.0] [c 0.0]) ([i (in-naturals)] [vlw (in-vector svs)])
+           (vector-set! svs i (car vlw))
+           (define-values (s* c*) (compensated+ (exp (- (cdr vlw) maxlw)) s c))
+           (vector-set! scws i s*)
+           (values s* c*))
+         (sorted->empirical-cdf svs scws (exp maxlw))]
+        [else (sorted->empirical-cdf (vector-sort vs <))]))
+
 (define (vector->empirical-cdf vs [ws #f])
   (cond [ws
          (define svs (for/vector ([v (in-vector vs)] [w (in-vector ws)]) (cons v w)))
@@ -28,11 +45,11 @@
          (sorted->empirical-cdf svs scws)]
         [else (sorted->empirical-cdf (vector-sort vs <))]))
 
-(define (sorted->empirical-cdf svs [scws #f])
+(define (sorted->empirical-cdf svs [scws #f] [factor 1])
   (define (ecdf x)
     (cond [(>= x (vector-ref svs 0))
            (define k (binary-search/least-geq svs x))
-           (if scws (vector-ref scws k) (/ (add1 k) (vector-length svs)))]
+           (* factor (if scws (vector-ref scws k) (/ (add1 k) (vector-length svs))))]
           [else 0]))
   ecdf)
 

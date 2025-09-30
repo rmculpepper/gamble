@@ -8,8 +8,7 @@
          racket/match
          racket/stxparam
          "util/dnum.rkt"
-         (only-in "dist/base.rkt" dist? dist-sample dist-density)
-         (only-in "dist/discrete.rkt" for/discrete-dist))
+         "dist.rkt")
 (provide (all-defined-out))
 
 ;; Defines interfaces, base classes, and parameters.
@@ -38,77 +37,42 @@
 (struct model (proc gproc csbase))
 
 ;; ============================================================
+;; SampleFrame
+
+;; A SampleFrame is (Hasheq s:Symbol FieldValue(s))
+;; with 'value      : (Vectorof A)      -- always
+;;      'log-weight : (Vectorof Real)   -- only importance sampler
+;; and other fields determined by sampler (see mcmc-sampler).
+
+(define (samples->discrete-dist sf #:normalize? [normalize? #t])
+  (define vs (hash-ref sf 'value))
+  (define lws (hash-ref sf 'log-weight #f))
+  (make-discrete-dist vs lws #:log-weight? #t #:normalize? normalize?))
+
+;; ============================================================
 ;; Samplers
 
-(define weighted-sampler<%>
-  (interface ()
-    sample/weight  ;; -> (values A PosReal)
-
-    burn                        ;; Nat -> Void
-    generate-discrete-dist      ;; Nat [#:normalize? Boolean] -> DiscreteDist
-    generate-weighted-samples   ;; Nat -> (values (Vectorof A) (Vectorof PosReal))
-    ))
-
 (define sampler<%>
-  (interface (weighted-sampler<%>)
-    sample  ;; -> A
-
-    generate-samples            ;; Nat -> (Vectorof A)
+  (interface ()
+    burn                        ;; Nat -> Void
+    generate-samples            ;; Nat Nat -> SampleFrame
     ))
 
-(define (weighted-sampler? x) (is-a? x weighted-sampler<%>))
 (define (sampler? x) (is-a? x sampler<%>))
 
-(define weighted-sampler-base%
-  (class* object% (weighted-sampler<%>)
-    (super-new)
-
-    (abstract sample/weight)
-
-    (define/public (burn n)
-      (for ([i (in-range n)])
-        (sample/weight))
-      (void))
-
-    (define/public (generate-discrete-dist n #:normalize? [normalize? #t])
-      (for/discrete-dist #:normalize? normalize? ([i (in-range n)])
-        (sample/weight)))
-
-    (define/public (generate-weighted-samples n)
-      (define vs (make-vector n))
-      (define ws (make-vector n))
-      (for ([i (in-range n)])
-        (define-values (v w) (sample/weight))
-        (vector-set! vs i v)
-        (vector-set! ws i w))
-      (values vs ws))
-    ))
-
-(define sampler-base%
-  (class* weighted-sampler-base% (sampler<%>)
-    (super-new)
-
-    (define/override (sample/weight) (values (sample) 1))
-    (abstract sample)
-
-    ;; ----
-
-    (define/public (generate-samples n)
-      (define vs (make-vector n))
-      (for ([i (in-range n)])
-        (vector-set! vs i (sample)))
-      vs)
-    ))
-
-(define (sampler->discrete-dist s n #:burn [nburn 0] #:normalize? [normalize? #t])
+(define (sampler->discrete-dist s n
+                                #:burn [nburn 0]
+                                #:thin [thin 0]
+                                #:normalize? [normalize? #t])
   (send s burn nburn)
-  (send s generate-discrete-dist n #:normalize? normalize?))
-(define (generate-samples s n #:burn [nburn 0])
+  (define sf (send s generate-samples n thin))
+  (samples->discrete-dist sf #:normalize? normalize?))
+
+(define (generate-samples s n
+                          #:burn [nburn 0]
+                          #:thin [thin 0])
   (send s burn nburn)
-  (send s generate-samples n))
-(define (generate-weighted-samples s n #:burn [nburn 0])
-  (send s burn nburn)
-  (send s generate-weighted-samples n))
+  (send s generate-samples n thin))
 
 ;; ============================================================
 ;; Stochastic contexts
@@ -201,15 +165,15 @@
 
 (define scoring-stochastic-ctx%
   (class base-stochastic-ctx%
-    (init-field [obs-dn (linear-dnum 1.0)])
+    (init-field [score-dnum (linear-dnum 1.0)])
     (inherit fail)
     (super-new)
 
-    (define/public (get-observation-density) obs-dn)
+    (define/public (get-score-dnum) score-dnum)
 
     (define/override (-dscore who dn)
-      (set! obs-dn (dnum* obs-dn dn))
-      (when (dnum-zero? obs-dn) (fail `(gamble zero-score ,who))))
+      (set! score-dnum (dnum* score-dnum dn))
+      (when (dnum-zero? score-dnum) (fail `(gamble zero-score ,who))))
     ))
 
 (define (top-level-run-model m)
@@ -217,7 +181,7 @@
   (match (send subctx run-top m)
     [(list v)
      (printf "[run-model] log likelihood = ~s\n"
-             (dnum->logspace-real (send subctx get-observation-density)))
+             (dnum->logspace-real (send subctx get-score-dnum)))
      v]
     [#f
      (printf "[run-model] log likelihood = ~s (failed)\n" -inf.0)

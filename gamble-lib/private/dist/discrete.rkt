@@ -142,16 +142,6 @@
                 (discrete-dist new-dh new-iwsum #f)]
                [else (discrete-dist dh iwsum #f)])]))
 
-(define (log-hash->normalized-discrete-dist lh)
-  (define who 'log-hash->normalized-discrete-dist)
-  (define lwmax (for/fold ([lwmax -inf.0]) ([(v lw) (in-hash lh)]) (max lwmax lw)))
-  (define lnwsum (log (for/sum ([lw (in-hash-values lh)]) (exp (- lw lwmax)))))
-  (define h
-    (for/fold ([h (hash)]) ([(v lw) (in-hash lh)])
-      (define w (exp (- lw lwmax lnwsum)))
-      (if (> w -inf.0) (hash-set h v w) h)))
-  (discrete-dist h 1.0 #f))
-
 ;; ----------------------------------------
 ;; DDExt
 
@@ -201,15 +191,20 @@
 (define (dirac-dist v)
   (discrete-dist (hash v 1) 1 #f))
 
-(define (make-discrete-dist vs [ws #f] #:normalize? [normalize? #t])
+(define (make-discrete-dist vs [ws #f]
+                            #:log-weight? [log-weight? #f]
+                            #:normalize? [normalize? #t])
   (define who 'make-discrete-dist)
-  (define (badws) (raise-argument-error who "(or/c #f (vectorof (>=/c 0)))" ws))
+  (define (badws)
+    (if log-weight?
+        (raise-argument-error who "(or/c #f (vectorof flonum?))" ws)
+        (raise-argument-error who "(or/c #f (vectorof (>=/c 0)))" ws)))
   (unless (vector? vs) (raise-argument-error who "vector?" vs))
   (unless (or (not ws) (vector? ws)) (badws))
   (when ws
     (unless (= (vector-length vs) (vector-length ws))
       (error who (string-append
-                  "values vector and weights vector have different lengths"
+                  "value vector and weight vector have different lengths"
                   "\n  values: ~e\n  weights: ~e")
              vs ws)))
   (define n (vector-length vs))
@@ -219,6 +214,17 @@
          (define h (for/fold ([h (hash)]) ([v (in-vector vs)])
                      (hash-set h v (+ w (hash-ref h v 0)))))
          (discrete-dist h (if normalize? 1 n) #f)]
+        [log-weight?
+         (let ([vs (vector->immutable-vector vs)]
+               [lws (vector->immutable-vector ws)])
+           (define maxlw
+             (for/fold ([maxlw -inf.0]) ([lw (in-vector lws)])
+               (if (flonum? lw) (max lw maxlw) (badws))))
+           (define h
+             (for/fold ([h (hash)]) ([v (in-vector vs)] [lw (in-vector lws)])
+               (define w (exp (- lw maxlw)))
+               (hash-set h v (+ w (hash-ref h v 0.0)))))
+           (-hash->discrete-dist h #f normalize?))]
         [else
          (let ([vs (vector->immutable-vector vs)]
                [ws (vector->immutable-vector ws)])
@@ -359,19 +365,6 @@
   (syntax-parse stx
     [(discrete-dist p:vwpair ...)
      #'(hash->discrete-dist (hash (~@ p.value p.weight) ...))]))
-
-;; ----------------------------------------
-;; make-discrete-dist (match-expander)
-
-(define-match-expander m:make-discrete-dist
-  (lambda (stx)
-    (syntax-parse stx
-      [(_ vs:expr ws:expr)
-       (syntax/loc stx
-         (? discrete-dist?
-            (app discrete-dist-values vs)
-            (app discrete-dist-weights ws)))]))
-  (make-variable-like-transformer #'make-discrete-dist))
 
 ;; ----------------------------------------
 ;; discretize

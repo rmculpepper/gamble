@@ -11,23 +11,20 @@
          "private/samples.rkt")
 (provide (all-from-out "dist.rkt")
 
-         weighted-sampler?
          sampler?
          model?
 
          (contract-out
           [sampler->discrete-dist
-           (->* [weighted-sampler? exact-nonnegative-integer?]
+           (->* [sampler? exact-nonnegative-integer?]
                 [#:burn exact-nonnegative-integer?
+                 #:thin exact-nonnegative-integer?
                  #:normalize? boolean?]
                 any)]
           [generate-samples
            (->* [sampler? exact-nonnegative-integer?]
-                [#:burn exact-nonnegative-integer?]
-                any)]
-          [generate-weighted-samples
-           (->* [weighted-sampler? exact-nonnegative-integer?]
-                [#:burn exact-nonnegative-integer?]
+                [#:burn exact-nonnegative-integer?
+                 #:thin exact-nonnegative-integer?]
                 any)])
 
          sample

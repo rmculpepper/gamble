@@ -21,19 +21,29 @@
   (new importance-sampler% (mdl mdl) (propose propose)))
 
 (define importance-sampler%
-  (class weighted-sampler-base%
+  (class* object% (sampler<%>)
     (init-field mdl propose)
     (super-new)
 
-    (define/override (sample/weight)
+    (define/public-final (sample/weight)
       (define ctx (new importance-stochastic-ctx% (propose propose)))
       (match (send ctx run-top mdl)
-        [(list v)
-         (define obs-dn (send ctx get-observation-density))
-         (define weight (dnum->linear-real obs-dn))
-         (values v weight)]
-        [#f
-         (sample/weight)]))
+        [(list v) (values v (send ctx get-score-dnum))]
+        [#f (sample/weight)]))
+
+    (define/public (burn n)
+      (for ([i (in-range n)]) (sample/weight)))
+
+    (define/public (generate-samples n thin)
+      (define vs (make-vector n))
+      (define ws (make-vector n))
+      (for ([i (in-range n)])
+        (for ([j (in-range thin)])
+          (sample/weight))
+        (define-values (v wdn) (sample/weight))
+        (vector-set! vs i v)
+        (vector-set! ws i (dnum->logspace-real wdn)))
+      (hasheq 'value vs 'log-weight ws))
     ))
 
 (define importance-stochastic-ctx%

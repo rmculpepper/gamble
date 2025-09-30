@@ -47,12 +47,8 @@
     (define/public (show)
       (send mrun show))
 
-    ;; step : Transition -> (values Trace TxInfo)
-    (define/public (step transition)
-      (call-with-continuation-barrier
-       (lambda () (step1 transition))))
-
-    (define/private (step1 transition)
+    ;; step1 : Transition -> (values Trace TxInfo)
+    (define/public (step1 transition)
       (log-mcmc-info "START transition ~e" transition)
       (define-values (new-trace new-txinfo)
         (send transition run mrun last-trace))
@@ -62,20 +58,17 @@
             [else
              (values last-trace new-txinfo)]))
 
-    ;; steps : Nat Transition (Listof Symbol) -> (Hasheq Symbol Any)
-    (define/public (steps n transition fields #:lag [lag 0])
-      ;; Vector-valued fields
-      ;; - 'trace       => 'value 'log-joint 'log-prior 'log-score
-      ;; - 'transition
-      (define tracev (make-vector n))
-      (define txinfov (and (memq 'transition fields) (make-vector n)))
+    ;; step : Symbol Nat Nat Transition (Listof Symbol)/#f -> (Hasheq Symbol Any)/#f
+    (define/public (step who n thin transition fields)
+      (define tracev (and fields (make-vector n)))
+      (define txinfov (and fields (memq 'transition fields) (make-vector n)))
       (call-with-continuation-barrier
        (lambda ()
          (for ([i (in-range n)])
-           (for ([j (in-range lag)])
+           (for ([j (in-range thin)])
              (step1 transition))
-           (define-values (trace txinfo) (step transition))
-           (vector-set! tracev i trace)
+           (define-values (trace txinfo) (step1 transition))
+           (when tracev (vector-set! tracev i trace))
            (when txinfov (vector-set! txinfov i txinfo)))))
       (define (vector-fl-map f v) ;; (X -> Real) (Vectorof X) -> FlVector
         (define flv (make-flvector (vector-length v)))
@@ -97,22 +90,25 @@
           [(fl-log-prior) (vector-fl-map trace-lprs tracev)]
           [(fl-log-score) (vector-fl-map trace-lobs tracev)]
           [(transition) txinfov]
-          [else (error 'steps "unknown result name: ~e" field)]))
-      (for/fold ([h (hasheq)]) ([field (in-list fields)])
-        (hash-set h field (get-field-value field))))
+          [else (error who "unknown field name: ~e" field)]))
+      (and fields
+           (for/fold ([h (hasheq)]) ([field (in-list fields)])
+             (hash-set h field (get-field-value field)))))
 
     (define/public (initialize transition)
-      (let loop ([n 0])
-        (when (eq? last-trace init-trace)
-          (unless (< n retries)
-            (error 'initialize-transition
-                   "initialization failed after ~s attempts" retries))
-          (step transition)
-          (loop (add1 n)))))
+      (call-with-continuation-barrier
+       (lambda ()
+         (let loop ([n 0])
+           (when (eq? last-trace init-trace)
+             (unless (< n retries)
+               (error 'initialize-transition
+                      "initialization failed after ~s attempts" retries))
+             (step1 transition)
+             (loop (add1 n)))))))
     ))
 
 (define mcmc-sampler%
-  (class sampler-base%
+  (class* object% (sampler<%>)
     (init-field mdl
                 init-addr
                 transition)
@@ -124,10 +120,17 @@
     (define/public (show)
       (send mcmc show))
 
-    (define/override (sample)
+    (define/public (sample)
       (define-values (trace txinfo)
-        (send mcmc step transition))
+        (send mcmc step1 transition))
       (trace-value trace))
+
+    (define/public (burn n)
+      (send mcmc step 'burn n 0 transition #f)
+      (void))
+
+    (define/public (generate-samples n thin)
+      (send mcmc step 'generate-samples n thin transition '(value)))
 
     (define/public (initialize transition)
       (send mcmc initialize transition))

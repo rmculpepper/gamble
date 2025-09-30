@@ -5,6 +5,7 @@
 #lang racket/base
 (require racket/contract
          racket/match
+         racket/vector
          (rename-in plot/pict [density plot-density])
          "private/dist.rkt"
          "private/samples.rkt")
@@ -12,7 +13,7 @@
           [dist->pict
            (-> dist? any)]
           [samples->pict
-           (->* [vector?] [(vectorof (>=/c 0))] any)]))
+           (-> hash? any)])) ;; FIXME
 
 (define ITEM-HEIGHT 50)
 
@@ -46,9 +47,12 @@
          (vws->pict vws)]
         [else (error 'dist->pict "unsupported")]))
 
-(define (samples->pict vs [ws #f])
-  (when (and ws (not (= (vector-length ws) (vector-length vs))))
-    (error 'samples->pict "weights vector has incorrect size"))
+(define (samples->pict sf)
+  (define vs (hash-ref sf 'value))
+  (define lws (hash-ref sf 'log-weight #f))
+  (when (and lws (not (= (vector-length lws) (vector-length vs))))
+    (error 'samples->pict "weight vector has incorrect size"))
+  (define ws (and lws (vector-map exp lws))) ;; FIXME
   (cond [(and (> (vector-length vs) 2)
               (for/and ([v (in-vector vs)]) (real? v)))
          (real-samples->pict vs (or ws (make-vector (vector-length vs) 1.0)))]

@@ -17,15 +17,27 @@
   (new rejection-sampler% (mdl mdl)))
 
 (define rejection-sampler%
-  (class sampler-base%
+  (class object% (sampler<%>)
     (init-field mdl)
     (super-new)
 
-    (define/override (sample)
+    (define/public-final (sample)
       (define ctx (new rejection-stochastic-ctx%))
       (match (send ctx run-top mdl)
         [(list v) v]
         [#f (sample)]))
+
+    (define/public (burn n)
+      (for ([i (in-range n)]) (sample)))
+
+    (define/public (generate-samples n thin)
+      (define vs (make-vector n))
+      (for ([i (in-range n)])
+        (for ([j (in-range thin)])
+          (sample))
+        (define v (sample))
+        (vector-set! vs i v))
+      (hasheq 'value vs))
     ))
 
 (define rejection-stochastic-ctx%
