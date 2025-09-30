@@ -173,7 +173,7 @@
       (-dscore 'lscore (logspace-dnum ll)))
     (define/public (observe dist value)
       (unless (dist? dist) (raise-argument-error 'observe "dist?" dist))
-      (-dscore 'observe (dist-density dist value logspace?)))
+      (-dscore 'observe (dist-density dist value)))
 
     (define/public (fail reason)
       (unless (continuation-prompt-available? escape-prompt)

@@ -18,12 +18,16 @@
 (define-generics dist
   ;; type X
   (-sample dist)                   ;; Dist -> X
+  (-density dist x)                ;; Dist X -> Dnum
   (-pdf dist x log?)               ;; Dist X Boolean -> Real/ExtReal
   (-measure dist ms)               ;; Dist Measurable -> NNReal
   (-total-measure dist)            ;; Dist -> NNReal
   (-count dist)                    ;; Dist -> (U Nat +inf.0), upper bound
   #:fallbacks
-  [(define (-measure self ms)
+  [(define/generic *pdf -pdf)
+   (define (-density self x)
+     (logspace-dnum (*pdf self x #t)))
+   (define (-measure self ms)
      (match-define (measurable atoms ivls) ms)
      (cond [(real-dist? self)
             (let loop ([ivls ivls] [acc 0])
@@ -57,14 +61,14 @@
 (define (dist-sample d)
   (unless (dist? d) (raise-argument-error 'dist-sample "dist?" d))
   (-sample d))
+(define (dist-density d x)
+  (unless (dist? d) (raise-argument-error 'dist-density "dist?" d))
+  (if (and (numeric-dist? d) (not (rational? x))) (linear-dnum 0) (-density d x)))
 (define (dist-pdf d x [log? #f])
   (unless (dist? d) (raise-argument-error 'dist-pdf "dist?" d))
   (cond [(numeric-dist? d)
          (if (rational? x) (-pdf d x (and log? #t)) (if log? -inf.0 0))]
         [else (-pdf d x (and log? #t))]))
-(define (dist-density d x [log? #f])
-  (unless (dist? d) (raise-argument-error 'dist-density "dist?" d))
-  (real->dnum (dist-pdf d x log?) log?))
 (define (dist-measure d ms)
   (unless (dist? d) (raise-argument-error 'dist-measure "dist?" d))
   (unless (measurable? ms) (raise-argument-error 'dist-measure "measurable?" ms))
