@@ -26,6 +26,10 @@
 ;; If true, all non-model functions are considered constant-folding.
 (define ALL-CONSTANT-FOLDING? #t)
 
+;; If true, minimal slice run includes reachable structural checks,
+;; inhibits posterior calculation (but avoids false conclusions!).
+(define MINI-INCLUDE-REACH-SAME? #f)
+
 ;; Summary of re-evaluation restrictions: Re-evaluation must not change
 ;; - which branch of an `if` expression is taken
 ;; - the closure/procedure value of an application expression
@@ -482,7 +486,9 @@
     (define/public (show [expr? #t])
       (parameterize ((print-reader-abbreviations #t))
         (define loc=>index (make-hasheq))
-        (printf "Node trace (! reaches stochastic effect or structural check):\n")
+        (if MINI-INCLUDE-REACH-SAME?
+            (printf "Node trace (! reaches stochastic effect or structural check):\n")
+            (printf "Node trace (! reaches stochastic effect):\n"))
         (for ([nodeid (in-range 0 nodeid-counter)])
           (when (hash-has-key? nodeid=>node nodeid)
             (define node (hash-ref nodeid=>node nodeid))
@@ -670,8 +676,9 @@
             (define defnodeid (hash-ref loc=>defnodeid readloc))
             (mark-nodeid defnodeid #t))))
       (for ([(nodeid node) (in-hash nodeid=>node)])
-        (cond [(or (node:same? node)
-                   (node:same-if? node))
+        (cond [(and MINI-INCLUDE-REACH-SAME?
+                    (or (node:same? node)
+                        (node:same-if? node)))
                (mark-nodeid nodeid #t)]
               [(or (node:sample? node)
                    (node:dscore? node)
