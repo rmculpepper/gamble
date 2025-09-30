@@ -398,11 +398,10 @@
 
     (define/public (show)
       (when graph-cache
-        (printf "Graph:\n")
         (send graph-cache show)
         (match eval-cache
           [(list* keys _)
-           (printf "\nCurrent slice: ~e\n" keys)
+           (printf "Current slice: ~e\n" keys)
            (send graph-cache show-slice keys)]
           [#f (void)])))
 
