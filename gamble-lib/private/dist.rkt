@@ -129,7 +129,7 @@
   ;; dist-posterior : Dist Pattern X -> Dist
   (define (dist-posterior dist xdistp x)
     (cond [(and (conjugate-dist? dist)
-                (-conjugate dist xdistp x))
+                (-conjugate dist xdistp (vector x)))
            => values]
           [(uniform-dist? dist)
            (match-define (uniform-dist lo hi) dist)

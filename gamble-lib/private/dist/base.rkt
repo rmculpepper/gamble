@@ -193,8 +193,9 @@
 
 (define-generics conjugate-dist           ;; extends dist
   ;; Represents conjugate priors. The `-conjugate` operation assumes
-  ;; that the data are have non-zero likelihood.
-  (-conjugate conjugate-dist spec data))  ;; Dist[X] DistSpec X -> Dist[X]/#f
+  ;; that the data are have non-zero likelihood. The `data` argument
+  ;; is a vector for (currently) no good reason.
+  (-conjugate conjugate-dist spec data))  ;; Dist DistSpec Vector -> Dist/#f
 
 ;; ============================================================
 

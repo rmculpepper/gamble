@@ -107,14 +107,15 @@
      (match-define (dirichlet-dist alpha) self)
      (-dirichlet-pdf alpha x log?))]
   #:methods gen:conjugate-dist
-  [(define (-conjugate self xdistp x)
+  [(define (-conjugate self xdistp xs)
      (match-define (dirichlet-dist alpha) self)
      (match xdistp
        [`(categorical-dist _)
         (define n (vector-length alpha))
         (define new-alpha (vector-copy alpha))
-        (let ([x (exact x)])
-          (vector-set! new-alpha (sub1 x) (add1 (vector-ref new-alpha (sub1 x)))))
+        (for ([x (in-vector xs)])
+          (let ([index (sub1 (exact x))]) ;; categorical is {1,...,n}
+            (vector-set! new-alpha index (+ 1.0 (vector-ref new-alpha index)))))
         (dirichlet-dist (vector->immutable-vector new-alpha))]
        [_ #f]))]
   #|
