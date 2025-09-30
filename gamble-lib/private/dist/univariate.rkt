@@ -78,11 +78,7 @@
         (lazy* db (- (log (- 1 x))))
         (lazy* da (digamma a))
         (lazy* db (digamma b))
-        (lazy* (+ da db) (- (digamma (+ a b))))))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (beta-dist a b) self)
-     (drift:reflecting-normal 0.0 1.0 value scale-factor))])
+        (lazy* (+ da db) (- (digamma (+ a b))))))])
 
 (define-dist-struct cauchy-dist
   ([mode rational? fl]
@@ -113,14 +109,7 @@
      (+ (lazy* ds (/ scale))
         (* (/ (* 2 scale x-m) (+ (* scale scale) (* x-m x-m)))
            (- (/ (- dx dm) scale)
-              (lazy* ds (/ x-m scale scale))))))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (cauchy-dist mode scale) self)
-     (drift:add-normal value (* (if params? scale 1.0) scale-factor)))
-   (define (-drift-dist self value params? scale-factor)
-     (match-define (cauchy-dist mode scale) self)
-     (normal-dist value (* (if params? scale 1.0) scale-factor)))])
+              (lazy* ds (/ x-m scale scale))))))])
 
 (define-dist-struct exponential-dist
   ([mean positive-rational? fl])
@@ -153,15 +142,7 @@
      (match-define (exponential-dist mean) self)
      (define /mean (/ mean))
      (+ (lazy* dm (- /mean (* x /mean /mean)))
-        (* dx /mean)))]
-  #:methods gen:driftable
-  [(define (-drift1 self x params? scale-factor)
-     (match-define (exponential-dist mean) self)
-     (drift:mult-exp-normal x (* (if params? mean 1.0) scale-factor)))
-   #;
-   (define (-drift-dist self x params? scale-factor)
-     (match-define (exponential-dist mean) self)
-     (drift:mult-exp-normal-dist x (* (if params? mean 1.0) scale-factor)))])
+        (* dx /mean)))])
 
 (define-dist-struct gamma-dist
   ([shape positive-rational? fl]
@@ -221,17 +202,7 @@
      (define θ scale)
      (+ (lazy* dx (+ (/ (- 1 k) x) (/ θ)))
         (lazy* dk (+ (digamma k) (log θ) (- (log x))))
-        (lazy* dθ (- (/ k θ) (/ x (* θ θ))))))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (gamma-dist shape scale) self)
-     (define s (if params? (* scale (sqrt shape)) 1.0))
-     (drift:mult-exp-normal value (* s scale-factor)))
-   #;
-   (define (-drift-dist self x params? scale-factor)
-     (match-define (gamma-dist shape scale) self)
-     (define s (if params? (* scale (sqrt shape)) 1.0))
-     (drift:mult-exp-normal-dist value (* s scale-factor)))])
+        (lazy* dθ (- (/ k θ) (/ x (* θ θ))))))])
 
 (define-dist-struct logistic-dist
   ([mean rational? fl]
@@ -267,14 +238,7 @@
      (define B (exp (- (/ x-m s))))
      (+ A
         (lazy* ds (/ s))
-        (* 2 (/ (+ 1 B)) B (- A))))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (logistic-dist mean scale) self)
-     (drift:add-normal value (* (if params? scale 1.0) scale-factor)))
-   (define (-drift-dist self value params? scale-factor)
-     (match-define (logistic-dist mean scale) self)
-     (normal-dist value (* (if params? scale 1.0) scale-factor)))])
+        (* 2 (/ (+ 1 B)) B (- A))))])
 
 (define-dist-struct normal-dist
   ([mean rational? fl]
@@ -320,14 +284,7 @@
      (define x-μ (- x μ))
      (+ (lazy* dσ (- (/ σ) (/ (* x-μ x-μ) (* σ σ σ))))
         (lazy* (- dx dμ)
-               (/ x-μ (* σ σ)))))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (normal-dist mean scale) self)
-     (drift:add-normal value (* (if params? scale 1.0) scale-factor)))
-   (define (-drift-dist self value params? scale-factor)
-     (match-define (normal-dist mean scale) self)
-     (normal-dist value (* (if params? scale 1.0) scale-factor)))])
+               (/ x-μ (* σ σ)))))])
 
 (define-dist-struct uniform-dist
   ([lo rational? fl]
@@ -373,13 +330,7 @@
      (match-define (uniform-dist lo hi) self)
      (cond [(<= lo x hi)
             (lazy* (- dhi dlo) (/ (- hi lo)))]
-           [else 0]))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (uniform-dist lo hi) self)
-     (define s (min 1.0 (/ (fl scale-factor) 4.0)))
-     (define delta (if params? (* (- hi lo) s) s))
-     (drift:reflecting-uniform lo hi value delta))])
+           [else 0]))])
 
 (define-dist-struct triangle-dist
   ([lo rational? fl]
@@ -423,13 +374,7 @@
      (match-define (triangle-dist lo hi mode) self)
      (/ (- (+ (* lo lo) (* hi hi) (* mode mode))
            (+ (* lo hi) (* lo mode) (* hi mode)))
-        18.0))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (triangle-dist lo hi mode) self)
-     (define s (min 1.0 (/ (fl scale-factor) 4.0)))
-     (define delta (if params? (* (- hi lo) s) s))
-     (drift:reflecting-uniform lo hi value delta))])
+        18.0))])
 
 
 ;; ============================================================
@@ -486,14 +431,7 @@
      (if (<= shape 2)
          +inf.0
          (/ (* scale scale shape)
-            (* (- shape 1.0) (- shape 1.0) (- shape 2.0)))))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (pareto-dist scale shape) self)
-     (drift:mult-exp-normal value (* (if params? scale 1.0) scale-factor)))
-   #;
-   (define (-dist-drift self value params? scale-factor)
-     (drift:mult-exp-normal-dist value (* (if params? scale 1.0) scale-factor)))])
+            (* (- shape 1.0) (- shape 1.0) (- shape 2.0)))))])
 
 (define-dist-struct student-t-dist
   ([degrees positive-rational? fl]
@@ -524,15 +462,7 @@
      (define degrees (student-t-dist-degrees self))
      (cond [(> degrees 2) (/ degrees (- degrees 2.0))]
            [(> degrees 1) +inf.0]
-           [else #|undefined|# #f]))]
-  #:methods gen:driftable
-  ;; FIXME: consider additive Cauchy instead?
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (student-t-dist degrees mean scale _) self)
-     (drift:add-normal value (* (if params? scale 1.0) scale-factor)))
-   (define (-drift-dist self value params? scale-factor)
-     (match-define (student-t-dist degrees mean scale _) self)
-     (normal-dist value (* (if params? scale 1.0) scale-factor)))])
+           [else #|undefined|# #f]))])
 
 (define (-t-ext self)
   (or (student-t-dist-ext self)
@@ -595,10 +525,7 @@
      (/ (- 1 p) (* p p)))]
   #:methods gen:enumerable-dist
   [(define (-sequence self)
-     (in-naturals))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (drift:reflecting-discrete-unit 0 +inf.0 value))])
+     (in-naturals))])
 
 (define-dist-struct poisson-dist
   ([mean positive-rational? fl]) ;; aka rate, λ
@@ -628,10 +555,7 @@
    (define (-variance self) (poisson-dist-mean self))]
   #:methods gen:enumerable-dist
   [(define (-enum self)
-     (in-naturals))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (drift:reflecting-discrete-unit 0 +inf.0 value))])
+     (in-naturals))])
 
 
 ;; ============================================================
@@ -672,14 +596,7 @@
      (in-range 0 2))
    (define (-wsequence self)
      (match-define (bernoulli-dist p) self)
-     (in-hash (hash 1 p 0 (- 1.0 p))))]
-  #:methods gen:driftable
-  [(define (-drift1 self x scale-factor params?)
-     (cond [(= x 1) (cons 0 0.0)]
-           [(= x 0) (cons 1 0.0)]
-           [else #f]))
-   (define (-drift2 self old-dist x params? scale-factor)
-     (and (bernoulli-dist? old-dist) (-drift1 self x scale-factor)))])
+     (in-hash (hash 1 p 0 (- 1.0 p))))])
 
 (define-dist-struct binomial-dist
   ([n exact-nonnegative-integer?]
@@ -719,12 +636,7 @@
   #:methods gen:enumerable-dist
   [(define (-sequence self)
      (match-define (binomial-dist n _) self)
-     (in-range 0 (add1 n)))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (binomial-dist n p) self)
-     (define s (if params? (sqrt (* n p (- 1.0 p))) 1.0))
-     (drift:reflecting-discrete-normal 0 n (* scale-factor s)))])
+     (in-range 0 (add1 n)))])
 
 
 ;; ============================================================
@@ -775,12 +687,7 @@
      (/ (* r (- 1.0 p)) (sqr p)))]
   #:methods gen:enumerable-dist
   [(define (-sequence self)
-     (in-naturals))]
-  #:methods gen:driftable
-  [(define (-drift1 self value params? scale-factor)
-     (match-define (negative-binomial-dist r p) self)
-     (define s (if params? (/ (sqrt r (- 1.0 p)) p) 1.0))
-     (drift:reflecting-discrete-normal 0 +inf.0 (* scale-factor s)))])
+     (in-naturals))])
 
 ;; ============================================================
 ;; Other integer distributions (finite)
@@ -873,77 +780,6 @@
 (define (vector-sum v) (for/sum ([x (in-vector v)]) x))
 
 (define (digamma x) (m:psi0 x))
-
-;; ============================================================
-;; Drift Kernel Utils
-
-(define (sample-normal mean stddev)
-  (flvector-ref (m:flnormal-sample (fl mean) (fl stddev) 1) 0))
-
-(define (drift:add-normal value scale)
-  (cons (sample-normal value scale) 0.0))
-
-(define (drift:mult-exp-normal value scale)
-  ;; Want to multiply by factor log-normally distributed, with stddev proportional
-  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
-  ;; Let's approximate as exp[2s^2] - 1. So we want
-  ;; exp[2s^2] - 1 ~= scale^2, so
-  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
-  ;;
-  ;; This process is equiv to value* ~ exp[ N(log(value), s) ]
-  ;; So q(->) = N(log(value*); log(value), s) * 1/value*
-  ;;    q(<-) = N(log(value); log(value*), s) * 1/value
-  ;; So lR-lF = log(1/value) - log(1/value*)
-  ;;          = log(value*) - log(value)
-  (define lvalue (log value))
-  (define lvalue* (sample-normal lvalue (sqrt (log (add1 (* scale scale))))))
-  (cons (exp lvalue*) (- lvalue* lvalue)))
-
-#;
-(define (drift:mult-exp-normal-dist value scale)
-  ;; Want to multiply by factor log-normally distributed, with stddev proportional
-  ;; to scale. For log-normal, variance = (exp[s^2] - 1)(exp[s^2]).
-  ;; Let's approximate as exp[2s^2] - 1. So we want
-  ;; exp[2s^2] - 1 ~= scale^2, so
-  ;; s ~= sqrt(log(scale^2 + 1))    -- dropped a factor of 2, nuisance
-  (define s (sqrt (log (+ 1 (* scale scale)))))
-  ;;(affine-distx (exp-distx (normal-dist 0 s)) x 0)
-  (exp-distx (normal-dist (log value) s)))
-
-(define (drift:reflecting-uniform lo hi x delta)
-  (cons (reflect-real lo hi (+ x (* 2.0 (- (random) 0.5) delta))) 0.0))
-
-(define (drift:reflecting-normal lo hi x scale)
-  (cons (reflect-real lo hi (sample-normal x scale)) 0.0))
-
-(define (reflect-real lo hi x)
-  (define (flmodulo x y) ;; PRE: x, y > 0
-    (- x (* y (floor (/ x y)))))
-  (define w (- hi lo))
-  (- hi (abs (- (flmodulo (- x lo) (* 2.0 w)) w))))
-
-;; Rounds away from zero to force different value.
-(define (drift:add-discrete-normal x scale)
-  (define yr (sample-normal x scale))
-  (define y (exact (if (> yr x) (ceiling yr) (floor yr))))
-  (cons y 0.0))
-
-(define (drift:reflecting-discrete-unit lo hi x)
-  (cond [(= x lo) (cons (add1 x) 0.0)]
-        [(= x hi) (cons (sub1 x) 0.0)]
-        [else (cons (+ x (if (zero? (random 2)) -1 +1)) 0.0)]))
-
-(define (drift:reflecting-discrete-normal lo hi x scale)
-  (define yr (sample-normal x scale))
-  (define y (exact (if (> y x) (ceiling yr) (floor yr))))
-  (cons (reflect-integer lo hi y) 0.0))
-
-(define (reflect-integer lo hi x)
-  (define w (- hi lo))
-  (let loop ([x x])
-    (cond [(< x lo) (loop (+ lo (- lo x)))]
-          [(> x hi) (loop (+ hi (- hi x)))]
-          [else x])))
 
 ;; ============================================================
 ;; Tests

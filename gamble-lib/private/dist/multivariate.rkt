@@ -27,13 +27,7 @@
      (match-define (multinomial-dist n ws) self)
      (-multinomial-pdf n ws x log?))
    ;; (define (-measure ms) #f)
-   (define (-total-measure self) 1)]
-  #|
-  ;; FIXME: drift by computing new multinomial-dist ??
-  ;;  eg, scale-weighted average of prior weights and derived from current value?
-  #:drift1 (lambda (value scale-factor)
-             (multinomial-drift n weights value scale-factor))
-  |#)
+   (define (-total-measure self) 1)])
 
 (define (-multinomial-guard-weights in-ws)
   (normalize-inexact-weights 'multinomial-dist in-ws))
@@ -72,28 +66,6 @@
                [else (if log? ll (exp ll))])]
         [else (if log? -inf.0 0)]))
 
-#;
-;; Do some number of moves based on scale-factor. Symmetric.
-(define (multinomial-drift n _probs old scale-factor)
-  (cond [(or (zero? n) (<= (vector-length old) 1))
-         (cons old 0)]
-        [else
-         (define v (vector-copy old))
-         (define (pick-nonempty-index)
-           (define i (random (vector-length v)))
-           (if (zero? (vector-ref v i))
-               (pick-nonempty-index)
-               i))
-         (define (pick-other-index i)
-           (define j (random (sub1 (vector-length v))))
-           (if (>= j i) (add1 j) j))
-         (for ([_a (in-range (inexact->exact (ceiling (* n scale-factor))))])
-           (define i (pick-nonempty-index))
-           (define j (pick-other-index i))
-           (vector-set! v i (sub1 (vector-ref v i)))
-           (vector-set! v j (add1 (vector-ref v j))))
-         (cons v 0)]))
-
 
 ;; ----------------------------------------
 
@@ -130,12 +102,6 @@
                     [denom (* a0 a0 (add1 a0))])
                (for/vector ([ai (in-vector alpha)])
                  (/ (* ai (- a0 ai)) denom)))
-  ;; DRIFT: (1 - eps) * value + eps * Dir(alpha)
-  ;; ie, weighted avg of current value and new Dirichlet draw
-  ;; Q: for alpha, should use either same parameters, OR could use uniform (1 ...)???
-  ;; ** OR **: take current value, multiply by f(scale-factor),
-  ;; use that as Dirichlet param, draw
-  ;; NOTE: not symmetric!
   |#)
 
 (define -dirichlet-intern-table (make-weak-hash))
