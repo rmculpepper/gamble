@@ -108,15 +108,13 @@ We can run the model using @racket[run-model] as before:
 To repeat this process many times and capture the likelihood each time, we must
 create a @emph{sampler}. An importance sampler (@racket[importance-sampler]) is
 the simplest sampler that supports observations. Then we can use
-@racket[generate-weighted-samples] to produce a vector of values and a
-corresponding vector of likelihood weights. Those can be visualized using
-@racket[samples->pict].
+@racket[generate-samples] to produce a @tech{sample frame} containing a vector
+of values and a corresponding vector of log-likelihood weights. Those can be
+visualized using @racket[samples->pict].
 
 @interaction[#:eval the-eval
 (define coin-bias/s (importance-sampler coin-bias/m))
-(call-with-values
- (lambda () (generate-weighted-samples coin-bias/s 100))
- (lambda (vs ws) (samples->pict vs ws)))
+(samples->pict (generate-samples coin-bias/s 100))
 ]
 
 The plot shows the sample points (blue circles), the
