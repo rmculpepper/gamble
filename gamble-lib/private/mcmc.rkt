@@ -49,6 +49,10 @@
 
     ;; step : Transition -> (values Trace TxInfo)
     (define/public (step transition)
+      (call-with-continuation-barrier
+       (lambda () (step1 transition))))
+
+    (define/private (step1 transition)
       (log-mcmc-info "START transition ~e" transition)
       (define-values (new-trace new-txinfo)
         (send transition run mrun last-trace))
@@ -65,12 +69,14 @@
       ;; - 'transition
       (define tracev (make-vector n))
       (define txinfov (and (memq 'transition fields) (make-vector n)))
-      (for ([i (in-range n)])
-        (for ([j (in-range lag)])
-          (step transition))
-        (define-values (trace txinfo) (step transition))
-        (vector-set! tracev i trace)
-        (when txinfov (vector-set! txinfov i txinfo)))
+      (call-with-continuation-barrier
+       (lambda ()
+         (for ([i (in-range n)])
+           (for ([j (in-range lag)])
+             (step1 transition))
+           (define-values (trace txinfo) (step transition))
+           (vector-set! tracev i trace)
+           (when txinfov (vector-set! txinfov i txinfo)))))
       (define (vector-fl-map f v) ;; (X -> Real) (Vectorof X) -> FlVector
         (define flv (make-flvector (vector-length v)))
         (for ([x (in-vector v)] [i (in-naturals)])
