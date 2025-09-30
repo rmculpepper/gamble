@@ -177,36 +177,16 @@
       (define prev-lj (trace-lj prev-trace))
       (define lthreshold (+ (log (random)) prev-lj))
       (log-mcmc-info "Slice threshold = ~s (logspace ~s)" (exp lthreshold) lthreshold)
-      (define eval-trace (make-caching-eval-trace who mrun prev-trace key))
-      (define (eval-lj new-value) (trace-lj (eval-trace new-value #t)))
+      (define eval-trace (send mrun make-caching-eval-trace who key prev-trace))
+      (define (eval-lj new-value)
+        (log-mcmc-info "Eval at ~e" new-value)
+        (define lj (trace-lj (eval-trace new-value #t)))
+        (log-mcmc-info "Eval lj ~e" lj)
+        lj)
       ;; --------------------
       (define new-value (slice-sample dist prev-value eval-lj lthreshold))
       (define new-trace (eval-trace new-value #f))
       (values new-trace (vector 'slice key tag)))
-
-    (define/private (make-caching-eval-trace who mrun prev-trace key)
-      (define prev-db (trace-db prev-trace))
-      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
-      (define trace-cache (make-hash)) ;; Hash[Real => Trace/#f]
-      (hash-set! trace-cache prev-value prev-trace)
-      (define eval-trace (make-eval-trace who mrun prev-trace key))
-      (define (caching-eval-trace new-value mini?)
-        (if mini?
-            (hash-ref! trace-cache new-value (lambda () (eval-trace new-value #t)))
-            (eval-trace new-value #f)))
-      caching-eval-trace)
-
-    (define/private (make-eval-trace who mrun prev-trace key)
-      (define prev-db (trace-db prev-trace))
-      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
-      (define eval-slice (send mrun make-eval-slice who (list key) prev-trace))
-      (define (eval-trace new-value mini?)
-        (log-mcmc-info "Eval at ~e" new-value)
-        (define new-lpr (dist-pdf dist new-value #t))
-        (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag)) mini?))
-        (log-mcmc-info "Eval lj ~e" (trace-lj new-trace))
-        new-trace)
-      eval-trace)
 
     ;; ----------------------------------------
     ;; Slice Sampling (for X in {Real, ExactInteger})

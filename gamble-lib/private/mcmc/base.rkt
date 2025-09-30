@@ -514,6 +514,28 @@
            new-trace]
           [#f #f]))
       (values eval-slice consistent-b))
+
+    ;; ----------------------------------------
+
+    ;; make-caching-eval-trace : Symbol DBKey[X] Trace -> (X Boolean -> Trace/#f)
+    ;; Caching evaluator for single-key slices. Only mini evals are cached.
+    (define/public (make-caching-eval-trace who key prev-trace)
+      (define prev-db (trace-db prev-trace))
+      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
+      (define trace-cache (make-hash)) ;; Hash[X => Trace/#f]
+      (hash-set! trace-cache prev-value prev-trace)
+      (define eval-slice (make-eval-slice who (list key) prev-trace))
+      ;; eval-trace : X Boolean -> Trace/#f
+      (define (eval-trace new-value mini?)
+        (define new-lpr (dist-pdf dist new-value #t))
+        (define new-trace (eval-slice (hash key (entry dist new-value new-lpr tag)) mini?))
+        new-trace)
+      ;; caching-eval-trace : X Boolean -> Trace/#f
+      (define (caching-eval-trace new-value mini?)
+        (if mini?
+            (hash-ref! trace-cache new-value (lambda () (eval-trace new-value #t)))
+            (eval-trace new-value #f)))
+      caching-eval-trace)
     ))
 
 (define (complete-slice-trace! slice-trace prev-db)
