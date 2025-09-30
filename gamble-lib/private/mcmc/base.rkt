@@ -166,9 +166,8 @@
                 delta-db      ;; DB, not mutated
                 [sumlprs 0.0] ;; real, mutated; sum of lprior of all entries in current-db
                 [sumlobs 0.0] ;; real, mutated; sum of log likelihoods of all observations
-                [disallow-new/who #f] ;; #f or Symbol
                 [new-keys #f] ;; #f or (Listof DBKey), mutated
-                [init-addr (current-init-addr)])
+                [disallow-new/who #f])  ;; #f or Symbol
     (field [current-db (make-hash)] ;; DB, mutated
            [l-R/F 0.0]              ;; real, mutated
            [diff-lprs  0.0])        ;; see get-diff-lprs below
@@ -277,12 +276,6 @@
           (super run-model m addr)
           (with-get-ADDR addr (super run-model m addr))))
 
-    (define/override (run-top top)
-      (match top
-        [(? model? m)
-         (super run-top (lambda () (run-model m init-addr)))]
-        [_ (super run-top top)]))
-
     ;; ----------------------------------------
 
     ;; make-trace : Any -> Trace
@@ -378,7 +371,8 @@
 
 (define model-runner%
   (class object%
-    (init-field mdl)  ;; Model
+    (init-field mdl         ;; Model
+                init-addr)  ;; Address
     (super-new)
 
     ;; EvalSlice = (DeltaDB Boolean -> Trace/#f)
@@ -418,9 +412,8 @@
           (let ()
             (define base-ctx (new replay-stochastic-ctx%
                                   (who who) (prev-db (trace-db prev-trace))))
-            (define graph (new graph% (ctx base-ctx)))
-            (unless (send base-ctx run-top (lambda () (send graph eval-top mdl)))
-              (error who "failed to build trace graph"))
+            (define graph (new graph% (ctx base-ctx) (init-addr init-addr)))
+            (send graph eval-top who mdl)
             (set! graph-cache graph)
             graph)))
 
@@ -443,7 +436,7 @@
     ;; - invalidate slices, graph; does full eval
     ;; - allows structural change (if ctx does)
     (define/public (eval/ctx ctx)
-      (match (send ctx run-top mdl)
+      (match (send ctx run-top mdl init-addr)
         [(list new-value)
          (invalidate-cache!)
          (send ctx make-trace new-value)]

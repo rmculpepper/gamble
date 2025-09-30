@@ -39,8 +39,6 @@
          run-model
          structural
 
-         current-init-addr
-
          (rename-out [model* model])
 
          (contract-out

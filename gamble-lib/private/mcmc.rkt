@@ -7,6 +7,7 @@
          racket/match
          racket/flonum
          racket/vector
+         "addr.rkt"
          "base.rkt"
          "mcmc/base.rkt"
          "mcmc/transitions.rkt"
@@ -36,11 +37,12 @@
 (define mcmc%
   (class object%
     (init-field mdl
+                init-addr
                 [retries 10]
                 [last-trace init-trace])
     (super-new)
 
-    (field [mrun (new model-runner% (mdl mdl))])
+    (define mrun (new model-runner% (mdl mdl) (init-addr init-addr)))
 
     (define/public (show)
       (send mrun show))
@@ -106,10 +108,11 @@
 (define mcmc-sampler%
   (class sampler-base%
     (init-field mdl
+                init-addr
                 transition)
     (super-new)
 
-    (define mcmc (new mcmc% (mdl mdl)))
+    (define mcmc (new mcmc% (mdl mdl) (init-addr init-addr)))
     (define/public (get-mcmc) mcmc)
 
     (define/public (show)
@@ -126,11 +129,13 @@
 
 (define (mcmc-sampler mdl
                       #:initialize [initialize (initialize-transition)]
-                      #:transition [transition (single-site-transition)])
+                      #:transition [transition (single-site-transition)]
+                      #:address-seed [addr-seed init-hash-addr])
   (let ([transition
          (cond [(mcmc-transition? transition) transition]
-               [else (single-site-transition transition)])])
-    (define s (new mcmc-sampler% (mdl mdl) (transition transition)))
+               [else (single-site-transition transition)])]
+        [init-addr (if (fixnum? addr-seed) addr-seed '(0))])
+    (define s (new mcmc-sampler% (mdl mdl) (transition transition) (init-addr init-addr)))
     (when initialize
       (send s initialize initialize))
     s))
@@ -142,11 +147,13 @@
 ;; where GetValue = (Tag Dist[X] (U #f (ProposeValue X)) -> (U #f (ProposeValue X))
 (define (model-slice mdl
                      [get-value (lambda (tag dist prev) #f)]
+                     #:address-seed [addr-seed init-hash-addr]
                      #:debug? [debug? #f])
   (define init-ctx
     (new initializing-tracing-stochastic-ctx%
          (prev-db (hash)) (new-keys null) (get-value get-value)))
-  (define mrun (new model-runner% (mdl mdl)))
+  (define init-addr (if (fixnum? addr-seed) addr-seed '(0)))
+  (define mrun (new model-runner% (mdl mdl) (init-addr init-addr)))
   (define init-trace (send mrun eval/ctx init-ctx))
   (define keys (send init-ctx get-new-keys))
   (define pdist

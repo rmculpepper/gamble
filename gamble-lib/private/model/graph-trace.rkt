@@ -469,7 +469,8 @@
 
 (define graph%
   (class object%
-    (init-field [ctx (new scoring-stochastic-ctx% (logspace? #t))])
+    (init-field [init-addr init-hash-addr]
+                [ctx (new scoring-stochastic-ctx% (logspace? #t))])
     (super-new)
 
     (define loc=>nodeids (make-hasheqv))    ;; Location => (Listof NodeID), references
@@ -502,13 +503,15 @@
     ;; ----------------------------------------
     ;; Run
 
-    (define/public (eval-top mdl)
+    (define/public (eval-top who mdl)
       (match mdl
         [(model _ gproc _)
-         (define result (gproc this (current-init-addr)))
-         (set! final-result result)
-         (calculate-reach!)
-         (result->value result)]))
+         (match (send ctx run-top (lambda () (gproc this init-addr)))
+           [(list result)
+            (set! final-result result)
+            (calculate-reach!)
+            (result->value result)]
+           [#f (error who "failed to build trace graph")])]))
 
     ;; ----------------------------------------
     ;; Context functions

@@ -127,7 +127,7 @@
     mem         ;; (X ... -> Y) Addr/#f -> (X ... -> Y)
     run-model   ;; (Model A) Addr/#f -> (values A)
 
-    ;; run-top  ;; varies, but often: (-> A) -> (U (list A) #f)
+    ;; run-top  ;; varies, but often: (-> A) Addr -> (U (list A) #f)
     ))
 
 ;; Failure reasons
@@ -190,14 +190,14 @@
       (unless (model? m) (raise-argument-error 'run-model "model?" m))
       ((model-proc m) this addr))
 
-    (define/public (run-top top)
+    (define/public (run-top top [addr #f])
       (match top
         [(? procedure? proc)
          (call-with-continuation-prompt
           (lambda () (list (proc)))
           escape-prompt)]
         [(? model? m)
-         (run-top (lambda () (run-model m #f)))]))
+         (run-top (lambda () (run-model m addr)))]))
     ))
 
 (define scoring-stochastic-ctx%

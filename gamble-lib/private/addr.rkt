@@ -5,8 +5,7 @@
          addr-add-call
          addr-add-mem
          init-hash-addr
-         init-full-addr
-         current-init-addr)
+         init-full-addr)
 
 ;; Addr is one of
 ;; - HashAddr  -- compact, may introduce collisions
@@ -42,8 +41,6 @@
 
 (define init-full-addr '(0))
 (define init-hash-addr init-fxaddr)
-
-(define current-init-addr (make-parameter init-hash-addr))
 
 ;; Addresses are passed between procedures using the "dynamic addr protocol":
 ;; The caller puts the address in a continuation mark frame, and the callee
