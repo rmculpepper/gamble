@@ -719,23 +719,35 @@
 (define (slice->posterior-dist s)
   (and (= 1 (length (slice-keys s))) (slice->posterior-dist* s)))
 
+;; Pattern is one of
+;; - '_                         -- the RV in question
+;; - 'dep                       -- depends on RV
+;; - 'indep                     -- slice-constant, not real
+;; - Real                       -- slice-constant real; ie, does not depend on RV
+;; - (cons DistSymbol Pattern)  -- distribution, exactly one '_ arg pattern
+
+;; For example:
+;;   x ~ N(0,1)               x => '_
+;;   y = 2*x                  y => #f (not current real value!)
+;;   d = N(x,1)               d => '(dist _ 1)
+;;   observe(d,y)             not eligible
+;; Must not apply conjugacy, because y depends directly on x.
+
 ;; slice->posterior-dist* : Slice -> Dist/#f
 (define (slice->posterior-dist* s)
-  ;; PRE: slice over exactly one key
+  ;; PRE: slice over exactly one key (first node in slice)
   (define nodes (slice-min-nodes s))
-  ;; Pattern = #f | '_ | Real | (dist-symbol Pattern ...)
-  (define loc=>pattern (make-hasheq)) ;; Location => Pattern
+  ;; loc=>pattern maps slice-updated locations to patterns; if loc is not
+  ;; (eventually) in loc=>pattern, then must be slice-constant.
+  (define loc=>pattern (make-hasheq))
   (define (get-pattern r)
     (match r
       [(result:value v) (and (real? v) v)]
       [(result:location loc)
        (or (hash-ref loc=>pattern loc #f)
-           (let ([v (fetch loc)]) (and (real? v) v)))]))
-  (define (fun-pattern fun argps)
-    (and (andmap values argps)
-         (cond [(hash-ref function=>symbol fun #f)
-                => (lambda (name) (cons name argps))]
-               [else #f])))
+           (let ([v (fetch loc)]) (if (real? v) v 'indep)))]))
+  (define (real-or-rv? p) (or (real? p) (eq? p '_)))
+  (define (indep-pattern? p) (or (real? p) (eq? p 'indep)))
   ;; ----
   (define dist
     (match (vector-ref nodes 0)
@@ -747,13 +759,21 @@
          (or (node:sample? node)
              (node:observe? node)
              (node:app? node)))
-       (for/fold ([dist dist])
-                 ([node (in-vector nodes 1)] #:break (not dist))
+       (for/fold ([dist dist]) ([node (in-vector nodes 1)] #:break (not dist))
          (match node
            [(node:sample loc _ distr _)
             (dist-posterior dist (get-pattern distr) (fetch loc))]
            [(node:observe distr valr)
             (dist-posterior dist (get-pattern distr) (result->value valr))]
            [(node:app loc fun argrs)
-            (hash-set! loc=>pattern loc (fun-pattern fun (map get-pattern argrs)))
+            (define argps (map get-pattern argrs))
+            (cond [(and (andmap real-or-rv? argps)
+                        (= 1 (length (filter (lambda (p) (eq? p '_)) argps)))
+                        (hash-ref function=>symbol fun #f))
+                   => (lambda (name)
+                        (hash-set! loc=>pattern loc (cons name argps)))]
+                  [(andmap indep-pattern? argps)
+                   (let ([v (fetch loc)])
+                     (hash-set! loc=>pattern (if (real? v) v 'indep)))]
+                  [else (void)])
             dist]))))
