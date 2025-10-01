@@ -30,6 +30,7 @@
          sample
          score
          observe
+         observe*
          fail
          mem
          run-model

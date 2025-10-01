@@ -125,24 +125,29 @@
             uniform-dist     'uniform-dist
             ))
 
-  ;; dist-posterior : Dist Pattern X -> Dist
-  (define (dist-posterior dist xdistp x)
-    (cond [(and (conjugate-dist? dist)
-                (-conjugate dist xdistp (vector x)))
+  ;; dist-posterior : Dist Pattern (Vector X) -> Dist
+  (define (dist-posterior dist xdistp xs)
+    (cond [(zero? (vector-length xs))
+           dist]
+          [(and (conjugate-dist? dist)
+                (-conjugate dist xdistp xs))
            => values]
           [(uniform-dist? dist)
            (match-define (uniform-dist lo hi) dist)
-           (let ([d (likelihood-pattern->dist xdistp x)])
+           (let ([d (likelihood-pattern->dist xdistp xs)])
              (and d (clip-distx d lo hi)))]
           [else #f]))
 
-  ;; likelihood-pattern->dist : Pattern X -> Dist
+  ;; likelihood-pattern->dist : Pattern (Vectorof X) -> Dist
   ;; Requires f(x;y,z) = f(y;x,z), where y is '_ parameter.
   ;; Only handle continuous dists.
-  (define (likelihood-pattern->dist xdistp x)
-    (match xdistp
-      [`(normal-dist _ ,s) (normal-dist x s)]
-      [`(cauchy-dist _ ,s) (cauchy-dist x s)]
-      [`(exponential-dist _) (exponential-dist x)]
-      [`(student-t-dist ,d _ ,s) (student-t-dist d x s)]
-      [_ #f])))
+  (define (likelihood-pattern->dist xdistp xs)
+    (match* [xdistp xs]
+      [[`(normal-dist _ ,xs-scale) xs]
+       (define n (vector-length xs))
+       (normal-dist (/ (vector-sum xs) n) (/ xs-scale (sqrt n)))]
+      [[`(cauchy-dist _ ,s) (vector x)]
+       (cauchy-dist x s)]
+      [[`(student-t-dist ,d _ ,s) (vector x)]
+       (student-t-dist d x s)]
+      [[_ _] #f])))

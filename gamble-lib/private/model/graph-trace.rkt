@@ -235,7 +235,7 @@
 (struct node:app-mv (locs fun argrs) #:prefab)
 (struct node:sample (loc addr distr tagr) #:prefab)
 (struct node:score (argr) #:prefab)
-(struct node:observe (distr valr) #:prefab)
+(struct node:observe (distr star? vr) #:prefab)
 (struct node:fail (argr) #:prefab)
 
 ;; node-locations : Node -> (values (Listof Location) (Listof Location))
@@ -256,7 +256,7 @@
     [(node:sample loc addr distr tagr)
      (values (get-locs (list distr tagr)) (list loc))]
     [(node:score argr) (values (get-locs (list argr)) null)]
-    [(node:observe distr valr) (values (get-locs (list distr valr)) null)]
+    [(node:observe distr _ vr) (values (get-locs (list distr vr)) null)]
     [(node:fail argr) (values (get-locs argr) null)]
     ))
 
@@ -287,8 +287,8 @@
                             (quote ,addr)))]
     [(node:score argr)
      `(score ,(result->expr argr))]
-    [(node:observe distr valr)
-     `(observe ,(result->expr distr) ,(result->expr valr))]
+    [(node:observe distr star? valr)
+     `(,(if star? 'observe* 'observe) ,(result->expr distr) ,(result->expr valr))]
     [(node:fail argr)
      `(fail ,(result->expr argr))]
     ))
@@ -326,8 +326,10 @@
        (store! loc (send ctx sample dist tag addr)))]
     [(node:score argr)
      (send ctx score (result->value argr))]
-    [(node:observe distr valr)
-     (send ctx observe (result->value distr) (result->value valr))]
+    [(node:observe distr star? vr)
+     (if star?
+         (send ctx observe* (result->value distr) (result->value vr))
+         (send ctx observe (result->value distr) (result->value vr)))]
     [(node:fail argr)
      (send ctx fail (result->value argr))]
     ))
@@ -346,9 +348,13 @@
        (define arg (result->value argr))
        (set! sumlobs
              (+ sumlobs (if (real? arg) arg (dnum->logspace-real arg))))]
-      [(node:observe distr valr)
+      [(node:observe distr star? vr)
+       (define dist (result->value distr))
+       (define vs (result->value vr))
        (set! sumlobs
-             (+ sumlobs (dist-pdf (result->value distr) (result->value valr) #t)))]
+             (+ sumlobs (if star?
+                            (for/sum ([v (in-vector vs)]) (dist-pdf dist v #t))
+                            (dist-pdf dist vs #t))))]
       [_ (void)]))
   (values sumlprs sumlobs))
 
@@ -524,8 +530,11 @@
       (define (trace:score addr dr)
         (do! (node:score dr))
         (result:value (void)))
-      (define (trace:observe addr distr valr)
-        (do! (node:observe distr valr))
+      (define (trace:observe addr distr vr)
+        (do! (node:observe distr #f vr))
+        (result:value (void)))
+      (define (trace:observe* addr distr vr)
+        (do! (node:observe distr #t vr))
         (result:value (void)))
       (define (trace:fail addr [reasonr (result:value #f)])
         (do! (node:fail reasonr))
@@ -549,6 +558,7 @@
       (values (model-closure trace:sample)
               (model-closure trace:score)
               (model-closure trace:observe)
+              (model-closure trace:observe*)
               (model-closure trace:fail)
               (model-closure trace:mem)
               (model-closure trace:run-model)
@@ -734,7 +744,7 @@
        (or (hash-ref loc=>pattern loc #f)
            (let ([v (fetch loc)]) (if (real? v) v 'indep)))]))
   (define (real-or-rv? p) (or (real? p) (eq? p '_)))
-  (define (indep-pattern? p) (or (real? p) (eq? p 'indep)))
+  (define (indep-pattern? p) (or (real? p) (memq p '(indep #f))))
   ;; ----
   (define dist
     (match (vector-ref nodes 0)
@@ -750,8 +760,11 @@
          (match node
            [(node:sample loc _ distr _)
             (dist-posterior dist (get-pattern distr) (fetch loc))]
-           [(node:observe distr valr)
-            (dist-posterior dist (get-pattern distr) (result->value valr))]
+           [(node:observe ldistr star? vr)
+            (define ldistp (get-pattern ldistr))
+            (define v (result->value vr))
+            (and (indep-pattern? (get-pattern vr))
+                 (dist-posterior dist ldistp (if star? v (vector v))))]
            [(node:app loc fun argrs)
             (define argps (map get-pattern argrs))
             (cond [(and (andmap real-or-rv? argps)
