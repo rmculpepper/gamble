@@ -34,7 +34,7 @@
 ;; Stochastic models
 
 ;; (Model X) = (model (StochasticCtx Addr -> X))
-(struct model (proc gproc csbase))
+(struct model (proc gproc))
 
 ;; ============================================================
 ;; SampleFrame

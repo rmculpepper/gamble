@@ -509,7 +509,7 @@
 
     (define/public (eval-top who mdl)
       (match mdl
-        [(model _ gproc _)
+        [(model _ gproc)
          (match (send ctx run-top (lambda () (gproc this init-addr)))
            [(list result)
             (set! final-result result)
@@ -548,7 +548,7 @@
       (define (trace:run-model addr mdlr)
         (define mdl (result->value mdlr))
         (match mdl
-          [(model _ gproc _)
+          [(model _ gproc)
            (do! (node:same "model" mdl mdlr))
            (gproc this addr)]
           [(? model?)

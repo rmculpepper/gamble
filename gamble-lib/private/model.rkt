@@ -19,9 +19,9 @@
     [(expression)
      (syntax-parse stx
        [(_ e:expr ...)
-        (with-syntax ([(aproc gproc csbase)
+        (with-syntax ([(aproc gproc)
                        (instrument-model #'(let-values () e ...))])
-          #'(model aproc gproc csbase))])]
+          #'(model aproc gproc))])]
     [else #`(#%expression #,stx)]))
 
 (begin-for-syntax
@@ -53,7 +53,7 @@
       #`(syntax-parameterize ((CSBASE (make-rename-transformer
                                        (quote-syntax #,csbase-id))))
           (instrument/graph-top #,tagged-ee)))
-    (list (lift+wrap aproc-expr) (lift+wrap gproc-expr) csbase-id)))
+    (list (lift+wrap aproc-expr) (lift+wrap gproc-expr))))
 
 (define next-global-call-site 1)
 
