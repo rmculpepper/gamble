@@ -28,8 +28,7 @@
                 any)])
 
          sample
-         dscore
-         lscore
+         score
          observe
          fail
          mem

@@ -234,8 +234,7 @@
 (struct node:app (loc fun argrs) #:prefab)
 (struct node:app-mv (locs fun argrs) #:prefab)
 (struct node:sample (loc addr distr tagr) #:prefab)
-(struct node:dscore (argr) #:prefab)
-(struct node:lscore (argr) #:prefab)
+(struct node:score (argr) #:prefab)
 (struct node:observe (distr valr) #:prefab)
 (struct node:fail (argr) #:prefab)
 
@@ -256,8 +255,7 @@
      (values (get-locs argrs) locs)]
     [(node:sample loc addr distr tagr)
      (values (get-locs (list distr tagr)) (list loc))]
-    [(node:dscore argr) (values (get-locs (list argr)) null)]
-    [(node:lscore argr) (values (get-locs (list argr)) null)]
+    [(node:score argr) (values (get-locs (list argr)) null)]
     [(node:observe distr valr) (values (get-locs (list distr valr)) null)]
     [(node:fail argr) (values (get-locs argr) null)]
     ))
@@ -287,10 +285,8 @@
      (loc-set! loc `(sample ,(result->expr distr)
                             ,(and tagr (result->expr tagr))
                             (quote ,addr)))]
-    [(node:dscore argr)
-     `(dscore ,(result->expr argr))]
-    [(node:lscore argr)
-     `(lscore ,(result->expr argr))]
+    [(node:score argr)
+     `(score ,(result->expr argr))]
     [(node:observe distr valr)
      `(observe ,(result->expr distr) ,(result->expr valr))]
     [(node:fail argr)
@@ -328,10 +324,8 @@
      (let ([dist (result->value distr)]
            [tag (and tagr (result->value tagr))])
        (store! loc (send ctx sample dist tag addr)))]
-    [(node:dscore argr)
-     (send ctx dscore (result->value argr))]
-    [(node:lscore argr)
-     (send ctx lscore (result->value argr))]
+    [(node:score argr)
+     (send ctx score (result->value argr))]
     [(node:observe distr valr)
      (send ctx observe (result->value distr) (result->value valr))]
     [(node:fail argr)
@@ -348,12 +342,10 @@
       [(node:sample loc addr distr tagr)
        (set! sumlprs
              (+ sumlprs (dist-pdf (result->value distr) (fetch loc) #t)))]
-      [(node:dscore argr)
+      [(node:score argr)
+       (define arg (result->value argr))
        (set! sumlobs
-             (+ sumlobs (dnum->logspace-real (result->value argr))))]
-      [(node:lscore argr)
-       (set! sumlobs
-             (+ sumlobs (result->value argr)))]
+             (+ sumlobs (if (real? arg) arg (dnum->logspace-real arg))))]
       [(node:observe distr valr)
        (set! sumlobs
              (+ sumlobs (dist-pdf (result->value distr) (result->value valr) #t)))]
@@ -529,11 +521,8 @@
           (do! (node:same "sample tag" (result->value tagr) tagr)))
         (do! (node:sample loc addr distr tagr))
         (result:location loc))
-      (define (trace:dscore addr dr)
-        (do! (node:dscore dr))
-        (result:value (void)))
-      (define (trace:lscore addr llr)
-        (do! (node:lscore llr))
+      (define (trace:score addr dr)
+        (do! (node:score dr))
         (result:value (void)))
       (define (trace:observe addr distr valr)
         (do! (node:observe distr valr))
@@ -558,8 +547,7 @@
                   "non-tracing model called from tracing model" mdl)]
           [_ (raise-argument-error 'run-model "model?" mdl)]))
       (values (model-closure trace:sample)
-              (model-closure trace:dscore)
-              (model-closure trace:lscore)
+              (model-closure trace:score)
               (model-closure trace:observe)
               (model-closure trace:fail)
               (model-closure trace:mem)
@@ -681,8 +669,7 @@
                         (node:same-if? node)))
                (mark-nodeid nodeid #t)]
               [(or (node:sample? node)
-                   (node:dscore? node)
-                   (node:lscore? node)
+                   (node:score? node)
                    (node:observe? node))
                (mark-nodeid nodeid #t)]
               [else (void)])))

@@ -85,8 +85,7 @@
 
     sample      ;; (Dist A) Tag Addr/#f -> A
     observe     ;; Dist[X] X -> Void
-    dscore      ;; Dnum -> Void
-    lscore      ;; LogReal Nat -> Void
+    score       ;; (U Real Dnum) -> Void
     fail        ;; -> escapes
     mem         ;; (X ... -> Y) Addr/#f -> (X ... -> Y)
     run-model   ;; (Model A) Addr/#f -> (values A)
@@ -105,14 +104,13 @@
 
     (define/public (get-functions)
       (define (ctx-sample dist [tag #f]) (sample dist tag #f))
-      (define (ctx-dscore dn) (dscore dn))
-      (define (ctx-lscore ll) (lscore ll))
+      (define (ctx-score dn) (score dn))
       (define (ctx-observe d v) (observe d v))
       (define (ctx-fail [reason #f]) (fail reason))
       (define (ctx-mem f) (mem f #f))
       (define (ctx-run-model m) (run-model m #f))
       (define (ctx-sample/addr dist tag addr) (sample dist tag addr))
-      (values ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model
+      (values ctx-sample ctx-score ctx-observe ctx-fail ctx-mem ctx-run-model
               ctx-sample/addr))
 
     (define/public (-unsupported who)
@@ -128,12 +126,11 @@
     (define/public (-dscore who dn)
       (-unsupported who))
 
-    (define/public (dscore dn)
-      (unless (dnum? dn) (raise-argument-error 'dscore "dnum?" dn))
-      (-dscore 'dscore dn))
-    (define/public (lscore ll)
-      (unless (real? ll) (raise-argument-error 'lscore "real?" ll))
-      (-dscore 'lscore (logspace-dnum ll)))
+    (define/public (score dn)
+      (cond [(dnum? dn) (-dscore 'score dn)]
+            [(real? dn) (-dscore 'score (logspace-dnum dn))]
+            [else (raise-argument-error 'score "(or/c real? dnum?)" dn)]))
+
     (define/public (observe dist value)
       (unless (dist? dist) (raise-argument-error 'observe "dist?" dist))
       (-dscore 'observe (dist-density dist value)))
@@ -196,8 +193,7 @@
 
 (define-syntax-parameter sample out-of-context)
 (define-syntax-parameter mem out-of-context)
-(define-syntax-parameter dscore out-of-context)
-(define-syntax-parameter lscore out-of-context)
+(define-syntax-parameter score out-of-context)
 (define-syntax-parameter observe out-of-context)
 (define-syntax-parameter fail out-of-context)
 (define-syntax-parameter run-model
@@ -207,14 +203,12 @@
   (send ctx get-functions))
 
 (define-syntax-rule (with-ctx ctx body ...)
-  (let-values ([(ctx-sample ctx-dscore ctx-lscore ctx-observe ctx-fail ctx-mem ctx-run-model
-                            ctx-sample/addr)
+  (let-values ([(ctx-sample ctx-score ctx-observe ctx-fail ctx-mem ctx-run-model ctx-sample/addr)
                 (ctx-get-functions ctx)])
     (syntax-parameterize ([sample (make-rename-transformer (quote-syntax ctx-sample))]
                           [mem (make-rename-transformer (quote-syntax ctx-mem))]
                           [run-model (make-rename-transformer (quote-syntax ctx-run-model))]
-                          [dscore (make-rename-transformer (quote-syntax ctx-dscore))]
-                          [lscore (make-rename-transformer (quote-syntax ctx-lscore))]
+                          [score (make-rename-transformer (quote-syntax ctx-score))]
                           [observe (make-rename-transformer (quote-syntax ctx-observe))]
                           [fail (make-rename-transformer (quote-syntax ctx-fail))])
       body ...)))
