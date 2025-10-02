@@ -181,10 +181,6 @@
            #'(letrec-values ([() (begin (declare-local-variables vars ...) (values))]
                              [vars (instrument rhs)] ...)
                (instrument body) ...)]
-          [(set! ~! var e)
-           (cond [(free-id-table-ref local-variables #'var #f)
-                  #'(set! var (instrument e))]
-                 [else (raise-syntax-error #f "unsupported in model with tracing" stx)])]
           [(quote ~! d)
            #'(result:value ee)]
           [(quote-syntax . _)

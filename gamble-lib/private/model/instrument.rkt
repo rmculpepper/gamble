@@ -172,8 +172,6 @@
            #'(let-values ()
                (instrument (define-values vars rhs)) ...
                (#%expression (instrument body)) ...)]
-          [(set! ~! var e)
-           #'(set! var (instrument e))]
           [(quote ~! d) stx]
           [(quote-syntax . _) stx]
           [(with-continuation-mark ~! e1 e2 e3)

@@ -143,7 +143,7 @@
        (T (letrec-values ([vars (recur rhs)] ...)
             (recur body) ...))]
       [(set! var e)
-       (T (set! var (recur e)))]
+       (raise-syntax-error #f "disallowed within model" stx)]
       [(quote d) stx]
       [(quote-syntax . _) stx]
       [(with-continuation-mark e1 e2 e3)
