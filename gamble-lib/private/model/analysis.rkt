@@ -12,23 +12,13 @@
          syntax/parse
          syntax/parse/experimental/template
          "known-functions.rkt")
-(provide define-ref/set
-
-         modfix
-         inc-mod-counter!
-         hash-set/mod!
-
-         transform-TAG+CS
-         TAG
-         CALL-SITE
-         syntax-summary
-
-         analyze-FUN-EXP
-         FUN-EXP
-         lambda-form?
-
-         analyze-CALLS-ERP
-         app-calls-erp?)
+(provide (except-out (all-defined-out)
+                     mod-counter
+                     new-tag
+                     tag-counter
+                     next-call-site
+                     call-site-counter
+                     relocate))
 
 ;; ============================================================
 ;; Modification counter (used to find fixed points)
@@ -378,3 +368,76 @@
          => (lambda (lam-tag)
               (hash-ref LAM-CALLS-ERP lam-tag #f))]
         [else (function-may-call-erp? id)]))
+
+;; ============================================================
+
+(define model-function-table (make-free-id-table))
+
+(define (register-model-definition! f* fi fg)
+  (free-id-table-set! model-function-table f* (list fi fg)))
+
+(define (model-definition-id? id)
+  (and (free-id-table-ref model-function-table id #f) #t))
+
+(define (vars->replacements xs)
+  (define-values (replacements vars)
+    (for/fold ([replacements null] [ys null]) ([x (in-list xs)])
+      (cond [(free-id-table-ref model-function-table x #f)
+             => (lambda (refs) (values (cons (cons x refs) replacements) ys))]
+            [else (values replacements (cons x ys))])))
+  (values (map car replacements) (map cadr replacements) (map caddr replacements) vars))
+
+;; FIXME: need to fix free-vars to include registered top-level and module-level vars
+
+;; ============================================================
+
+(define (free-variables expr [add? (lambda (id) #f)])
+  (define free (make-free-id-table))
+  (define free-ids null)
+  (define (free! id)
+    (unless (free-id-table-ref free id #f)
+      (set! free-ids (cons id free-ids))
+      (free-id-table-set! free id #t)))
+  (define bound (make-free-id-table))
+  (define (bound? id) (free-id-table-ref bound id #f))
+  (define (bound! x)
+    (cond [(identifier? x) (free-id-table-set! bound x #t)]
+          [(pair? x) (bound! (car x)) (bound! (cdr x))]
+          [(syntax? x) (bound! (syntax-e x))]))
+  (define (loop* es) (for-each loop (or (stx->list es) null)))
+  (define (loop e)
+    (syntax-parse e
+      #:literal-sets (kernel-literals)
+      [var:id
+       (unless (bound? #'var)
+         (cond [(eq? (identifier-binding #'var) 'lexical)
+                (free! #'var)]
+               [(add? #'var)
+                (free! #'var)]
+               [else (void)]))]
+      [(#%plain-lambda formals e ...)
+       (bound! #'formals)
+       (loop* #'(e ...))]
+      [(case-lambda [formals e ...] ...)
+       (bound! #'(formals ...))
+       (loop* #'(e ... ...))]
+      [(if e1 e2 e3) (loop* #'(e1 e2 e3))]
+      [(begin e ...) (loop* #'(e ...))]
+      [(begin0 e ...) (loop* #'(e ...))]
+      [(let-values ([vars rhs] ...) body ...)
+       (bound! #'(vars ...))
+       (loop* #'(rhs ... body ...))]
+      [(letrec-values ([vars rhs] ...) body ...)
+       (bound! #'(vars ...))
+       (loop* #'(rhs ... body ...))]
+      [(set! var e) (loop* #'(var e))]
+      [(quote d) (void)]
+      [(quote-syntax . _) (void)]
+      [(with-continuation-mark e1 e2 e3)
+       (loop* #'(e1 e2 e3))]
+      [(#%plain-app e ...) (loop* #'(e ...))]
+      [(#%top . var) (loop #'var)]
+      [(#%variable-reference . _) (void)]
+      [(#%expression e) (loop #'e)]))
+  (loop expr)
+  (reverse free-ids))

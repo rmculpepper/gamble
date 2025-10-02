@@ -198,6 +198,7 @@
   (define (out-of-context stx)
     (raise-syntax-error #f "used out of model context" stx)))
 
+(define-syntax-parameter within-model? #f)
 (define-syntax-parameter sample out-of-context)
 (define-syntax-parameter mem out-of-context)
 (define-syntax-parameter score out-of-context)
@@ -213,7 +214,8 @@
 (define-syntax-rule (with-ctx ctx body ...)
   (let-values ([(-sample -score -observe -observe* -fail -mem -run-model -sample/addr)
                 (ctx-get-functions ctx)])
-    (syntax-parameterize ([sample   (make-rename-transformer (quote-syntax -sample))]
+    (syntax-parameterize ([within-model? #t]
+                          [sample   (make-rename-transformer (quote-syntax -sample))]
                           [mem      (make-rename-transformer (quote-syntax -mem))]
                           [score    (make-rename-transformer (quote-syntax -score))]
                           [observe  (make-rename-transformer (quote-syntax -observe))]

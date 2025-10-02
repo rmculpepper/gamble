@@ -37,6 +37,7 @@
          structural
 
          (rename-out [model* model])
+         begin-model-definitions
 
          (contract-out
           [rejection-sampler

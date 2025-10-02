@@ -81,16 +81,21 @@
   (syntax-parse stx
     #:literal-sets (kernel-literals)
     [(_ (#%plain-lambda (graph)
-          (let-values ctx-bindings body:expr)))
-     #'(#%plain-lambda (graph addr)
-         (let-values ctx-bindings
-           (syntax-parameterize ((ADDR (make-rename-transformer
-                                        (quote-syntax addr)))
-                                 (GRAPH (make-rename-transformer
-                                         (quote-syntax graph))))
-             (letrec-syntaxes ([(instrument)
-                                (make-instrument/graph (quote-syntax instrument))])
-               (instrument body)))))]))
+          (let-values ctx-bindings body:expr))
+        ((f fg) ...))
+     (with-syntax ([(ft ...) (generate-temporaries #'(f ...))])
+       #'(#%plain-lambda (graph addr)
+           (let-values ([(ft) (result:value-value (fg graph addr))] ...)
+             (let-values ctx-bindings
+               (syntax-parameterize ((ADDR (make-rename-transformer
+                                            (quote-syntax addr)))
+                                     (GRAPH (make-rename-transformer
+                                             (quote-syntax graph))))
+                 (letrec-syntaxes ([(instrument)
+                                    (make-instrument/graph (quote-syntax instrument)
+                                                           (syntax->list (quote-syntax (f ...)))
+                                                           (syntax->list (quote-syntax (ft ...))))])
+                   (instrument body)))))))]))
 
 (define-syntax (declare-local-variables stx)
   (syntax-parse stx
@@ -119,7 +124,10 @@
   ;; make-instrument/graph : Id -> (Syntax[ExpandedForm] -> Syntax[Form])
   ;; PRE: syntax is fully-expanded expression, tagged, and analyzed
   ;; PRE: result is used in context of binding of ADDR, CALL-SITE-BASE, GRAPH
-  (define (make-instrument/graph instrument-id)
+  (define (make-instrument/graph instrument-id fs fts)
+    (define replace (make-free-id-table))
+    (for ([f-id (in-list fs)] [ft-id (in-list fts)])
+      (free-id-table-set! replace f-id ft-id))
     (define/with-syntax instrument instrument-id)
     (define (instrumenter istx)
       (define stx (syntax-case istx () [(_ ee) #'ee]))
@@ -136,6 +144,8 @@
           ;; Expressions
           [var:id
            (cond [(free-id-table-ref local-variables #'var #f) #'var]
+                 [(free-id-table-ref replace #'var #f)
+                  => (lambda (replace-id) #`(result:value #,replace-id))]
                  [else #'(result:value var)])]
           [(#%plain-lambda ~! (var:id ...) e ...)
            #'(result:value
