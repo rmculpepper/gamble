@@ -629,13 +629,13 @@
         (for ([nodeid (in-range 0 nodeid-counter)])
           (define node (hash-ref nodeid=>node nodeid #f))
           (when node (void (node->expr node loc=>index)))))
-      (eprintf "Slice (+ minimal, - full):\n")
+      (printf "Slice (+ minimal, - full):\n")
       (parameterize ((print-reader-abbreviations #t))
         (for ([node all-nodes])
-          (eprintf "  ~a ~s\n"
+          (printf "  ~a ~s\n"
                    (if (for/or ([n (in-vector min-nodes)]) (eq? n node)) "+" "-")
                    (node->expr node loc=>index))))
-      (eprintf "Posterior dist: ~e\n" (slice->posterior-dist s)))
+      (printf "Posterior dist: ~e\n" (slice->posterior-dist s)))
 
     ;; get-slice : (Listof DBKey) -> Slice
     (define/public (get-slice keys)
