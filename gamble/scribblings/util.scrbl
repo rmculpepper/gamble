@@ -10,7 +10,10 @@
                      racket/contract
                      racket/class
                      racket/match
-                     gamble/util/dnum))
+                     gamble gamble/util/dnum))
+
+@(define (wiki suffix . content)
+   (apply hyperlink (format "https://en.wikipedia.org/wiki/~a" suffix) content))
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require gamble gamble/util/dnum racket/match))
@@ -119,25 +122,23 @@ Compares two dnums.
 @; ============================================================
 @section[#:tag "test-util"]{Utilities for Testing and Comparing Distributions}
 
-@defproc[(samples->KS [samples (vectorof real?)]
-                      [dist dist?])
+@defproc[(samples-KS [samples sample-frame/c]
+                     [ref (or/c dist? (-> real? real?))])
          real?]{
 
 Calculates the
-@hyperlink["http://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov
-statistic} of a sample set @racket[samples] with respect to
-@racket[dist]. The result is a measure of the goodness of fit of the
-samples to the distribution.
+@wiki["Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov statistic}
+of @racket[samples] with respect to the reference distribution or CDF @racket[ref].
+The result is a measure of the goodness of fit of the samples to the distribution.
 
 @examples[#:eval the-eval
-(samples->KS (generate-samples (rejection-sampler (uniform 0 1)) 1000)
-             (uniform-dist 0 1))
-(samples->KS (generate-samples (rejection-sampler (normal 0 1)) 1000)
-             (uniform-dist 0 1))
-(samples->KS (generate-samples (rejection-sampler (for/sum ([i 3]) (uniform -1 1))) 100)
-             (normal-dist 0 1))
-]
-}
+(samples-KS
+ (generate-samples (importance-sampler (model (sample (uniform-dist 0 1)))) 100)
+ (uniform-dist 0 1))
+(samples-KS
+ (generate-samples (importance-sampler (model (sample (normal-dist 0 1)))) 100)
+ (normal-dist 0.1 1))
+]}
 
 @defproc[(discrete-dist-error [dist1 discrete-dist?]
                               [dist2 discrete-dist?])
