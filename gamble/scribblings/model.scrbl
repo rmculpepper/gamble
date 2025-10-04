@@ -14,8 +14,6 @@
 
 @title[#:tag "model"]{Probabilistic Models}
 
-@section[#:tag "models"]{Expressing Models}
-
 @defproc[(model? [v any/c]) boolean?]{
 
 Returns @racket[#t] if @racket[v] is a probabilistic model produced by
@@ -26,7 +24,8 @@ Returns @racket[#t] if @racket[v] is a probabilistic model produced by
 
 Expresses a probabilistic model as a computation involving random variables and
 observations. The model's definitions and expressions may use the operations
-described in @secref["model-ops"].
+described in @secref["model-ops"]. The model body must end with a single-valued
+expression that represents the model's result.
 }
 
 @defproc[(run-model [m model?]) any/c]{
@@ -40,7 +39,7 @@ observations into the outer model's likelihood.
 }
 
 @; ------------------------------------------------------------
-@section[#:tag "model-ops"]{Operations in a Model}
+@section[#:tag "model-ops"]{Model-Level Operations}
 
 The operations described in this section are only allowed within @racket[model]
 expressions. References outside of a @racket[model] raise a syntax error.
@@ -56,14 +55,13 @@ procedure cooperates with the enclosing sampler/solver, unlike
 to identify or classify the random variable.
 
 Every evaluation of a @racket[sample] expression within a model creates a
-@deftech{random variable} --- whether or not the value is bound to a Racket
-variable. Each random variable receives an internal identifier called an
+@deftech{primitive random variable} --- whether or not the value is bound to a
+Racket variable. Each random variable receives an internal identifier called an
 @deftech{address}; addresses are not exposed to programs but they are visible
 through logging. Addresses are determined by control flow, but they are
 relatively independent of program values. That stability justifies considering
-the ``same'' random variable to exist across multiple executions.
-
-@;{ ref to LMH by Wingate et al }
+the ``same'' random variable to exist across multiple executions. This library
+uses a variant of the addressing scheme of @cite["LMH"].
 
 A random variable's tag must not change from one execution of a model to
 another. This restriction is not always enforced, but @racket[mcmc-sampler]
@@ -92,17 +90,25 @@ example illustrates the tag rules:
 
 @defproc[(observe [dist dist?] [value any/c]) void?]{
 
-Represents an observation of the given @racket[value] from the distribution
-@racket[dist]. The effect is to adjusts the likelihood of the current model
-execution.
+Represents an @deftech{observation} of the given @racket[value] from the
+distribution @racket[dist]. The effect is to adjusts the likelihood of the
+current model execution.
 
-Equivalent to @racket[(lscore (dist-pdf dist value #t))], except that some
+Equivalent to @racket[(score (dist-density dist value))], except that some
 features of this libary may benefit from knowing the observation distribution.
 }
 
-@defproc[(lscore [ll real?]) void?]{
+@defproc[(observe* [dist dist?] [vs vector?]) void?]{
 
-Adjusts the log likelihood of the current model execution by @racket[ll].
+Like @racket[observe], but represents multiple observations.
+
+Equivalent to @racket[(for ([v vs]) (observe dist v))].
+}
+
+@defproc[(score [s (or/c real? dnum?)]) void?]{
+
+Adjusts the likelihood of the current model execution by @racket[s].
+If @racket[s] is a real number, then it is interpreted as a logspace quantity.
 }
 
 @defproc[(fail [reason any/c #f]) any]{
@@ -111,18 +117,19 @@ Used to express observation failure. When used within a sampler or solver, it
 typically causes the sampler/solver to try again with different values for the
 previous choices.
 
-Equivalent to @racket[(lscore -inf.0)], except that @racket[reason] may be used
+Equivalent to @racket[(score -inf.0)], except that @racket[reason] may be used
 for debugging.
 
 For example, consider the following model of two coin flips where at least one
 of them is known to be heads (@racket[#t]):
 
-@racketblock[
-(model
- (define A (sample (boolean-dist 1/2)))
- (define B (sample (boolean-dist 1/2)))
- (unless (or A B) (fail))
- (list A B))
+@interaction[#:eval the-eval
+(enumerate
+ (model
+  (define A (sample (boolean-dist 1/2)))
+  (define B (sample (boolean-dist 1/2)))
+  (unless (or A B) (fail))
+  (list A B)))
 ]}
 
 
@@ -148,16 +155,24 @@ created.
 ]}
 }
 
-@; ------------------------------------------------------------
-@;{
+@; ----------------------------------------
+@section[#:tag "model-defs"]{Defining Model-Level Operations}
 
-Concepts:
-- address
-- tag
-- structural
-  - weak
-  - strong
+@defform[(begin-model-definitions definition ...)]{
 
-}
+Defines new model-level functions. These functions can use model-level
+operations like @racket[sample] and @racket[observe], but the functions can only
+be used within @racket[model] expressions or other model-level definitions.
+
+Each @racket[definition] must have the syntactic shape of a function definition,
+and keyword functions are not currently supported.
+
+@examples[#:eval the-eval
+(begin-model-definitions
+  (define (flip [p 1/2]) (sample (boolean-dist p))))
+(define geom/m
+  (model (let geom () (if (flip) 0 (add1 (geom))))))
+(enumerate #:stop 1e-3 geom/m)
+]}
 
 @(close-eval the-eval)

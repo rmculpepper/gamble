@@ -55,7 +55,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 @; @include-section["notes.scrbl"]
 
 @; ----------------------------------------
-@;{
+
 @bibliography[
 #:tag "prob-bibliography"
 
@@ -77,4 +77,3 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
            #:url "http://dx.doi.org/10.1007/978-3-642-03034-5_17"]
 
 ]
-}
