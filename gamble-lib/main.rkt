@@ -68,6 +68,7 @@
 
          mcmc-transition?
          mcmc-transition/single-site?
+         mcmc-transition/single-site/c
          (contract-out
           [initialize-transition
            (->* [] [(-> any/c dist? (or/c #f (list/c any/c)))] any)]
