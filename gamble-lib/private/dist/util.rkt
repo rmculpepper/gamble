@@ -87,6 +87,20 @@
                  (loop a m)
                  (loop m b))])))
 
+  ;; binary-search/greatest-leq : (Vectorof Real) Real -> Nat/#f
+  ;; PRE: cws is sorted increasing
+  ;; POST: returns greatest index k such that cws[k] <= x, or #f if none
+  (define (binary-search/greatest-leq cws x)
+    (and (<= (vector-ref cws 0) x)
+         (let loop ([a 0] [b (vector-length cws)]) ;; a < b, a valid, b invalid
+           (cond [(= (+ a 1) b)
+                  a]
+                 [else
+                  (define m (quotient (+ a b) 2))
+                  (if (<= (vector-ref cws m) x)
+                      (loop m b)
+                      (loop a m))]))))
+
   ;; find-least-natural : Nat (Nat -> Boolean) -> Nat
   ;; PRE: if (ok? m) and n > m, then (ok? n)
   (define (find-least-natural ok?)

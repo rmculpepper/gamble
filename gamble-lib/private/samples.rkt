@@ -22,36 +22,46 @@
   (define lws (hash-ref sf 'log-weight #f))
   (cond [lws
          (define maxlw (for/fold ([maxlw -inf.0]) ([lw (in-vector lws)]) (max maxlw lw)))
-         (define svs (for/vector ([v (in-vector vs)] [lw (in-vector lws)]) (cons v lw)))
-         (vector-sort! svs < #:key car)
-         (define scws (make-vector (vector-length svs)))
-         (for/fold ([s 0.0] [c 0.0]) ([i (in-naturals)] [vlw (in-vector svs)])
-           (vector-set! svs i (car vlw))
-           (define-values (s* c*) (compensated+ (exp (- (cdr vlw) maxlw)) s c))
-           (vector-set! scws i s*)
+         (define-values (svs slws) (vectors-sort vs lws))
+         ;; slws is logspace weights
+         (for/fold ([s 0.0] [c 0.0]) ([i (in-naturals)] [lw (in-vector slws)])
+           (define-values (s* c*) (compensated+ (exp (- lw maxlw)) s c))
+           (vector-set! slws i s*)
            (values s* c*))
-         (sorted->empirical-cdf svs scws (exp maxlw))]
+         ;; slws is now cumulative linear weights
+         (sorted->empirical-cdf svs slws (exp maxlw))]
         [else (sorted->empirical-cdf (vector-sort vs <))]))
 
 (define (vector->empirical-cdf vs [ws #f])
   (cond [ws
-         (define svs (for/vector ([v (in-vector vs)] [w (in-vector ws)]) (cons v w)))
-         (vector-sort! svs < #:key car)
-         (define scws (make-vector (vector-length svs)))
-         (for/fold ([sum 0]) ([i (in-naturals)] [vw (in-vector svs)])
-           (vector-set! svs i (car vw))
-           (vector-set! scws i (+ sum (cdr vw)))
-           (+ sum (cdr vw)))
-         (sorted->empirical-cdf svs scws)]
+         (define-values (svs sws) (vectors-sort vs ws))
+         (for/fold ([s 0.0] [c 0.0]) ([i (in-naturals)] [w (in-vector sws)])
+           (define-values (s* c*) (compensated+ w s c))
+           (vector-set! sws i s*)
+           (values s* c*))
+         ;; sws is now cumulative linear weights
+         (sorted->empirical-cdf svs sws)]
         [else (sorted->empirical-cdf (vector-sort vs <))]))
 
 (define (sorted->empirical-cdf svs [scws #f] [factor 1])
   (define (ecdf x)
-    (cond [(>= x (vector-ref svs 0))
-           (define k (binary-search/least-geq svs x))
-           (* factor (if scws (vector-ref scws k) (/ (add1 k) (vector-length svs))))]
-          [else 0]))
+    (define k (binary-search/greatest-leq svs x))
+    (if k (* factor (if scws (vector-ref scws k) (/ (add1 k) (vector-length svs)))) 0))
   ecdf)
+
+;; vectors-sort : (Vectorof X) (Vectorof Y) (X X -> Boolean)
+;;             -> (values (Vectorof X) (Vectorof Y))
+(define (vectors-sort xs ys [x<? <])
+  (define n (vector-length xs))
+  (define sxs (make-vector n))
+  (for ([x (in-vector xs)] [y (in-vector ys)] [i (in-naturals)])
+    (vector-set! sxs i (cons x y)))
+  (vector-sort! sxs < #:key car)
+  (define sys (make-vector n))
+  (for ([c (in-vector sxs)] [i (in-naturals)])
+    (vector-set! sxs i (car c))
+    (vector-set! sys i (cdr c)))
+  (values sxs sys))
 
 ;; ------------------------------------------------------------
 ;; Kolmogorov-Smirov statistic
