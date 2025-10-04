@@ -6,7 +6,7 @@
 @(require scribble/manual
           scribble/basic
           scribble/eval
-          (for-label racket/base racket/contract gamble gamble/pict))
+          (for-label racket/base racket/contract gamble gamble/util/dnum gamble/pict))
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require gamble gamble/pict))
@@ -100,9 +100,9 @@ Produces a sample distributed according to @racket[d].
          dnum?]{
 
 Returns the probability density of the value @racket[v] in the distribution
-@racket[d], represented as a @tech{dnum}. Numeric distributions generally
-represent the density in logspace, and discrete distributions generally
-represent the density in linear space.
+@racket[d], represented as a dnum (@racket[dnum?]). Numeric distributions
+generally represent the density in logspace, and discrete distributions
+generally represent the density in linear space.
 
 @examples[#:eval the-eval
 (dist-density (boolean-dist 1/3) #f)

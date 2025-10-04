@@ -52,6 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 @include-section["dist.scrbl"]
 @include-section["model.scrbl"]
 @include-section["solvers.scrbl"]
+@include-section["util.scrbl"]
 @; @include-section["notes.scrbl"]
 
 @; ----------------------------------------
