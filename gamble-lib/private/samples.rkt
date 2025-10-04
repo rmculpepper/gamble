@@ -17,36 +17,40 @@
 ;; Empirical CDF
 
 ;; samples->empirical-cdf : SampleFrame -> (Real -> Real)
-(define (samples->empirical-cdf sf)
+(define (samples->empirical-cdf sf #:normalize? [normalize? #f])
   (define vs (hash-ref sf 'value))
   (define lws (hash-ref sf 'log-weight #f))
   (cond [lws
          (define maxlw (for/fold ([maxlw -inf.0]) ([lw (in-vector lws)]) (max maxlw lw)))
          (define-values (svs slws) (vectors-sort vs lws))
          ;; slws is logspace weights
-         (for/fold ([s 0.0] [c 0.0]) ([i (in-naturals)] [lw (in-vector slws)])
-           (define-values (s* c*) (compensated+ (exp (- lw maxlw)) s c))
-           (vector-set! slws i s*)
-           (values s* c*))
+         (define wsum
+           (for/fold ([s 0.0] [c 0.0] #:result s)
+                     ([i (in-naturals)] [lw (in-vector slws)])
+             (define-values (s* c*) (compensated+ (exp (- lw maxlw)) s c))
+             (vector-set! slws i s*)
+             (values s* c*)))
          ;; slws is now cumulative linear weights
-         (sorted->empirical-cdf svs slws (exp maxlw))]
-        [else (sorted->empirical-cdf (vector-sort vs <))]))
+         (sorted->empirical-cdf svs slws (if normalize? (/ wsum) (exp maxlw)))]
+        [else (sorted->empirical-cdf (vector-sort vs <) #f (/ (vector-length vs)))]))
 
-(define (vector->empirical-cdf vs [ws #f])
+(define (vector->empirical-cdf vs [ws #f] #:normalize? [normalize? #f])
   (cond [ws
          (define-values (svs sws) (vectors-sort vs ws))
-         (for/fold ([s 0.0] [c 0.0]) ([i (in-naturals)] [w (in-vector sws)])
-           (define-values (s* c*) (compensated+ w s c))
-           (vector-set! sws i s*)
-           (values s* c*))
+         (define wsum
+           (for/fold ([s 0.0] [c 0.0] #:result s)
+                     ([i (in-naturals)] [w (in-vector sws)])
+             (define-values (s* c*) (compensated+ w s c))
+             (vector-set! sws i s*)
+             (values s* c*)))
          ;; sws is now cumulative linear weights
-         (sorted->empirical-cdf svs sws)]
-        [else (sorted->empirical-cdf (vector-sort vs <))]))
+         (sorted->empirical-cdf svs sws (if normalize? (/ wsum) 1))]
+        [else (sorted->empirical-cdf (vector-sort vs <) #f (/ (vector-length vs)))]))
 
 (define (sorted->empirical-cdf svs [scws #f] [factor 1])
   (define (ecdf x)
     (define k (binary-search/greatest-leq svs x))
-    (if k (* factor (if scws (vector-ref scws k) (/ (add1 k) (vector-length svs)))) 0))
+    (if k (* factor (if scws (vector-ref scws k) (add1 k))) 0))
   ecdf)
 
 ;; vectors-sort : (Vectorof X) (Vectorof Y) (X X -> Boolean)
@@ -66,6 +70,37 @@
 ;; ------------------------------------------------------------
 ;; Kolmogorov-Smirov statistic
 
+;; CDF = (Real -> Real), monotonic nondecreasing
+
+;; samples-KS : SampleFrame (U Dist CDF) -> Real
+(define (samples-KS sf ref)
+  (define sf-ecdf (samples->empirical-cdf sf #:normalize? #t))
+  (define vs (vector-sort (hash-ref sf 'value) <))
+  (cond [(dist? ref)
+         (define (ref-cdf x) (dist-cdf ref x))
+         (KS1 sf-ecdf vs ref-cdf (real-dist? ref))]
+        [else
+         (KS1 sf-ecdf vs ref #t)]))
+
+;; samples-KS2 : SampleFrame SampleFrame -> Real
+(define (samples-KS2 sf1 sf2)
+  (define ecdf1 (samples->empirical-cdf sf1 #:normalize? #t))
+  (define vs1 (vector-sort (hash-ref sf1 'value) <))
+  (define ecdf2 (samples->empirical-cdf sf2 #:normalize? #t))
+  (define vs2 (vector-sort (hash-ref sf2 'value) <))
+  (max (KS1 ecdf1 vs1 ecdf2 #f)
+       (KS1 ecdf2 vs2 ecdf1 #f)))
+
+;; KS1 : CDF (Vectorof Real) CDF Boolean -> Real
+(define (KS1 ecdf xs ref-cdf continuous?)
+  (for/fold ([m 0] [prev-ex 0] #:result m) ([x (in-vector xs)])
+    (define ex (ecdf x))
+    (define rx (ref-cdf x))
+    (values (max (if continuous? (max m (abs (- prev-ex rx))) m)
+                 (abs (- ex rx)))
+            ex)))
+
+#|
 ;; KS : (Vectorof Real) (U Dist (Vectorof Real)) -> Real
 ;; Correct for continuous cdf, may miss supremum for discrete dist.
 (define (KS v1 v2)
@@ -87,6 +122,7 @@
     (max m
          (abs (- (/ i n) cdfx))
          (abs (- (/ (sub1 i) n) cdfx)))))
+|#
 
 ;; ------------------------------------------------------------
 ;; Kernel Density Estimation

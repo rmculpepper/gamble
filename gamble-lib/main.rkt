@@ -89,7 +89,18 @@
             ([value any/c]
              [l-R/F real?])]
           [struct proposal-kernel
-            ([kernel (-> any/c dist?)])]))
+            ([kernel (-> any/c dist?)])])
+
+         (contract-out
+          [samples->empirical-cdf
+           (-> sample-frame/c
+               (-> real? real?))]
+          [samples-KS
+           (-> sample-frame/c (or/c dist? (-> real? real?))
+               real?)]
+          [samples-KS2
+           (-> sample-frame/c sample-frame/c
+               real?)]))
 
 (define mcmc-transition/single-site/c
   (or/c #f
@@ -98,3 +109,5 @@
         mcmc-transition/single-site?
         (-> any/c dist? any/c
             (recursive-contract mcmc-transition/single-site/c))))
+
+(define sample-frame/c hash?) ;; FIXME
