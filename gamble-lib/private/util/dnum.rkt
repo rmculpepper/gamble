@@ -4,6 +4,7 @@
 
 #lang racket/base
 (require racket/match
+         racket/struct
          "real.rkt")
 (provide (all-defined-out))
 
@@ -13,7 +14,11 @@
 ;; - in logspace (logarithmic space) -- eg, 1.0 is represented as (dnum #t 0.0)
 ;; Linspace representation can be exact or inexact; logspace must be flonum.
 ;; Mixed operations coerce to logspace.
-(struct dnum (log? x) #:transparent)
+(struct dnum (log? x) #:transparent
+  #:property prop:custom-write
+  (make-constructor-style-printer
+   (lambda (self) (if (dnum-log? self) 'logspace-dnum 'linear-dnum))
+   (lambda (self) (list (dnum-x self)))))
 
 (define (dnum-logspace? dn) (dnum-log? dn))
 (define (dnum-linear? dn) (not (dnum-log? dn)))
