@@ -120,46 +120,39 @@ Compares two dnums.
 
 
 @; ============================================================
-@section[#:tag "test-util"]{Utilities for Testing and Comparing Distributions}
+@section[#:tag "samples-util"]{Utilities for Sample Frames}
+
+@defproc[(samples->empirical-cdf [samples sample-frame/c]
+                                 [#:normalize? normalize? #t])
+         (-> real? real?)]{
+
+Calculates the @wiki["Empirical_distribution_function"]{empirical CDF} of
+@racket[samples], which must be real-valued.
+}
 
 @defproc[(samples-KS [samples sample-frame/c]
-                     [ref (or/c dist? (-> real? real?))])
+                     [ref (or/c dist? sample-frame/c (-> real? real?))])
          real?]{
 
-Calculates the
-@wiki["Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov statistic}
-of @racket[samples] with respect to the reference distribution or CDF @racket[ref].
-The result is a measure of the goodness of fit of the samples to the distribution.
+Calculates the @wiki["Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov
+statistic} of @racket[samples] with respect to the reference distribution, CDF,
+or samples @racket[ref].  The result is a measure of the goodness of fit of the
+samples to the distribution.
 
 @examples[#:eval the-eval
 (samples-KS
  (generate-samples (importance-sampler (model (sample (uniform-dist 0 1)))) 100)
  (uniform-dist 0 1))
+(let ([s (importance-sampler (model (sample (uniform-dist 0 1))))])
+  (samples-KS (generate-samples s 100)
+              (generate-samples s 100)))
 (samples-KS
  (generate-samples (importance-sampler (model (sample (normal-dist 0 1)))) 100)
  (normal-dist 0.1 1))
+(samples-KS
+ (generate-samples (importance-sampler (model (sample (uniform-dist -1 1)))) 100)
+ (normal-dist 0 1))
 ]}
-
-@defproc[(discrete-dist-error [dist1 discrete-dist?]
-                              [dist2 discrete-dist?])
-         (>=/c 0)]{
-
-Returns a measure of the difference between two discrete
-distributions. The result is the probability mass that would need to
-be reassigned in order to transform @racket[dist1] into
-@racket[dist2].
-
-@examples[#:eval the-eval
-(discrete-dist-error
- (discrete-dist ['A 3/5] ['B 2/5])
- (discrete-dist ['A 1/2] ['B 1/2]))
-]
-
-In the example above, @racket[1/10] of the probability mass of
-@racket['A] in the first distribution would have to be shifted to
-@racket['B] to transform the first distribution into the second.
-}
-
 
 @; ============================================================
 @(close-eval the-eval)
