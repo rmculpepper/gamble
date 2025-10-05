@@ -209,8 +209,9 @@
   (define (cauchy-pdf x x0 gamma)
     (c-recip (c* pi gamma (c+ 1.0 (c-sqr (c/ (c- x x0) gamma))))))
 
-  (define (exponential-pdf x rate)
-    (c* rate (c-exp (c* -1.0 rate x))))
+  (define (exponential-pdf x mean)
+    (let ([rate (c-recip mean)])
+      (c* rate (c-exp (c* -1.0 rate x)))))
 
   (define (gamma-pdf x alpha theta)
     (c/ (c* (c-expt x (c- alpha 1.0))
