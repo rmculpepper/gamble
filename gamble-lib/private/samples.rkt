@@ -72,24 +72,20 @@
 
 ;; CDF = (Real -> Real), monotonic nondecreasing
 
-;; samples-KS : SampleFrame (U Dist CDF) -> Real
-(define (samples-KS sf ref)
-  (define sf-ecdf (samples->empirical-cdf sf #:normalize? #t))
-  (define vs (vector-sort (hash-ref sf 'value) <))
-  (cond [(dist? ref)
-         (define (ref-cdf x) (dist-cdf ref x))
-         (KS1 sf-ecdf vs ref-cdf (real-dist? ref))]
-        [else
-         (KS1 sf-ecdf vs ref #t)]))
-
-;; samples-KS2 : SampleFrame SampleFrame -> Real
-(define (samples-KS2 sf1 sf2)
+;; samples-KS : SampleFrame (U Dist CDF SampleFrame) -> Real
+(define (samples-KS sf1 ref2)
   (define ecdf1 (samples->empirical-cdf sf1 #:normalize? #t))
   (define vs1 (vector-sort (hash-ref sf1 'value) <))
-  (define ecdf2 (samples->empirical-cdf sf2 #:normalize? #t))
-  (define vs2 (vector-sort (hash-ref sf2 'value) <))
-  (max (KS1 ecdf1 vs1 ecdf2 #f)
-       (KS1 ecdf2 vs2 ecdf1 #f)))
+  (cond [(dist? ref2)
+         (define (cdf2 x) (dist-cdf ref2 x))
+         (KS1 ecdf1 vs1 cdf2 (real-dist? ref2))]
+        [(procedure? ref2)
+         (KS1 ecdf1 vs1 ref2 #t)]
+        [(hash? ref2)
+         (define ecdf2 (samples->empirical-cdf ref2 #:normalize? #t))
+         (define vs2 (vector-sort (hash-ref ref2 'value) <))
+         (max (KS1 ecdf1 vs1 ecdf2 #f)
+              (KS1 ecdf2 vs2 ecdf1 #f))]))
 
 ;; KS1 : CDF (Vectorof Real) CDF Boolean -> Real
 (define (KS1 ecdf xs ref-cdf continuous?)

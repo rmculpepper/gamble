@@ -93,13 +93,11 @@
 
          (contract-out
           [samples->empirical-cdf
-           (-> sample-frame/c
-               (-> real? real?))]
+           (->* [sample-frame/c]
+                [#:normalize? boolean?]
+                (-> real? real?))]
           [samples-KS
-           (-> sample-frame/c (or/c dist? (-> real? real?))
-               real?)]
-          [samples-KS2
-           (-> sample-frame/c sample-frame/c
+           (-> sample-frame/c (or/c dist? (-> real? real?) sample-frame/c)
                real?)]))
 
 (define mcmc-transition/single-site/c
