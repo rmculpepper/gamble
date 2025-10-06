@@ -37,7 +37,7 @@
           (sample))
         (define v (sample))
         (vector-set! vs i v))
-      (hasheq 'value vs))
+      (hash 'value vs))
     ))
 
 (define rejection-stochastic-ctx%

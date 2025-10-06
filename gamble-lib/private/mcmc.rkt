@@ -92,7 +92,7 @@
           [(transition) txinfov]
           [else (error who "unknown field name: ~e" field)]))
       (and fields
-           (for/fold ([h (hasheq)]) ([field (in-list fields)])
+           (for/fold ([h (hash)]) ([field (in-list fields)])
              (hash-set h field (get-field-value field)))))
 
     (define/public (initialize transition)

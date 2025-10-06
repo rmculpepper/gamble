@@ -43,7 +43,7 @@
         (define-values (v wdn) (sample/weight))
         (vector-set! vs i v)
         (vector-set! ws i (dnum->logspace-real wdn)))
-      (hasheq 'value vs 'log-weight ws))
+      (hash 'value vs 'log-weight ws))
     ))
 
 (define importance-stochastic-ctx%

@@ -39,7 +39,7 @@
 ;; ============================================================
 ;; SampleFrame
 
-;; A SampleFrame is (Hasheq s:Symbol FieldValue(s))
+;; A SampleFrame is (ImmutableHash s:Symbol FieldValue(s))
 ;; with 'value      : (Vectorof A)      -- always
 ;;      'log-weight : (Vectorof Real)   -- only importance sampler
 ;; and other fields determined by sampler (see mcmc-sampler).
