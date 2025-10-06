@@ -164,30 +164,6 @@
   (* (c alpha) (sqrt (/ (+ n1 n2) (* n1 n2)))))
 
 
-#|
-;; KS : (Vectorof Real) (U Dist (Vectorof Real)) -> Real
-;; Correct for continuous cdf, may miss supremum for discrete dist.
-(define (KS v1 v2)
-  (cond [(vector? v2)
-         (let ([v1 (vector-sort v1 <)]
-               [v2 (vector-sort v2 <)])
-           (max (KS* v1 (sorted->empirical-cdf v2))
-                (KS* v2 (sorted->empirical-cdf v1))))]
-        [else
-         (let ([v1 (vector-sort v1 <)])
-           (KS* v1 (lambda (x) (dist-cdf v2 x))))]))
-
-(define (KS* v cdf)
-  (define n (vector-length v))
-  (for/fold ([m 0])
-            ([x (in-vector v)]
-             [i (in-naturals 1)])
-    (define cdfx (cdf x))
-    (max m
-         (abs (- (/ i n) cdfx))
-         (abs (- (/ (sub1 i) n) cdfx)))))
-|#
-
 ;; ------------------------------------------------------------
 ;; Kernel Density Estimation
 
