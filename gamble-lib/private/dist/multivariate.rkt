@@ -86,7 +86,7 @@
         (define n (vector-length alpha))
         (define new-alpha (vector-copy alpha))
         (for ([x (in-vector xs)])
-          (let ([index (sub1 (exact x))]) ;; categorical is {1,...,n}
+          (let ([index (exact x)]) ;; categorical is {0,...,n-1}
             (vector-set! new-alpha index (+ 1.0 (vector-ref new-alpha index)))))
         (dirichlet-dist (vector->immutable-vector new-alpha))]
        [_ #f]))]

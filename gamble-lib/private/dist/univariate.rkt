@@ -645,7 +645,7 @@
 ;; Other integer distributions (finite)
 
 (define-dist-struct categorical-dist
-  ;; support is {1,...,k}
+  ;; support is {0,...,k-1}
   ([weights vector? -categorical-guard-weights])
   #:methods gen:dist
   [(define (-sample self)
@@ -653,8 +653,8 @@
      (-categorical-inv-cdf 'dist-sample:categorical-dist ws (random)))
    (define (-pdf self x log?)
      (match-define (categorical-dist ws) self)
-     (cond [(and (integer? x) (<= 1 x (vector-length ws)))
-            (convert-p (vector-ref ws (sub1 (exact x))) log? #f)]
+     (cond [(and (integer? x) (<= 0 x (sub1 (vector-length ws))))
+            (convert-p (vector-ref ws (exact x)) log? #f)]
            [else (impossible log?)]))
    (define (-count self)
      (match-define (categorical-dist ws) self)
@@ -665,9 +665,9 @@
      (match-define (categorical-dist ws) self)
      (define k (exact (floor x)))
      (define p
-       (cond [(<= 1 k (vector-length ws))
-              (vector-ref (-categorical-cws ws) (sub1 k))]
-             [(< k 1) 0.0]
+       (cond [(<= 0 k (sub1 (vector-length ws)))
+              (vector-ref (-categorical-cws ws) k)]
+             [(< k 0) 0.0]
              [else 1.0]))
      (convert-p p log? 1-p?))
    (define (-invcdf self p0 log? 1-p?)
@@ -676,16 +676,16 @@
      (-categorical-inv-cdf 'dist-inv-cdf:categorical-dist ws p))
    (define (-support self)
      (match-define (categorical-dist ws) self)
-     (integer-range 1 (vector-length ws)))
+     (integer-range 0 (sub1 (vector-length ws))))
    (define (-mean self)
      (match-define (categorical-dist ws) self)
-     (for/sum ([i (in-naturals 1)] [w (in-vector ws)]) (* i w)))
+     (for/sum ([i (in-naturals 0)] [w (in-vector ws)]) (* i w)))
    (define (-modes self)
      (match-define (categorical-dist ws) self)
      (define weights (categorical-dist-weights self))
      (let-values ([(best best-w)
                    (for/fold ([best null] [best-w -inf.0])
-                             ([i (in-naturals 1)] [w (in-vector weights)])
+                             ([i (in-naturals 0)] [w (in-vector weights)])
                      (cond [(> w best-w)
                             (values (list i) w)]
                            [(= w best-w)
@@ -695,10 +695,10 @@
   #:methods gen:enumerable-dist
   [(define (-sequence self)
      (match-define (categorical-dist ws) self)
-     (in-range 1 (add1 (vector-length ws))))
+     (in-range 0 (vector-length ws)))
    (define (-wsequence self)
      (match-define (categorical-dist ws) self)
-     (in-parallel (in-naturals 1) (in-vector ws)))])
+     (in-parallel (in-naturals 0) (in-vector ws)))])
 
 (define (-categorical-guard-weights in-ws)
   (normalize-inexact-weights 'categorical-dist in-ws))
@@ -711,7 +711,7 @@
 
 (define (-categorical-inv-cdf who ws p)
   (define cws (-categorical-cws ws))
-  (add1 (binary-search/least-geq cws p)))
+  (binary-search/least-geq cws p))
 
 ;; ============================================================
 ;; Utils
