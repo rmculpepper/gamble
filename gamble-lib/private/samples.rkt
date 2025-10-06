@@ -13,6 +13,9 @@
          (only-in math/statistics stddev))
 (provide (all-defined-out))
 
+(define (samples-count sf)
+  (vector-length (hash-ref sf 'value)))
+
 ;; ------------------------------------------------------------
 ;; Empirical CDF
 
@@ -95,6 +98,71 @@
     (values (max (if continuous? (max m (abs (- prev-ex rx))) m)
                  (abs (- ex rx)))
             ex)))
+
+;; Risk of false rejection.
+(define KS-DEFAULT-ALPHA 0.05)
+
+;; samples-KS1-test : SampleFrame (U Dist CDF) -> Boolean
+(define (samples-KS1-test sf1 ref2 [alpha KS-DEFAULT-ALPHA])
+  (define ks (samples-KS sf1 ref2))
+  (define n (samples-count sf1))
+  (<= ks (KS1-threshold n alpha)))
+
+;; KS1-threshold : Nat Real -> Boolean
+(define (KS1-threshold n [alpha KS-DEFAULT-ALPHA])
+  (define (c alpha)
+    ;; 0.200 -> 1.07
+    ;; 0.150 -> 1.14
+    ;; 0.100 -> 1.22
+    ;; 0.050 -> 1.36
+    ;; 0.025 -> 1.48
+    ;; 0.010 -> 1.63
+    ;; 0.005 -> 1.73
+    ;; 0.001 -> 1.95
+    (KS1-solve-significance alpha 1.0 4.0 8))
+  (/ (c alpha) (sqrt n)))
+
+;; KS1-significance : Real -> Real
+(define (KS1-significance t)
+  (define ITERS 10)
+  (for/sum ([k (in-range 1 (add1 ITERS))])
+    (* 2.0
+       (expt -1 (sub1 k))
+       (exp (* -2 k k t t)))))
+
+;; KS1-solve-significance : Real Real Real Nat -> Real
+;; Find t s.t. (KS-significance t) ~= a. Via binary search.
+(define (KS1-solve-significance alpha lo hi iters)
+  (let loop ([lo lo] [hi hi] [los (KS1-significance lo)] [his (KS1-significance hi)] [iters iters])
+    (define mid (* 0.5 (+ lo hi)))
+    (if (zero? iters)
+        mid
+        (let ([mids (KS1-significance mid)])
+          (if (< mids alpha)
+              (loop lo mid los mids (sub1 iters))
+              (loop mid hi mids his (sub1 iters)))))))
+
+;; samples-KS2-test : SampleFrame SampleFrame -> Boolean
+(define (samples-KS2-test sf1 sf2 [alpha KS-DEFAULT-ALPHA])
+  (define ks (samples-KS sf1 sf2))
+  (define n1 (samples-count sf1))
+  (define n2 (samples-count sf2))
+  (<= ks (KS2-threshold n1 n2 alpha)))
+
+;; KS2-threshold : Nat Nat Real -> Boolean
+(define (KS2-threshold n1 n2 [alpha KS-DEFAULT-ALPHA])
+  (define (c alpha)
+    ;; 0.200 -> 1.073
+    ;; 0.150 -> 1.138
+    ;; 0.100 -> 1.224
+    ;; 0.050 -> 1.358
+    ;; 0.025 -> 1.48
+    ;; 0.010 -> 1.628
+    ;; 0.005 -> 1.731
+    ;; 0.001 -> 1.949
+    (sqrt (* -0.5 (log (* 0.5 alpha)))))
+  (* (c alpha) (sqrt (/ (+ n1 n2) (* n1 n2)))))
+
 
 #|
 ;; KS : (Vectorof Real) (U Dist (Vectorof Real)) -> Real
