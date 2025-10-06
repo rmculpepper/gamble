@@ -7,6 +7,7 @@
          racket/vector
          racket/match
          racket/math
+         "base.rkt"
          "dist.rkt"
          "util/real.rkt"
          (submod "dist/util.rkt" search)
@@ -100,16 +101,16 @@
             ex)))
 
 ;; Risk of false rejection.
-(define KS-DEFAULT-ALPHA 0.05)
+(define DEFAULT-ALPHA 0.05)
 
 ;; samples-KS1-test : SampleFrame (U Dist CDF) -> Boolean
-(define (samples-KS1-test sf1 ref2 [alpha KS-DEFAULT-ALPHA])
+(define (samples-KS1-test sf1 ref2 [alpha DEFAULT-ALPHA])
   (define ks (samples-KS sf1 ref2))
   (define n (samples-count sf1))
   (<= ks (KS1-threshold n alpha)))
 
 ;; KS1-threshold : Nat Real -> Boolean
-(define (KS1-threshold n [alpha KS-DEFAULT-ALPHA])
+(define (KS1-threshold n [alpha DEFAULT-ALPHA])
   (define (c alpha)
     ;; 0.200 -> 1.07
     ;; 0.150 -> 1.14
@@ -143,14 +144,14 @@
               (loop mid hi mids his (sub1 iters)))))))
 
 ;; samples-KS2-test : SampleFrame SampleFrame -> Boolean
-(define (samples-KS2-test sf1 sf2 [alpha KS-DEFAULT-ALPHA])
+(define (samples-KS2-test sf1 sf2 [alpha DEFAULT-ALPHA])
   (define ks (samples-KS sf1 sf2))
   (define n1 (samples-count sf1))
   (define n2 (samples-count sf2))
   (<= ks (KS2-threshold n1 n2 alpha)))
 
 ;; KS2-threshold : Nat Nat Real -> Boolean
-(define (KS2-threshold n1 n2 [alpha KS-DEFAULT-ALPHA])
+(define (KS2-threshold n1 n2 [alpha DEFAULT-ALPHA])
   (define (c alpha)
     ;; 0.200 -> 1.073
     ;; 0.150 -> 1.138
@@ -162,6 +163,76 @@
     ;; 0.001 -> 1.949
     (sqrt (* -0.5 (log (* 0.5 alpha)))))
   (* (c alpha) (sqrt (/ (+ n1 n2) (* n1 n2)))))
+
+;; ------------------------------------------------------------
+;; Pearson's chi-squared test
+
+;; samples-PC2 : SampleFrame FiniteDist -> Real
+(define (samples-PC2 sf ref)
+  ;; If sf has values outside of ref's support, infinite error.
+  (define dd (samples->discrete-dist sf #:normalize? #t))
+  (define N (samples-count sf))
+  (-dist-PC2 N dd ref))
+
+;; samples-PC2-test : SampleFrame FiniteDist [Nat Real] -> Boolean
+;; df = "degrees of freedom" = (ncategories - 1 - nparameters-estimated-from-data)
+(define (samples-PC2-test sf ref [df #f] [alpha DEFAULT-ALPHA])
+  (define dd (samples->discrete-dist sf #:normalize? #t))
+  (define N (samples-count sf))
+  (define chi2 (-dist-PC2 N dd ref))
+  (define df* (or df (sub1 (dist-count ref))))
+  (<= chi2 (PC2-threshold df* alpha)))
+
+;; PC2-threshold : Nat Real -> Real
+(define (PC2-threshold df alpha)
+  (dist-inv-cdf (chi2-dist df) alpha #f #t))
+
+;; -dist-PC2 : Nat DiscreteDist FiniteDist -> Real
+(define (-dist-PC2 N dd ref)
+  (define-values (chi2 p2s)
+    (for/fold ([chi2 0.0] [p2s 0.0] [p2c 0.0] #:result (values chi2 p2s))
+              ([(v w1) (in-dist dd)])
+      (define p2 (fl (dist-pdf ref v)))
+      (define-values (p2s* p2c*) (compensated+ p2 p2s p2c))
+      (eprintf "~s, ~s, ~s; ~s\n" w1 p2 (/ (sqr (- w1 p2)) p2) p2s*)
+      (values (+ chi2 (/ (sqr (- w1 p2)) p2))
+              p2s* p2c*)))
+  (* N (+ chi2 (- (dist-total-measure ref) p2s))))
+
+(define (chi2-dist df) (gamma-dist (/ df 2.0) 2.0))
+
+;; ------------------------------------------------------------
+;; G-test
+
+;; samples-G : SampleFrame FiniteDist -> Real
+(define (samples-G sf ref)
+  ;; If sf has values outside of ref's support, infinite error.
+  (define dd (samples->discrete-dist sf #:normalize? #t))
+  (define N (samples-count sf))
+  (-dist-G N dd ref))
+
+;; samples-G-test : SampleFrame FiniteDist [Nat Real] -> Boolean
+(define (samples-G-test sf ref [df #f] [alpha DEFAULT-ALPHA])
+  (define dd (samples->discrete-dist sf #:normalize? #t))
+  (define N (samples-count sf))
+  (define G (-dist-G N dd ref))
+  (define df* (or df (sub1 (dist-count ref))))
+  (<= G (G-threshold df* alpha)))
+
+;; G-threshold : Nat Real -> Real
+(define (G-threshold df alpha)
+  (PC2-threshold df alpha))
+
+;; -dist-G : Nat DiscreteDist FiniteDist -> Real
+(define (-dist-G N dd ref)
+  (define-values (g p2s)
+    (for/fold ([g 0.0] [p2s 0.0] [p2c 0.0] #:result (values g p2s))
+              ([(v w1) (in-dist dd)])
+      (define p2 (fl (dist-pdf ref v)))
+      (define-values (p2s* p2c*) (compensated+ p2 p2s p2c))
+      (values (+ g (* w1 (- (log w1) (log p2))))
+              p2s* p2c*)))
+  (* 2.0 N (+ g (- (dist-total-measure ref) p2s))))
 
 
 ;; ------------------------------------------------------------
