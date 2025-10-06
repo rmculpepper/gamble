@@ -14,8 +14,19 @@
          (only-in math/statistics stddev))
 (provide (all-defined-out))
 
+;; samples-count : SampleFrame -> Nat
 (define (samples-count sf)
   (vector-length (hash-ref sf 'value)))
+
+;; samples-fmap : SampleFrame[X] (X -> Y) -> SampleFrame[Y]
+(define (samples-fmap sf f)
+  (let ([vv (hash-ref sf 'value)])
+    (hash-set sf 'value (vector->immutable-vector (vector-map f vv)))))
+
+;; samples-resample : SampleFrame Nat [Mode] -> SampleFrame
+(define (samples-resample sf n #:mode [mode 'systematic])
+  (define dd (samples->discrete-dist sf))
+  (hash 'value (discrete-dist-resample dd n #:mode mode)))
 
 ;; ------------------------------------------------------------
 ;; Empirical CDF
@@ -76,8 +87,11 @@
 
 ;; CDF = (Real -> Real), monotonic nondecreasing
 
-;; samples-KS : SampleFrame (U Dist CDF SampleFrame) -> Real
-(define (samples-KS sf1 ref2)
+;; Risk of false rejection.
+(define DEFAULT-ALPHA 0.05)
+
+;; samples-KS-statistic : SampleFrame (U Dist CDF SampleFrame) -> Real
+(define (samples-KS-statistic sf1 ref2)
   (define ecdf1 (samples->empirical-cdf sf1 #:normalize? #t))
   (define vs1 (vector-sort (hash-ref sf1 'value) <))
   (cond [(dist? ref2)
@@ -100,14 +114,15 @@
                  (abs (- ex rx)))
             ex)))
 
-;; Risk of false rejection.
-(define DEFAULT-ALPHA 0.05)
-
-;; samples-KS1-test : SampleFrame (U Dist CDF) -> Boolean
-(define (samples-KS1-test sf1 ref2 [alpha DEFAULT-ALPHA])
-  (define ks (samples-KS sf1 ref2))
-  (define n (samples-count sf1))
-  (<= ks (KS1-threshold n alpha)))
+;; samples-KS-test : SampleFrame (U Dist CDF SampleFrame) -> Boolean
+(define (samples-KS-test sf1 ref2 [alpha DEFAULT-ALPHA])
+  (define ks (samples-KS-statistic sf1 ref2))
+  (define n1 (samples-count sf1))
+  (cond [(hash? ref2)
+         (define n2 (samples-count ref2))
+         (<= ks (KS2-threshold n1 n2 alpha))]
+        [else
+         (<= ks (KS1-threshold n1 alpha))]))
 
 ;; KS1-threshold : Nat Real -> Boolean
 (define (KS1-threshold n [alpha DEFAULT-ALPHA])
@@ -143,13 +158,6 @@
               (loop lo mid los mids (sub1 iters))
               (loop mid hi mids his (sub1 iters)))))))
 
-;; samples-KS2-test : SampleFrame SampleFrame -> Boolean
-(define (samples-KS2-test sf1 sf2 [alpha DEFAULT-ALPHA])
-  (define ks (samples-KS sf1 sf2))
-  (define n1 (samples-count sf1))
-  (define n2 (samples-count sf2))
-  (<= ks (KS2-threshold n1 n2 alpha)))
-
 ;; KS2-threshold : Nat Nat Real -> Boolean
 (define (KS2-threshold n1 n2 [alpha DEFAULT-ALPHA])
   (define (c alpha)
@@ -163,6 +171,39 @@
     ;; 0.001 -> 1.949
     (sqrt (* -0.5 (log (* 0.5 alpha)))))
   (* (c alpha) (sqrt (/ (+ n1 n2) (* n1 n2)))))
+
+;; ------------------------------------------------------------
+;; G-test
+
+;; samples-G-statistic : SampleFrame FiniteDist -> Real
+(define (samples-G-statistic sf ref)
+  ;; If sf has values outside of ref's support, infinite error.
+  (define dd (samples->discrete-dist sf #:normalize? #t))
+  (define N (samples-count sf))
+  (-dist-G N dd ref))
+
+;; samples-G-test : SampleFrame FiniteDist [Nat Real] -> Boolean
+(define (samples-G-test sf ref [df #f] [alpha DEFAULT-ALPHA])
+  (define dd (samples->discrete-dist sf #:normalize? #t))
+  (define N (samples-count sf))
+  (define G (-dist-G N dd ref))
+  (define df* (or df (sub1 (dist-count ref))))
+  (<= G (G-threshold df* alpha)))
+
+;; G-threshold : Nat Real -> Real
+(define (G-threshold df alpha)
+  (PC2-threshold df alpha))
+
+;; -dist-G : Nat DiscreteDist FiniteDist -> Real
+(define (-dist-G N dd ref)
+  (define-values (g p2s)
+    (for/fold ([g 0.0] [p2s 0.0] [p2c 0.0] #:result (values g p2s))
+              ([(v w1) (in-dist dd)])
+      (define p2 (fl (dist-pdf ref v)))
+      (define-values (p2s* p2c*) (compensated+ p2 p2s p2c))
+      (values (+ g (* w1 (- (log w1) (log p2))))
+              p2s* p2c*)))
+  (* 2.0 N (+ g (- (dist-total-measure ref) p2s))))
 
 ;; ------------------------------------------------------------
 ;; Pearson's chi-squared test
@@ -200,39 +241,6 @@
   (* N (+ chi2 (- (dist-total-measure ref) p2s))))
 
 (define (chi2-dist df) (gamma-dist (/ df 2.0) 2.0))
-
-;; ------------------------------------------------------------
-;; G-test
-
-;; samples-G : SampleFrame FiniteDist -> Real
-(define (samples-G sf ref)
-  ;; If sf has values outside of ref's support, infinite error.
-  (define dd (samples->discrete-dist sf #:normalize? #t))
-  (define N (samples-count sf))
-  (-dist-G N dd ref))
-
-;; samples-G-test : SampleFrame FiniteDist [Nat Real] -> Boolean
-(define (samples-G-test sf ref [df #f] [alpha DEFAULT-ALPHA])
-  (define dd (samples->discrete-dist sf #:normalize? #t))
-  (define N (samples-count sf))
-  (define G (-dist-G N dd ref))
-  (define df* (or df (sub1 (dist-count ref))))
-  (<= G (G-threshold df* alpha)))
-
-;; G-threshold : Nat Real -> Real
-(define (G-threshold df alpha)
-  (PC2-threshold df alpha))
-
-;; -dist-G : Nat DiscreteDist FiniteDist -> Real
-(define (-dist-G N dd ref)
-  (define-values (g p2s)
-    (for/fold ([g 0.0] [p2s 0.0] [p2c 0.0] #:result (values g p2s))
-              ([(v w1) (in-dist dd)])
-      (define p2 (fl (dist-pdf ref v)))
-      (define-values (p2s* p2c*) (compensated+ p2 p2s p2c))
-      (values (+ g (* w1 (- (log w1) (log p2))))
-              p2s* p2c*)))
-  (* 2.0 N (+ g (- (dist-total-measure ref) p2s))))
 
 
 ;; ------------------------------------------------------------

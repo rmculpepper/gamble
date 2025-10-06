@@ -448,14 +448,22 @@
 ;; resampling
 
 ;; discrete-dist-resample : DiscreteDist Nat -> Vector
-(define (discrete-dist-resample dist n #:mode [mode 'multinomial])
+(define (discrete-dist-resample dist n #:mode [mode 'systematic])
+  (define who 'discrete-dist-resample)
   (when (zero? (discrete-dist-wsum dist))
-    (error 'discrete-dist-resample "empty dist"))
+    (error who "empty dist"))
   (define r (make-vector n #f))
   (case mode
     [(multinomial #f)
-     (for ([i (in-range n)])
-       (vector-set! r i (dist-sample dist)))]
+     (for ([i (in-range n)]) (vector-set! r i (random)))
+     (-resample! who dist r #f)]
+    [(stratified)
+     (for ([i (in-range n)]) (vector-set! r i (/ (+ i (random)) n)))
+     (-resample! who dist r #t)]
+    [(systematic)
+     (define delta (random))
+     (for ([i (in-range n)]) (vector-set! r i (/ (+ i delta) n)))
+     (-resample! who dist r #t)]
     [(residual)
      (match-define (discrete-dist h wsum _) dist)
      (define ww (/ wsum n))
@@ -474,6 +482,30 @@
     [else (error 'discrete-dist-resample "bad resampling mode: ~e" mode)])
   r)
 
+;; -resample! : Symbol DiscreteDist (Vectorof Real[0,1]) -> Void
+(define (-resample! who dist us sorted?)
+  (match-define (discrete-dist h wsum _) dist)
+  (unless sorted? (vector-sort! us <))
+  (define n (vector-length us))
+  (let loop ([iter (hash-iterate-first h)] [i 0] [ws 0.0] [wc 0.0])
+    (cond [iter
+           (define v (hash-iterate-key h iter))
+           (define w (fl (hash-iterate-value h iter)))
+           (define-values (ws* wc*) (compensated+ w ws wc))
+           (let uloop ([i i])
+             (cond [(< i n)
+                    (define u (* wsum (vector-ref us i)))
+                    (cond [(<= u ws*)
+                           (vector-set! us i v)
+                           (uloop (add1 i))]
+                          [else
+                           (loop (hash-iterate-next h iter) i ws* wc*)])]
+                   [else
+                    (void)]))]
+          [else
+           ;; Should not happen!
+           ;; In principle, error; but probably just float issues; restart.
+           (loop (hash-iterate-first h) i ws wc)])))
 
 ;; ----------------------------------------
 ;; flat contract

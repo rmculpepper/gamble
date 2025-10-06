@@ -8,7 +8,8 @@
          "private/importance.rkt"
          "private/mcmc.rkt"
          "private/enumerate.rkt"
-         "private/samples.rkt")
+         "private/samples.rkt"
+         "private/util/real.rkt")
 (provide (all-from-out "dist.rkt")
 
          sampler?
@@ -96,9 +97,20 @@
            (->* [sample-frame/c]
                 [#:normalize? boolean?]
                 (-> real? real?))]
-          [samples-KS
+          [samples-KS-statistic
            (-> sample-frame/c (or/c dist? (-> real? real?) sample-frame/c)
-               real?)]))
+               real?)]
+          [samples-KS-test
+           (->* [sample-frame/c (or/c dist? (-> real? real?) sample-frame/c)]
+                [probability?]
+                boolean?)]
+          [samples-G-statistic
+           (-> sample-frame/c finite-dist?
+               real?)]
+          [samples-G-test
+           (->* [sample-frame/c finite-dist?]
+                [(or/c #f exact-positive-integer?) probability?]
+                boolean?)]))
 
 (define mcmc-transition/single-site/c
   (or/c #f
