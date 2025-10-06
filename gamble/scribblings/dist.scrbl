@@ -247,12 +247,12 @@ of successes given @racket[n] trials each with success probability @racket[p].
 @defstruct*[categorical-dist
             ([weights (vectorof (>=/c 0))])]{
 
-Represents a @wiki["Categorical_distribution"]{categorical
+Represents a @emph{zero-based} @wiki["Categorical_distribution"]{categorical
 distribution} (sometimes called a discrete distribution, multinomial
 distribution, or multinoulli distribution).
 
-The distribution's support consists of the exact integers {@racket[1], ...,
-@racket[_n]}, where @racket[_n] is the length of @racket[weights].
+The distribution's support consists of the exact integers {@racket[0], ...,
+@racket[(sub1 _n)]}, where @racket[_n] is the length of @racket[weights].
 
 @examples[#:eval the-eval
 (dist->pict (categorical-dist (vector 0.2 0.3 0.1 0.25 0.15)))
