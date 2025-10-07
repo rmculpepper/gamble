@@ -400,7 +400,7 @@ continuous prior distributions with enumerable approximations.
 @interaction[#:eval the-eval
 (dist->pict
  (enumerate
-   #:discretize (lambda (tag dist) (dist-discretize/quantile dist 100))
+   #:discretize (lambda (tag dist) (dist-discretize dist 100))
    #:normalize? #t
    coin-bias/m))
 ]

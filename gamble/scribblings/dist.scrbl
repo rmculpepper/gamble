@@ -189,20 +189,29 @@ respectively. If the statistic is undefined, or if this library does not
 implement its computation, @racket[#f] is returned.
 }
 
-@defproc[(dist-discretize/quantile [d real-dist?]
-                                   [n exact-positive-integer?])
+@defproc[(dist-discretize [d real-dist?]
+                          [n exact-positive-integer?]
+                          [#:propose qd (or/c #f real-dist?) #f])
          discrete-dist?]{
 
 Returns a discrete distribution of @racket[n] values from the support of
-@racket[d]. Each value in the discrete distribution has the same weight,
-@racket[(/ n)].
+@racket[d]. If a proposal distribution @racket[qd] is given, the values of the
+approximation are evenly distributed according to @racket[qd], then their
+weights are corrected so that the result approximates @racket[d]. If @racket[qd]
+is @racket[#f], then the values all have the same weight, @racket[(/ n)].
 
-The values are obtained by dividing the unit interval into @racket[n] equal-size
-segments and calling @racket[dist-inv-cdf] on the @emph{midpoints} of those
-segments.
+More specifically, the values are obtained by dividing the unit interval into
+@racket[n] equal-size segments and calling @racket[dist-inv-cdf] of @racket[qd]
+or @racket[d] on the @emph{midpoints} of those segments.
 
 @examples[#:eval the-eval
-(dist-discretize/quantile (uniform-dist 0 8) 4)
+(dist-discretize (uniform-dist 0 8) 4)
+(dist->pict
+ (dist-discretize
+  (beta-dist 8 4) 100 #:propose (uniform-dist 0 1)))
+(dist->pict
+ (dist-discretize
+  (uniform-dist 0 1) 100 #:propose (beta-dist 8 4)))
 ]}
 
 
