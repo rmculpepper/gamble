@@ -369,16 +369,22 @@
 ;; ----------------------------------------
 ;; discretize
 
-(define (dist-discretize/quantile dist n)
-  (define who 'dist-discretize/quantile)
+(define (dist-discretize dist n #:propose [qdist #f])
+  (define who 'dist-discretize)
   (unless (real-dist? dist)
     (raise-argument-error who "real-dist?" dist))
   (unless (exact-positive-integer? n)
     (raise-argument-error who "exact-positive-integer?" n))
-  (define delta (/ (fl n)))
-  (define vs (for/list ([i (in-range 0.5 n 1.0)])
-               (dist-inv-cdf dist (* i delta))))
-  (make-discrete-dist (list->vector vs)))
+  (unless (or (eq? qdist #f) (real-dist? qdist))
+    (raise-argument-error who "(or/c #f real-dist?)" qdist))
+  (if qdist
+      (for/discrete-dist ([i (in-range 0.5 n 1.0)])
+        (define v (dist-inv-cdf qdist (/ i n)))
+        (values v (/ (dist-pdf dist v)
+                     (dist-pdf qdist v))))
+      (for/discrete-dist ([i (in-range 0.5 n 1.0)])
+        (define v (dist-inv-cdf dist (/ i n)))
+        (values v (/ n)))))
 
 ;; ----------------------------------------
 ;; printer

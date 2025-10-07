@@ -51,7 +51,7 @@
          for*/discrete-dist
          (rename-out [m:discrete-dist discrete-dist])
          make-discrete-dist
-         dist-discretize/quantile
+         dist-discretize
          discrete-dist-resample
          discrete-distof)
 
