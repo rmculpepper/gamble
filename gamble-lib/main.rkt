@@ -101,6 +101,15 @@
             ([kernel (-> any/c dist?)])])
 
          (contract-out
+          [samples-count
+           (-> any-sample-frame/c any)]
+          [samples-fmap
+           (-> any-sample-frame/c (-> any/c any/c)
+               any-sample-frame/c)]
+          [samples-resample
+           (->* [any-sample-frame/c exact-positive-integer?]
+                [#:mode (or/c 'multinomial 'stratified 'systematic)]
+                any-sample-frame/c)]
           [samples->discrete-dist
            (->* [any-sample-frame/c]
                 [#:normalize? boolean?]
