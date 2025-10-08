@@ -5,7 +5,6 @@
 #lang racket/base
 (require racket/class
          racket/match
-         racket/flonum
          racket/vector
          "addr.rkt"
          "base.rkt"
@@ -70,11 +69,6 @@
            (define-values (trace txinfo) (step1 transition))
            (when tracev (vector-set! tracev i trace))
            (when txinfov (vector-set! txinfov i txinfo)))))
-      (define (vector-fl-map f v) ;; (X -> Real) (Vectorof X) -> FlVector
-        (define flv (make-flvector (vector-length v)))
-        (for ([x (in-vector v)] [i (in-naturals)])
-          (flvector-set! flv i (fl (f x))))
-        flv)
       (define (trace-fl-value trace)
         (define value (trace-value trace))
         (if (real? value) value +nan.0))
@@ -85,10 +79,6 @@
           [(log-joint) (vector-map trace-lj tracev)]
           [(log-prior) (vector-map trace-lprs tracev)]
           [(log-score) (vector-map trace-lobs tracev)]
-          [(fl-value) (vector-fl-map trace-fl-value tracev)]
-          [(fl-log-joint) (vector-fl-map trace-lj tracev)]
-          [(fl-log-prior) (vector-fl-map trace-lprs tracev)]
-          [(fl-log-score) (vector-fl-map trace-lobs tracev)]
           [(transition) txinfov]
           [else (error who "unknown field name: ~e" field)]))
       (and fields

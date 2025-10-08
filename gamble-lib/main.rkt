@@ -1,7 +1,6 @@
 #lang racket/base
 (require racket/contract/base
          racket/contract/combinator
-         racket/flonum
          scramble/contract
          "dist.rkt"
          "private/base.rkt"
@@ -159,10 +158,6 @@
               [(log-weight log-joint log-prior log-score)
                (check-vec-len value)
                (update (vectorof-flonum-proj* value missing-party))]
-              [(fl-log-joint fl-log-prior fl-log-score)
-               (unless (and (flvector? value) (= (flvector-length value) n))
-                 (bad* '(expected: "flvector of length ~s" given: "~e") n value))
-               wh]
               [(trace)
                (check-vec-len value)
                (update (vectorof-trace-proj* value missing-party))]
