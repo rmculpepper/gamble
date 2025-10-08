@@ -24,12 +24,14 @@
                                 #:any [ok-tag? #f])
   (new single-site-transition% (ok-tag? ok-tag?) (transition transition)))
 
+(define (gibbs-transition [fallback (slice-transition)])
+  (new gibbs-transition% (fallback fallback)))
+
 (define (slice-transition #:method [method 'double]
-                          #:gibbs? [gibbs? #t]
                           #:W [W 1.0]
                           #:M [M +inf.0]
                           #:SD [SD 5.0])
-  (new slice-transition% (method method) (gibbs? gibbs?) (W W) (M M) (SD SD)))
+  (new slice-transition% (method method) (W W) (M M) (SD SD)))
 
 ;; ============================================================
 

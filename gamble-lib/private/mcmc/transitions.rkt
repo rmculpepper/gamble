@@ -33,7 +33,7 @@
 ;; ============================================================
 
 (define single-site-transition%
-  (class* object% (mcmc-transition<%>)
+  (class* object% (mcmc-transition<%> mcmc-transition/single-site<%>)
     (init-field ok-tag?             ;; (Tag -> Boolean) or #f
                 transition          ;; Transition/SingleSite
                 [tempfactor 1.0])   ;; PositiveReal, inverse of temperature (mh)
@@ -47,11 +47,11 @@
              (define prev-e (hash-ref prev-db key))
              (log-mcmc-info "Key to change = ~.s; tag ~e; value ~e"
                             key (entry-tag prev-e) (entry-value prev-e))
-             (run* mrun prev-trace key prev-e)]
+             (run/key mrun prev-trace key prev-e)]
             [else (error 'single-site-transition "no suitable key to change")]))
 
-    ;; run* : ... -> (values Trace/#f TxInfo)
-    (define/private (run* mrun prev-trace key prev-e)
+    ;; run/key : ModelRunner Trace DBKey Entry -> (values Trace/#f TxInfo)
+    (define/public (run/key mrun prev-trace key prev-e)
       (match-define (entry dist prev-value prev-lpr tag) prev-e)
       (let loop ([transition transition])
         (match transition
@@ -138,13 +138,45 @@
     ))
 
 ;; ============================================================
+;; Gibbs sampling
+
+(define gibbs-transition%
+  (class* object% (mcmc-transition/single-site<%>)
+    (init-field fallback)   ;; #f or Transition/SingleSite
+    (super-new)
+
+    ;; run/key : ModelRunner Trace DBKey Entry -> (values (U Trace #f) TxInfo)
+    (define/public (run/key mrun prev-trace key prev-e)
+      (define who 'gibbs-transition)
+      (cond [(send mrun get-slice-posterior who key prev-trace)
+             => (lambda (pdist)
+                  (log-mcmc-info "Gibbs dist = ~e" pdist)
+                  (run/gibbs mrun prev-trace key prev-e pdist))]
+            [fallback
+             (log-mcmc-info "Gibbs failed; using fallback transition: ~e" fallback)
+             (send fallback run/key mrun prev-trace key prev-e)]
+            [else
+             (error who "unable to calculate distribution")]))
+
+    (define/private (run/gibbs mrun prev-trace key prev-e pdist)
+      (define who 'gibbs-transition)
+      (match-define (entry dist prev-value _ tag) prev-e)
+      (define new-value (dist-sample pdist))
+      (define new-lpr (dist-pdf dist new-value #t))
+      (define eval-slice (send mrun make-eval-slice who (list key) prev-trace))
+      (define delta-db (hash key (entry dist new-value new-lpr tag)))
+      (values (eval-slice delta-db #f)
+              (vector 'gibbs key tag)))
+    ))
+
+
+;; ============================================================
 ;; Slice sampling
 ;; https://www.cs.toronto.edu/pub/radford/slice-aos.pdf
 
 (define slice-transition%
   (class* object% (mcmc-transition/single-site<%>)
-    (init-field [gibbs? #t]      ;; Boolean, do Gibbs if available
-                [method 'double] ;; (U 'step 'double)
+    (init-field [method 'double] ;; (U 'step 'double)
                 [W 1.0]          ;; slice search width
                 [M +inf.0]       ;; max # of steps to grow slice by w/ step-out
                 [SD 5.0])        ;; if prior support < SD wide, use prior support (0 disables)
@@ -152,23 +184,6 @@
 
     ;; run/key : ModelRunner Trace DBKey Entry -> (values (U Trace #f) TxInfo)
     (define/public (run/key mrun prev-trace key prev-e)
-      (define who 'slice-transition)
-      (cond [(and gibbs? (send mrun get-slice-posterior who key prev-trace))
-             => (lambda (pdist) (run/gibbs mrun prev-trace key prev-e pdist))]
-            [else (run/slice mrun prev-trace key prev-e)]))
-
-    (define/private (run/gibbs mrun prev-trace key prev-e pdist)
-      (define who 'slice-transition)
-      (match-define (entry dist prev-value _ tag) prev-e)
-      (define new-value (dist-sample pdist))
-      (log-mcmc-info "Gibbs dist = ~e" pdist)
-      (define new-lpr (dist-pdf dist new-value #t))
-      (define eval-slice (send mrun make-eval-slice who (list key) prev-trace))
-      (define delta-db (hash key (entry dist new-value new-lpr tag)))
-      (values (eval-slice delta-db #f)
-              (vector 'gibbs key tag)))
-
-    (define/private (run/slice mrun prev-trace key prev-e)
       (define who 'slice-transition)
       (define prev-db (trace-db prev-trace))
       (match-define (entry dist prev-value _ tag) prev-e)

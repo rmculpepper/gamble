@@ -81,10 +81,12 @@
                 [mcmc-transition/single-site/c
                  #:any (or/c #f (-> any/c dist? any))]
                 any)]
+          [gibbs-transition
+           (->* [] [(or/c #f mcmc-transition/single-site?)]
+                any)]
           [slice-transition
            (->* []
-                [#:gibbs? boolean?
-                 #:method (or/c 'double 'step)
+                [#:method (or/c 'double 'step)
                  #:W (>/c 0.0)
                  #:M (or/c exact-nonnegative-integer? +inf.0)
                  #:SD (>=/c 0.0)]
