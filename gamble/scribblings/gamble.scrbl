@@ -49,11 +49,11 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 @include-section["intro.scrbl"]
-@include-section["dist.scrbl"]
 @include-section["model.scrbl"]
+@include-section["dist.scrbl"]
 @include-section["solvers.scrbl"]
+@include-section["samples.scrbl"]
 @include-section["util.scrbl"]
-@; @include-section["notes.scrbl"]
 
 @; ----------------------------------------
 

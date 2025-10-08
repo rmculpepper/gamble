@@ -536,7 +536,7 @@ after normalization.
 ]}
 
 @defproc[(make-discrete-dist [values vector?]
-                             [weights (or/c #f (vectorof (>=/c 0))) #f]
+                             [weights (or/c #f (vectorof real?)) #f]
                              [#:log-weight? log-weight? boolean? #f]
                              [#:normalize? normalize? boolean? #t])
          discrete-dist?]{

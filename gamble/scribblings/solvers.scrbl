@@ -251,19 +251,20 @@ than @racket[SD] apart, then the entire support is used as the initial slice
                                            (lambda (tag dist old-value) #f)])
          mcmc-transition?]{
 
-A transition that reruns the progam, setting random variables to their values
-according to @racket[get-value]. The transition always accepts if the
-execution's likelihood is nonzero. Use @racket[initialize-transition] to
-initialize an MCMC sampler when random initialization is infeasible.
+A transition that reruns the model, setting each random variable to the value
+assigned by @racket[get-value]. The transition always accepts if the execution's
+likelihood is nonzero. Use @racket[initialize-transition] to initialize an MCMC
+sampler when random initialization is infeasible.
 
 For each random variable found in the execution of the model, @racket[get-value]
-is called with the random variable's tag, its prior distribution. If the random
-variable has a previous value, then the third argument to @racket[get-value] is
-@racket[(proposal-value _prev-value 0.0)]; otherwise, the third argument is
-@racket[#f]. If @racket[get-value] returns @racket[(proposal _new-value
-_ignored)], then the random variable is set to @racket[_new-value]; if
-@racket[get-value] returns @racket[#f], then the previous value is used, if it
-exists, or the random variable is resampled from its prior distribution.
+is called with the random variable's tag, its prior distribution, and its
+previous value if present. Specifically, if the random variable has a previous
+value, then the third argument to @racket[get-value] is @racket[(proposal-value
+_prev-value 0.0)]; otherwise, the third argument is @racket[#f]. If
+@racket[get-value] returns @racket[(proposal _new-value _ignored)], then the
+random variable is set to @racket[_new-value]; if @racket[get-value] returns
+@racket[#f], then the previous value is used, if it exists, or the random
+variable is resampled from its prior distribution.
 }
 
 @; ============================================================
@@ -276,7 +277,7 @@ exists, or the random variable is resampled from its prior distribution.
          discrete-dist?]{
 
 Returns a discrete distribution of the values produced by @racket[m], weighted
-by any conditioning or scoring performed by the function.
+by any conditioning or scoring performed by the model.
 
 The @racket[enumerate] form works by exploring all possibilities using the
 technique described in @cite{EPP}. Exploration ceases only when the apparent
