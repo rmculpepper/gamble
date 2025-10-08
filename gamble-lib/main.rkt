@@ -9,7 +9,6 @@
          "private/base.rkt"
          "private/addr.rkt"
          "private/model.rkt"
-         "private/rejection.rkt"
          "private/importance.rkt"
          "private/mcmc.rkt"
          "private/enumerate.rkt"
@@ -47,8 +46,6 @@
          begin-model-definitions
 
          (contract-out
-          [rejection-sampler
-           (-> model? any)]
           [importance-sampler
            (->* [model?]
                 [#:propose (or/c #f (-> any/c dist? (or/c #f dist?)))]
