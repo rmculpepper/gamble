@@ -5,7 +5,7 @@
 @(require scribble/manual
           scribble/basic
           scribble/eval
-          (for-label racket/base racket/contract gamble))
+          (for-label racket/base racket/contract gamble gamble/util/dnum))
 
 @(define the-eval (make-base-eval))
 @(the-eval '(require gamble))
@@ -90,8 +90,8 @@ example illustrates the tag rules:
 @defproc[(observe [dist dist?] [value any/c]) void?]{
 
 Represents an @deftech{observation} of the given @racket[value] from the
-distribution @racket[dist]. The effect is to adjusts the likelihood of the
-current model execution.
+distribution @racket[dist]. The likelihood of the current model execution is
+adjusted by factoring in the density of @racket[value] in @racket[dist].
 
 Equivalent to @racket[(score (dist-density dist value))], except that some
 features of this libary may benefit from knowing the observation distribution.
@@ -99,9 +99,10 @@ features of this libary may benefit from knowing the observation distribution.
 
 @defproc[(observe* [dist dist?] [vs vector?]) void?]{
 
-Like @racket[observe], but represents multiple observations.
+Like @racket[observe], but performs multiple observations using the same
+distribution.
 
-Equivalent to @racket[(for ([v vs]) (observe dist v))].
+Equivalent to @racket[(for ([v (in-vector vs)]) (observe dist v))].
 }
 
 @defproc[(score [s (or/c real? dnum?)]) void?]{
@@ -110,14 +111,11 @@ Adjusts the likelihood of the current model execution by @racket[s].
 If @racket[s] is a real number, then it is interpreted as a logspace quantity.
 }
 
-@defproc[(fail [reason any/c #f]) any]{
+@defproc[(fail) any]{
 
 Used to express observation failure. When used within a sampler or solver, it
-typically causes the sampler/solver to try again with different values for the
-previous choices.
-
-Equivalent to @racket[(score -inf.0)], except that @racket[reason] may be used
-for debugging.
+typically causes the sampler/solver to try again with different values for
+previous choices. Equivalent to @racket[(score -inf.0)].
 
 For example, consider the following model of two coin flips where at least one
 of them is known to be heads (@racket[#t]):
@@ -173,5 +171,19 @@ and keyword functions are not currently supported.
   (model (let geom () (if (flip) 0 (add1 (geom))))))
 (enumerate #:stop 1e-3 geom/m)
 ]}
+
+
+@; ============================================================
+
+@bibliography[
+#:tag "model-bibliography"
+
+@bib-entry[#:key "LMH"
+           #:title "Lightweight Implementations of Probabilistic Programming Languages Via Transformational Compilation"
+           #:author "David Wingate, Andreas Stuhlüller, and Noah Goodman"
+           #:location "Proc. of the 14th Artificial Intelligence and Statistics"
+           #:url "http://stanford.edu/~ngoodman/papers/WSG-AIStats11.pdf"]
+
+]
 
 @(close-eval the-eval)

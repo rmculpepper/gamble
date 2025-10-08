@@ -214,7 +214,7 @@ model:
 @interaction[#:eval the-eval
 (define THERMO-ERROR 5) (code:comment "measurement imprecision as std.dev.")
 (define thermometer-measurements (vector 415 418 407 415)) ;; 410
-(define thermo/m
+(define temp/m
   (model
     (define temperature (sample (uniform-dist 0 800)))
     (observe* (normal-dist temperature THERMO-ERROR)
@@ -226,7 +226,7 @@ As before, we can create an importance sampler, generate samples to make an
 empirical distribution, and plot that:
 
 @interaction[#:eval the-eval
-(dist->pict (sampler->discrete-dist (importance-sampler thermo/m) 100))
+(dist->pict (sampler->discrete-dist (importance-sampler temp/m) 100))
 ]
 
 As expected, there is a spike (or multiple spikes) around the measurements. But
@@ -248,7 +248,7 @@ of 20°F) as follows:
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (importance-sampler thermo/m
+  (importance-sampler temp/m
                       #:propose (lambda (tag prior-dist)
                                   (normal-dist 400 20)))
   100))
@@ -282,7 +282,7 @@ high-probability zone.
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (mcmc-sampler thermo/m)
+  (mcmc-sampler temp/m)
   100 #:burn 10))
 ]
 
@@ -296,7 +296,7 @@ posterior distribution. Here is the same sampler with 10000 samples:
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (mcmc-sampler thermo/m)
+  (mcmc-sampler temp/m)
   10000 #:burn 10))
 ]
 
@@ -309,7 +309,7 @@ anyway.
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (mcmc-sampler thermo/m
+  (mcmc-sampler temp/m
                 #:transition (proposal-kernel
                               (lambda (x) (normal-dist x 20))))
   100 #:burn 25))
@@ -326,7 +326,7 @@ Decreasing the step size can result in more motion:
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (mcmc-sampler thermo/m
+  (mcmc-sampler temp/m
                 #:transition (proposal-kernel
                               (lambda (x) (normal-dist x 10))))
   100 #:burn 25))
@@ -344,7 +344,7 @@ generated.
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (mcmc-sampler thermo/m #:transition (slice-transition))
+  (mcmc-sampler temp/m #:transition (slice-transition))
   100 #:burn 10))
 ]
 
@@ -358,7 +358,7 @@ random variables, the @racket[gibbs-transition] may be used to do
 @interaction[#:eval the-eval
 (dist->pict
  (sampler->discrete-dist
-  (mcmc-sampler thermo/m #:transition (gibbs-transition #f))
+  (mcmc-sampler temp/m #:transition (gibbs-transition #f))
   100 #:burn 10))
 ]
 
@@ -367,7 +367,7 @@ Basic inspection of a model can be done via @racket[model-slice]:
 
 @interaction[#:eval the-eval
 (define-values (thermo-tags thermo-pdist thermo-lj thermo-eval)
-  (model-slice thermo/m))
+  (model-slice temp/m))
 thermo-pdist
 ;(dist->pict thermo-pdist)
 (map thermo-lj '(411 412 413 414 415))

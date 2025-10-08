@@ -23,10 +23,7 @@ expression. Samplers can be either unweighted or weighted.
 The following samplers are supported:
 @itemlist[
 
-@item{@racket[rejection-sampler] --- unweighted sampler, does not support
-observations}
-
-@item{@racket[importance-sampler] --- weighted sampler}
+@item{@racket[importance-sampler] --- weighted sampler, independent samples}
 
 @item{@racket[mcmc-sampler] --- unweighted sampler, uses Markov-chain Monte
 Carlo (MCMC) methods, samples are not independent}
@@ -43,7 +40,7 @@ random variables, cannot directly handle continuous random variables}
 
 ]
 
-@section[#:tag "sampler-funs"]{Basic Sampler Functions}
+@section[#:tag "sampler-ops"]{Sampler Operations}
 
 @defproc[(sampler? [v any/c]) boolean?]{
 
@@ -51,7 +48,7 @@ Returns @racket[#t] if @racket[v] is a @tech{sampler}, @racket[#f]
 otherwise.
 }
 
-@defproc[(generate-samples [s weighted-sampler?]
+@defproc[(generate-samples [s sampler?]
                            [n exact-nonnegative-integer?]
                            [#:burn burn exact-nonnegative-integer? 0]
                            [#:thin thin exact-nonnegative-integer? 0])
@@ -63,26 +60,22 @@ sampler is called @racket[thin] times before every sample to be retained. The
 results are returned in a @tech{sample frame}.
 }
 
-@defproc[(sampler->discrete-dist [sampler weighted-sampler?]
+@defproc[(sampler->discrete-dist [s sampler?]
                                  [n exact-positive-integer?]
                                  [#:burn burn exact-nonnegative-integer? 0]
-                                 [#:thin thin exact-nonnegative-integer? 0])
+                                 [#:thin thin exact-nonnegative-integer? 0]
+                                 [#:normalize? normalize? boolean? #t])
          discrete-dist?]{
 
-Returns the empirical distribution obtained by generating @racket[n] samples
-from @racket[sampler].
-}
+Like @racket[generate-samples], but produces the empirical distribution formed
+from the samples. Equivalent to the following:
+@racketblock[
+(samples->discrete-dist (generate-samples s n #:burn burn #:thin thin)
+                        #:normalize? normalize?)
+]}
 
 @; ============================================================
-@section[#:tag "samplers-basic"]{Basic Sampler Forms}
-
-@defproc[(rejection-sampler [m model?]) sampler?]{
-
-Produces a @tech{sampler} that uses rejection sampling---specifically,
-``logic sampling''---for discrete random choices. The rejection
-sampler can sample continuous random variables, but it cannot perform
-@tech{observations}.
-}
+@section[#:tag "importance-sampler"]{Importance Sampler}
 
 @defproc[(importance-sampler [m model?]
                              [#:propose propose (or/c #f (-> any/c dist? (or/c #f dist?))) #f])
@@ -100,7 +93,7 @@ distribution. If the call returns @racket[#f], then the random variable is
 sampled from the prior as usual. Otherwise, the result is a proposal
 distribution: the random variable is sampled from the proposal distribution, and
 the resulting bias is corrected by adjusting the sample's likelihood weight. If
-the proposal distribution's support does not include the prior's support, the
+the proposal distribution's support does not cover the prior's support, the
 sampler may be incorrect even in the limit.
 }
 
@@ -108,9 +101,9 @@ sampler may be incorrect even in the limit.
 @section[#:tag "mcmc-sampler"]{MCMC Sampler and Transitions}
 
 @wiki["Markov_chain_Monte_Carlo"]{Markov-chain Monte Carlo (MCMC)} is an
-algorithm framework for producing a correlated sequence of samples where each
-sample is based on the previous. The algorithm is parameterized by the mechanism
-for proposing a new state given the previous state; given a proposal, the MCMC
+algorithm framework for producing a sequence of samples where each sample is
+based on the previous. The algorithm is parameterized by the mechanism for
+proposing a new state given the previous state; given a proposal, the MCMC
 algorithm accepts or rejects it based on how the proposal was generated and the
 relative likelihood of the proposed state.
 
@@ -142,6 +135,28 @@ Returns @racket[#t] if @racket[v] represents a MCMC transition,
 @racket[#f] otherwise.
 }
 
+@defproc[(initialize-transition [get-value (-> any/c dist? (or/c #f proposal-value?)
+                                               (or/c #f proposal-value?))
+                                           (lambda (tag dist old-value) #f)])
+         mcmc-transition?]{
+
+A transition that reruns the model, setting each random variable to the value
+assigned by @racket[get-value]. The transition always succeeds if the execution's
+likelihood is nonzero. Use @racket[initialize-transition] to initialize an MCMC
+sampler when random initialization is infeasible; it is generally incorrect to
+use it to produce samples.
+
+For each random variable found in the execution of the model, @racket[get-value]
+is called with the random variable's tag, its prior distribution, and its
+previous value if present. Specifically, if the random variable has a previous
+value, then the third argument to @racket[get-value] is @racket[(proposal-value
+_prev-value 0.0)]; otherwise, the third argument is @racket[#f]. If
+@racket[get-value] returns @racket[(proposal _new-value _ignored)], then the
+random variable is set to @racket[_new-value]; if @racket[get-value] returns
+@racket[#f], then the previous value is used, if it exists, or the random
+variable is resampled from its prior distribution.
+}
+
 @defproc[(single-site-transition [transition mcmc-transition/single-site/c #f]
                                  [#:any candidate? (or/c #f (-> any/c dist? boolean?)) #f])
          (and/c mcmc-transition?
@@ -150,16 +165,7 @@ Returns @racket[#t] if @racket[v] represents a MCMC transition,
 A transition that proposes a new state by randomly selecting a single random
 variable matching @racket[candidate?] from the previous model execution and
 updating it according to @racket[transition]. If @racket[candidate?] is
-@racket[#f], then all random choices are considered.
-
-If @racket[proposal] fails to propose a new value for a specific random choice,
-the random choice is resampled as a fallback (see @racket[resample-proposal]).
-}
-
-@defproc[(mcmc-transition/single-site? [v any/c]) boolean?]{
-
-Returns @racket[#t] if @racket[v] is a primitive single-site MCMC transition
-object, @racket[#f] otherwise.
+@racket[#f], then all random variables are considered.
 }
 
 @defthing[mcmc-transition/single-site/c contract?]{
@@ -196,10 +202,17 @@ In the first three cases, the @wiki["Metropolis%E2%80%93Hastings_algorithm"]{Met
 algorithm is used to accept or reject the new state.
 }
 
+@defproc[(mcmc-transition/single-site? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a primitive single-site MCMC transition
+object, @racket[#f] otherwise.
+}
+
 @defstruct*[proposal-value ([value any/c]
                             [l-R/F real?])]{
 
-Represents a proposal with a specific value. See @racket[mcmc-transition/single-site/c] for use.
+Represents a proposal with a specific value.
+See @racket[mcmc-transition/single-site/c] for use.
 }
 
 @defstruct*[proposal-kernel ([kernel (-> any/c dist?)])]{
@@ -245,27 +258,6 @@ than @racket[SD] apart, then the entire support is used as the initial slice
 (that is, the stepping-out or doubling pass is skipped).
 }
 
-@defproc[(initialize-transition [get-value (-> any/c dist? (or/c #f proposal-value?)
-                                               (or/c #f proposal-value?))
-                                           (lambda (tag dist old-value) #f)])
-         mcmc-transition?]{
-
-A transition that reruns the model, setting each random variable to the value
-assigned by @racket[get-value]. The transition always accepts if the execution's
-likelihood is nonzero. Use @racket[initialize-transition] to initialize an MCMC
-sampler when random initialization is infeasible.
-
-For each random variable found in the execution of the model, @racket[get-value]
-is called with the random variable's tag, its prior distribution, and its
-previous value if present. Specifically, if the random variable has a previous
-value, then the third argument to @racket[get-value] is @racket[(proposal-value
-_prev-value 0.0)]; otherwise, the third argument is @racket[#f]. If
-@racket[get-value] returns @racket[(proposal _new-value _ignored)], then the
-random variable is set to @racket[_new-value]; if @racket[get-value] returns
-@racket[#f], then the previous value is used, if it exists, or the random
-variable is resampled from its prior distribution.
-}
-
 @; ============================================================
 @section[#:tag "enumerate"]{Enumeration Solver}
 
@@ -278,11 +270,11 @@ variable is resampled from its prior distribution.
 Returns a discrete distribution of the values produced by @racket[m], weighted
 by any conditioning or scoring performed by the model.
 
-The @racket[enumerate] form works by exploring all possibilities using the
-technique described in @cite{EPP}. Exploration ceases only when the apparent
-total probability weight of all unexplored paths is less than
-@racket[stop-limit]. If exploration is not stopped, then any countable
-distribution causes @racket[enumerate] to fail to terminate.
+The @racket[enumerate] form works by exploring all possibilities using delimited
+continuations, similar to the technique described in @cite["EPP"]. Exploration
+ceases only when the apparent total probability weight of all unexplored paths
+is less than @racket[stop-limit]. If exploration is not stopped, then any
+countable distribution causes @racket[enumerate] to fail to terminate.
 
 Only enumerable distributions can be sampled with @racket[enumerate]. If a
 continuous distribution is encountered, and the @racket[discretize] argument is
@@ -290,5 +282,18 @@ a procedure, it is called to convert the distribution into an enumerable
 approximation. If the @racket[discretize] argument is @racket[#f], or the
 function returns @racket[#f], then @racket[enumerate] raises an exception.
 }
+
+@; ============================================================
+
+@bibliography[
+#:tag "solvers-bibliography"
+
+@bib-entry[#:key "EPP"
+           #:title "Embedded Probabilistic Programming"
+           #:author "Oleg Kiselyov and Chung-chieh Shan"
+           #:location "Domain-Specific Languages, pp 360-384"
+           #:url "http://dx.doi.org/10.1007/978-3-642-03034-5_17"]
+
+]
 
 @(close-eval the-eval)

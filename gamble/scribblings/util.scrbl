@@ -25,31 +25,33 @@
 
 @defmodule[gamble/util/dnum]
 
-A dimorphic number (@racket[dnum?]) represents a nonnegative real. It has two variants:
+A @deftech{dnum} (dimorphic number) represents a nonnegative real.
+It has two variants:
 @itemlist[
 
 @item{@racket[(linear-dnum _x)], the @emph{linear space} representation,
 represents the number @racket[_x], which can be either exact or inexact}
 
 @item{@racket[(logspace-dnum _lx)], the @emph{logspace} representation,
-represents the number @racket[(exp _lx)]; the number @racket[_lx] must be a flonum}
+represents the number @racket[(exp _lx)]; the number @racket[_lx] must be a
+@tech[#:doc '(lib "scribblings/reference/reference.scrbl")]{flonum}}
 
 ]
 Operations on dnums produce logspace results if any argument is in logspace.
 
 @defproc[(dnum? [v any/c]) boolean?]{
 
-Returns @racket[#t] if @racket[v] is a dnum, @racket[#f] otherwise.
+Returns @racket[#t] if @racket[v] is a @tech{dnum}, @racket[#f] otherwise.
 }
 
 @defproc[(linear-dnum [x (>=/c 0)]) dnum?]{
 
-Produces a @racket[dnum] representing @racket[x] using the linear space variant.
+Produces a @tech{dnum} representing @racket[x] using the linear space variant.
 }
 
 @defproc[(logspace-dnum [lx flonum?]) dnum?]{
 
-Produces a @racket[dnum] representing @racket[(exp lx)] using the logspace variant.
+Produces a @tech{dnum} representing @racket[(exp lx)] using the logspace variant.
 }
 
 @deftogether[[
@@ -93,7 +95,8 @@ Returns @racket[#t] if @racket[dn] represents zero, @racket[#f] otherwise.
 @defproc[(dnum/ [dn1 dnum?] [dn2 dnum?]) dnum?]
 ]]{
 
-Computes the sum, difference, product, or ratio of two dnums, respectively.
+Computes the sum, difference, product, or ratio of two @tech{dnums},
+respectively.
 
 The @racket[dnum-] operation signals an error if the result would be negative.
 The @racket[dnum/] operation signals an error on division by exact zero or if
@@ -105,7 +108,7 @@ the result would be @racket[+nan.0].
 @defproc[(dnum-product [dns (listof dnum?)]) dnum?]
 ]]{
 
-Computes the sum or product of a list of dnums, respectively.
+Computes the sum or product of a list of @tech{dnums}, respectively.
 }
 
 @deftogether[[
@@ -114,8 +117,46 @@ Computes the sum or product of a list of dnums, respectively.
 @defproc[(dnum<=? [dn1 dnum?] [dn2 dnum?]) boolean?]
 ]]{
 
-Compares two dnums.
+Compares two @tech{dnums}.
 }
+
+@; ============================================================
+@section[#:tag "pict"]{Visualizing Distributions and Sample Frames}
+
+@defmodule[gamble/pict]
+
+@defproc[(dist->pict [d dist?]
+                     [#:normalize? normalize? boolean? #f])
+         pict?]{
+
+Produces a visualization of @racket[d] as a pict, according the following cases:
+@itemlist[
+
+@item{If @racket[(integer-dist? d)], then the pict contains a plot of the
+distribution's values and CDF.}
+
+@item{If @racket[(real-dist? d)], then the pict contains a plot of the
+distribution's PDF (density) and CDF.}
+
+@item{If @racket[d] is a discrete distribution containing only real values and a
+sufficient number of distinct values, then the pict contains a plot of the
+values, kernel density estimators, and the empirical CDF.}
+
+@item{If @racket[d] is a finite distribution that does not satisfy any of the
+criteria above, then the pict contains a vertical histogram listing the values
+of @racket[d] and their probabilities.}
+
+@item{If @racket[d] is any other kind of distribution, an error is raised.}
+
+]}
+
+@defproc[(samples->pict [samples (sample-frame/c real?)]
+                        [#:normalize? normalize? boolean? #t])
+         pict?]{
+
+Like @racket[dist->pict], but using the values of @racket[samples] instead.
+}
+
 
 @; ============================================================
 @(close-eval the-eval)

@@ -17,10 +17,10 @@
 
 @title[#:tag "dist"]{Probability Distributions}
 
-This section describes the distribution types and operations supported by this
-library. This library builds upon the distribution support of
+This section describes this library's distribution types and operations. This
+library builds upon the distribution support of
 @racketmodname[math/distributions] (see @secref["dist" #:doc '(lib
-"math/scribblings/math.scrbl")]), and follows its conventions for distribution
+"math/scribblings/math.scrbl")]) and follows its conventions for distribution
 parameters.
 
 @; ------------------------------------------------------------
@@ -152,7 +152,7 @@ If @racket[1-p?] is true, then the inverse at @racket[(- 1 p)] is used instead.
 
 Returns a @tech[#:doc '(lib "scribblings/reference/reference.scrbl")]{sequence}
 where each element consists of two values: a value from the support of the
-distribution and its probability density (@racket[real?]).
+distribution and its probability density (@racket[real?], in linear space).
 
 @examples[#:eval the-eval
 (for ([(v p) (in-dist (bernoulli-dist 1/3))])
@@ -258,7 +258,6 @@ of successes given @racket[n] trials each with success probability @racket[p].
 Represents a @emph{zero-based} @wiki["Categorical_distribution"]{categorical
 distribution} (sometimes called a discrete distribution, multinomial
 distribution, or multinoulli distribution).
-
 The distribution's support consists of the exact integers {@racket[0], ...,
 @racket[(sub1 _n)]}, where @racket[_n] is the length of @racket[weights].
 
@@ -476,7 +475,7 @@ distributed according to @racket[dist].
 @emph{Note:} The @racket[exp] in the name refers to the transformation applied
 when sampling. This differs from standard terminology---for example, variables
 distributed according to @racket[(exp-distx (normal-dist 0 1))] are customarily
-called ``Lognormal'' random variables.
+called ``log-normal'' random variables.
 
 @examples[#:eval the-eval
 (dist->pict (exp-distx (normal-dist 0 1)))
@@ -697,7 +696,7 @@ normalized distribution.
 @defproc[(dist-join [d (discrete-distof finite-dist?)])
          discrete-dist?]{
 
-Equivalent to @racket[(dist-bind d dist-unit)].
+Equivalent to @racket[(dist-bind d values)].
 
 @examples[#:eval the-eval
 (code:comment "Ground Wet as a mixture of distributions")

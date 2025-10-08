@@ -36,24 +36,13 @@ for probability distribution support.
 
 @; ----------------------------------------
 
+@;{
 @bibliography[
 #:tag "prob-bibliography"
 
 @bib-entry[#:key "Church"
            #:title "Church: a language for generative models"
-           #:author "Noah Goodman, Vikash Mansinghka, Daniel Roy, Keith Bonawitz, and Joshua Tenenbaum"
-]
-
-@bib-entry[#:key "LMH"
-           #:title "Lightweight Implementations of Probabilistic Programming Languages Via Transformational Compilation"
-           #:author "David Wingate, Andreas Stuhlüller, and Noah Goodman"
-           #:location "Proc. of the 14th Artificial Intelligence and Statistics"
-           #:url "http://stanford.edu/~ngoodman/papers/WSG-AIStats11.pdf"]
-
-@bib-entry[#:key "EPP"
-           #:title "Embedded Probabilistic Programming"
-           #:author "Oleg Kiselyov and Chung-chieh Shan"
-           #:location "Domain-Specific Languages, pp 360-384"
-           #:url "http://dx.doi.org/10.1007/978-3-642-03034-5_17"]
+           #:author "Noah Goodman, Vikash Mansinghka, Daniel Roy, Keith Bonawitz, and Joshua Tenenbaum"]
 
 ]
+}
