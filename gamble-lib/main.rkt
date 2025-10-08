@@ -102,6 +102,10 @@
            (->* [real-sample-frame/c]
                 [#:normalize? boolean?]
                 (-> real? real?))]
+          [samples->kde
+           (->* [real-sample-frame/c]
+                [#:normalize? boolean?]
+                (->* [real?] [real? real?] real?))]
           [samples-KS-statistic
            (-> real-sample-frame/c
                (or/c dist? (-> real? real?) real-sample-frame/c)

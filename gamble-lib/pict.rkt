@@ -41,7 +41,7 @@
               (for/and ([v (in-dist-values dist)]) (real? v)))
          (define vs (discrete-dist-values dist))
          (define ws (discrete-dist-weights dist))
-         (real-samples->pict vs ws)]
+         (real-samples->pict vs ws #f #f)]
         [(finite-dist? dist)
          (define vws (for/list ([(v w) (in-dist dist)]) (list v w)))
          (vws->pict vws)]
@@ -50,30 +50,28 @@
 (define (samples->pict sf)
   (define vs (hash-ref sf 'value))
   (define lws (hash-ref sf 'log-weight #f))
-  (when (and lws (not (= (vector-length lws) (vector-length vs))))
-    (error 'samples->pict "weight vector has incorrect size"))
-  (define ws (and lws (vector-map exp lws))) ;; FIXME
   (cond [(and (> (vector-length vs) 2)
               (for/and ([v (in-vector vs)]) (real? v)))
-         (real-samples->pict vs (or ws (make-vector (vector-length vs) 1.0)))]
+         (real-samples->pict vs lws #t #t)]
         [else
-         (if ws
-             (vws->pict (for/list ([v (in-vector vs)] [w (in-vector ws)]) (cons v w)))
+         (if lws
+             (vws->pict (for/list ([v (in-vector vs)] [lw (in-vector lws)]) (cons v (exp lw))))
              (vws->pict (for/list ([v (in-vector vs)]) (cons v 1))))]))
 
-(define (real-samples->pict vs ws)
+(define (real-samples->pict vs ws log-weight? normalize?)
   (define-values (xmin xmax)
     (for/fold ([xmin +inf.0] [xmax -inf.0] #:result (round-minmax xmin xmax))
               ([v (in-vector vs)])
       (values (min xmin v) (max xmax v))))
+  (define kde (vector-kde vs ws log-weight? normalize?))
   (define pdfp
-    (let-values ([(kde1 _xmin1 _xmax1) (kde vs ws 0.5)]
-                 [(kde2 _xmin2 _xmax2) (kde vs ws 1.0)]
-                 [(kde3 _xmin3 _xmax3) (kde vs ws 2.0)])
+    (let ([kde1 (lambda (x) (kde x 0.5))]
+          [kde2 (lambda (x) (kde x 1.0))]
+          [kde3 (lambda (x) (kde x 2.0))])
       (list (function kde1 #:color "blue" #:alpha 0.25)
             (function kde2 #:color "blue" #:alpha 0.50)
             (function kde3 #:color "blue" #:alpha 0.25))))
-  (define cdf (vector->empirical-cdf vs ws))
+  (define cdf (vector->empirical-cdf vs ws log-weight? normalize?))
   (define pts
     (points #:color "blue"
             (for/list ([v (in-vector vs)] [w (in-vector ws)]) (list v w))))

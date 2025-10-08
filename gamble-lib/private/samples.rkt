@@ -32,37 +32,27 @@
 ;; Empirical CDF
 
 ;; samples->empirical-cdf : SampleFrame -> (Real -> Real)
-(define (samples->empirical-cdf sf #:normalize? [normalize? #f])
+(define (samples->empirical-cdf sf #:normalize? [normalize? #t])
   (define vs (hash-ref sf 'value))
   (define lws (hash-ref sf 'log-weight #f))
-  (cond [lws
-         (define maxlw (for/fold ([maxlw -inf.0]) ([lw (in-vector lws)]) (max maxlw lw)))
-         (define-values (svs slws) (vectors-sort vs lws))
-         ;; slws is logspace weights
-         (define wsum
-           (for/fold ([s 0.0] [c 0.0] #:result s)
-                     ([i (in-naturals)] [lw (in-vector slws)])
-             (define-values (s* c*) (compensated+ (exp (- lw maxlw)) s c))
-             (vector-set! slws i s*)
-             (values s* c*)))
-         ;; slws is now cumulative linear weights
-         (sorted->empirical-cdf svs slws (if normalize? (/ wsum) (exp maxlw)))]
-        [else (sorted->empirical-cdf (vector-sort vs <) #f (/ (vector-length vs)))]))
+  (vector->empirical-cdf vs lws #t normalize?))
 
-(define (vector->empirical-cdf vs [ws #f] #:normalize? [normalize? #f])
+(define (vector->empirical-cdf vs ws log-weight? normalize?)
   (cond [ws
          (define-values (svs sws) (vectors-sort vs ws))
-         (define wsum
-           (for/fold ([s 0.0] [c 0.0] #:result s)
-                     ([i (in-naturals)] [w (in-vector sws)])
-             (define-values (s* c*) (compensated+ w s c))
-             (vector-set! sws i s*)
-             (values s* c*)))
+         (define-values (wsum factor)
+           (cond [log-weight?
+                  (define maxlw (for/fold ([maxlw -inf.0]) ([lw (in-vector ws)]) (max maxlw lw)))
+                  (values (vector-cumsum! sws (- maxlw)) (exp maxlw))]
+                 [else
+                  (values (vector-cumsum! sws #f) 1.0)]))
          ;; sws is now cumulative linear weights
-         (sorted->empirical-cdf svs sws (if normalize? (/ wsum) 1))]
-        [else (sorted->empirical-cdf (vector-sort vs <) #f (/ (vector-length vs)))]))
+         (sorted->empirical-cdf svs sws (if normalize? (/ wsum) factor))]
+        [else
+         (define factor (if normalize? (/ 1.0 (vector-length vs)) 1.0))
+         (sorted->empirical-cdf (vector-sort vs <) #f factor)]))
 
-(define (sorted->empirical-cdf svs [scws #f] [factor 1])
+(define (sorted->empirical-cdf svs scws factor)
   (define (ecdf x)
     (define k (binary-search/greatest-leq svs x))
     (if k (* factor (if scws (vector-ref scws k) (add1 k))) 0))
@@ -81,6 +71,15 @@
     (vector-set! sxs i (car c))
     (vector-set! sys i (cdr c)))
   (values sxs sys))
+
+;; vector-cumsum! : (Vectorof Real) Real/#f -> Real
+(define (vector-cumsum! ws logdelta)
+  (for/fold ([s 0.0] [c 0.0] #:result s)
+            ([i (in-naturals 0)] [w (in-vector ws)])
+    (define-values (s* c*)
+      (compensated+ (if logdelta (exp (+ w logdelta)) w) s c))
+    (vector-set! ws i s*)
+    (values s* c*)))
 
 ;; ------------------------------------------------------------
 ;; Kolmogorov-Smirov statistic
@@ -246,63 +245,56 @@
 ;; ------------------------------------------------------------
 ;; Kernel Density Estimation
 
-;; kde : (Vectorof Real) (Vectorof Real) Real
-;;    -> (values (-> Real Real) (U Real #f) (U Real #f))
-(define (kde uvs uws h0)
-  (unless (= (vector-length uvs) (vector-length uws))
-    (error 'kde "weights vector has wrong length"))
-  (define n (vector-length uvs))
-  (define svs (make-vector n))
-  (define sws (make-vector n))
-  (for ([i (in-naturals)] [v (in-vector uvs)] [w (in-vector uws)])
-    (vector-set! svs i (cons (fl v) (fl w))))
-  (vector-sort! svs < #:key car)
-  (for ([i (in-naturals)] [vw (in-vector svs)])
-    (vector-set! svs i (car vw))
-    (vector-set! sws i (cdr vw)))
-  (define wsum (for/sum ([w (in-vector sws)]) w))
-  (define h (* h0 (silverman-bandwidth svs sws wsum)))
-  (define max-dist
-    (for/fold ([m -inf.0]) ([w (in-vector sws)]) (max m (weight-max-dist w h))))
-  (define c (/ 1.0 (* (sqrt pi) h)))
-  ;; The range of non-zero KDE values
-  (define x-min (- (vector-ref svs 0) max-dist))
-  (define x-max (+ (vector-ref svs (sub1 n)) max-dist))
-  ;; Parameters for fast-gauss
-  ;; Make the KDE functions
-  (define kde/windowed (make-kde/windowed svs h sws max-dist))
-  (define (the-kde x)
-    (cond [(< x x-min)  0.0]
-          [(> x x-max)  0.0]
-          [else (* c (kde/windowed (fl x)))]))
-  (values the-kde x-min x-max))
+;; KDE = (Real [Real Real]) -> Real
+;; where (kde x h0 EPS) evaluates the estimator at x with smoothing factor h0,
+;; only neighbors that contribute at least EPS to result.
 
-;; make-kde/windowed : (Vectorof Flonum) Flonum (Vectorof Flonum) Flonum
-;;                  -> (Flonum -> Flonum)
-(define ((make-kde/windowed xs h ws max-dist) y)
-  (cond [(vector-find-index (lambda (x) (<= (abs (- x y)) max-dist)) xs)
-         => (lambda (i)
-              (define j (or (vector-find-index (lambda (x) (> (abs (- x y)) max-dist)) xs i)
-                            (vector-length xs)))
-              (for/sum ([x (in-vector xs i j)] [w (in-vector ws i j)])
-                (define z (/ (- x y) h))
-                (* w (exp (- (sqr z))))))]
-        [else 0.0]))
+;; samples->kde : (SampleFrame Real) -> KDE
+(define (samples->kde sf #:normalize? [normalize? #t])
+  (define vs (hash-ref sf 'value))
+  (define lws (hash-ref sf 'log-weight #f))
+  (if lws
+      (vector-kde vs lws #t normalize?)
+      (vector-kde vs (make-vector (vector-length vs) 1.0) #f normalize?)))
 
-;; vector-find-index : (A -> Boolean) (Vectorof A) -> Nat/#f
-(define (vector-find-index pred? xs [start 0])
-  (for/or ([i (in-naturals start)] [x (in-vector xs start)])
-    (and (pred? x) i)))
+;; vector-kde : (Vectorof Real) (Vectorof Real) -> KDE
+(define (vector-kde uvs uws log-weight? normalize?)
+  (let-values ([(uws log-weight?)
+                (cond [uws (values uws log-weight?)]
+                      [else (values (make-vector (vector-length uvs) 1.0) #f)])])
+    (define-values (svs sws) (vectors-sort uvs uws))
+    (cond [log-weight?
+           (define maxlw (for/fold ([maxlw -inf.0]) ([lw (in-vector sws)])
+                           (max maxlw lw)))
+           (for ([i (in-naturals)] [lw (in-vector sws)])
+             (vector-set! sws i (exp (- lw maxlw))))
+           ;; sws is now linear weights
+           (define wsum (for/sum ([w (in-vector sws)]) w))
+           (make-kde svs sws wsum (if normalize? (/ wsum) (exp maxlw)))]
+          [else
+           (define wsum (for/sum ([w (in-vector sws)]) w))
+           (make-kde svs sws wsum (if normalize? (/ wsum) 1.0))])))
 
-;; weight-max-dist : Real Real -> Real
-;; Returns the maximum distance at which unnormalized kernel (with weight w and
-;; width h) will contribute at least EPS to the sum.
-(define (weight-max-dist w h)
-  (define EPS 1e-06)
-  (define a (/ w EPS))
-  (if (> a 1.0) (* h (* (sqrt 2.0) (sqrt (log a)))) 0.0))
+;; make-kde : (Vectorof Real) (Vectorof Real) -> KDE
+(define (make-kde svs sws wsum factor)
+  (define sbw (silverman-bandwidth svs sws wsum))
+  (define n (vector-length svs))
+  (define (kde x0 [h0 1.0] [EPSILON 1e-6])
+    (define h (* h0 sbw))
+    ;; (define c (/ 1.0 (* (sqrt pi) h)))
+    (define (sumloop i di acc)
+      (cond [(and (<= 0 i) (< i n))
+             (let* ([x (vector-ref svs i)]
+                    [w (vector-ref sws i)])
+               (define density (* w (exp (- (sqr (/ (- x x0) h))))))
+               (if (< density EPSILON) acc (sumloop (+ i di) di (+ acc density))))]
+            [else acc]))
+    (define xi (or (binary-search/greatest-leq svs x0) 0))
+    (/ (* factor (+ (sumloop xi -1 0.0) (sumloop (add1 xi) +1 0.0)))
+       (* (sqrt pi) h)))
+  kde)
 
-;; silverman-bandwidth : (Vectorof Real) -> Real
+;; silverman-bandwidth : (Vectorof Real) (Vectorof Real) Real -> Real
 (define (silverman-bandwidth xs ws wsum)
   (define n (vector-length xs))
   (define-values (cw q25 q75)
@@ -316,17 +308,6 @@
   (define m (min (stddev xs) (/ iqr 1.349)))
   (/ (* 0.9 m) (expt n 1/5)))
 
-#|
-;; ISV (Improved Sheather-Jones)
-;; https://arxiv.org/pdf/1011.2602
-
-(define xi (expt (/ (- (* 6 (sqrt 2)) 3) 7) 2/5))
-
-(define (isv-bandwidth xs ws wsum)
-  (define n (vector-length xs))
-  (define (gamma l z)
-    __)
-  (let loop ([z epsilon.0])
-    (define zn (* xi (gamma l z)))
-    (if (< (abs (- zn z)) epsilon.0) zn (loop zn))))
-|#
+;; TODO:
+;; - ISV (Improved Sheather-Jones)
+;;   https://arxiv.org/pdf/1011.2602
