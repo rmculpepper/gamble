@@ -136,11 +136,8 @@ distribution}. Then that distribution can be visualized with
 (dist->pict (sampler->discrete-dist coin-bias/s 100))
 ]
 
-This plot's y-axis scale, probability weight, is different because
-@racket[sampler->discrete-dist] by default produces @emph{normalized}
-distribution --- its probability weights sum to 1. The shape of this plot may
-differ slightly from the one above, because we have generated another 100
-samples to create the empirical distribution.
+The shape of this plot may differ slightly from the one above, because we have
+generated another 100 samples to create the empirical distribution.
 
 The model above performs success and failure observations in a loop. There are
 better ways of expressing this. When the observation distribution is the same,

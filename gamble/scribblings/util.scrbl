@@ -52,6 +52,25 @@ only a @racket['values] field; no fields from @racket[samples] are retained. In
 particular, the resulting samples are unweighted.
 }
 
+@defproc[(samples->kde [samples sample-frame/c]
+                       [#:normalize? normalize? #t])
+         (->* [real?] [real? real?] real?)]{
+
+Produces a @wiki["Kernel_density_estimation"]{kernel density estimation} from
+@racket[samples], which must be real-valued, using a normal (Gaussian) kernel.
+
+The resulting function, @racket[_kde], has one required argument and two
+optional arguments; let @racket[(_kde _x _h0 _epsilon)] be a call to the
+function. The required argument @racket[_x] is the value at which to evaluate
+the estimated density. The first optional argument @racket[_h0] is a bandwidth
+smoothing factor, which defaults to @racket[1.0]. It is multiplied by the
+Silverman bandwidth calculated from @racket[samples]. The second optional
+argument @racket[_epsilon] affects evaluation cost vs precision; it defaults to
+@racket[1e-6]: only samples contributing at least @racket[_epsilon] to the total
+density are included. If @racket[_epsilon] is @racket[0], then each call to kde
+@racket[kde] requires time proportional to the number of samples.
+}
+
 @defproc[(samples->empirical-cdf [samples sample-frame/c]
                                  [#:normalize? normalize? #t])
          (-> real? real?)]{
