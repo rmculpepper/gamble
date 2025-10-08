@@ -352,9 +352,19 @@ generated.
 In fact, this model also has an exact answer: the posterior is a truncated
 normal distribution. More generally, when it possible to calculate a random
 variable's posterior distribution conditioned on the current values of any other
-random variables, @racket[slice-transition] does @wiki["Gibbs_sampling"]{Gibbs
-sampling} for that variable by default. Basic inspection of a model can be done
-via @racket[model-slice]:
+random variables, the @racket[gibbs-transition] may be used to do
+@wiki["Gibbs_sampling"]{Gibbs sampling} for that variable:
+
+@(the-eval '(random-seed 1))
+@interaction[#:eval the-eval
+(dist->pict
+ (sampler->discrete-dist
+  (mcmc-sampler thermo/m #:transition (gibbs-transition #f))
+  100 #:burn 10))
+]
+
+@;{
+Basic inspection of a model can be done via @racket[model-slice]:
 
 @interaction[#:eval the-eval
 (define-values (thermo-tags thermo-pdist thermo-lj thermo-eval)
@@ -369,6 +379,7 @@ conditioned on the current values of all other variables --- since this model
 has only one variable, it is also the model's posterior distribution. The third
 result evaluates the slice's unnormalized posterior log-density at the given
 point.
+}
 
 @; ------------------------------------------------------------
 @section{Enumeration}

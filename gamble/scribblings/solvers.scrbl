@@ -163,7 +163,8 @@ Returns @racket[#t] if @racket[v] represents a MCMC transition,
 
 @defproc[(single-site-transition [transition mcmc-transition/single-site/c #f]
                                  [#:any candidate? (or/c #f (-> any/c dist? boolean?)) #f])
-         mcmc-transition?]{
+         (and/c mcmc-transition?
+                mcmc-transition/single-site?)]{
 
 A transition that proposes a new state by randomly selecting a single random
 variable matching @racket[candidate?] from the previous model execution and
@@ -230,14 +231,27 @@ step, the kernel is generally applied twice, once to get a forward proposal
 distribution, and again to get a reverse proposal distribution.
 }
 
-@defproc[(slice-transition [#:gibbs? gibbs? boolean? #t]
-                           [#:method method (or/c 'step 'double) 'double]
+@defproc[(gibbs-transition [fallback (or/c #f mcmc-transition/single-site?) (slice-transition)])
+         mcmc-transition/single-site?]{
+
+Selects a random variable's next values via @wiki["Gibbs_sampling"]{Gibbs
+sampling}.  This transition requires that the chosen random variable be
+@tech{non-structural}.
+
+If the posterior of the model slice corresponding to the chosen random variable
+cannot be solved analytically, then the @racket[fallback] transition is used, or
+if @racket[fallback] is @racket[#f] then an error is raised.
+}
+
+@defproc[(slice-transition [#:method method (or/c 'step 'double) 'double]
                            [#:W W (>/c 0.0) 1.0]
                            [#:M M (or/c exact-positive-integer? +inf.0) +inf.0]
                            [#:SD SD (>=/c 0) 5.0])
          mcmc-transition/single-site?]{
 
-Selects a random variable's next value via @wiki["Slice_sampling"]{slice sampling}.
+Selects a random variable's next value via @wiki["Slice_sampling"]{slice
+sampling}.  This transition requires that the chosen random variable be
+@tech{non-structural}.
 
 The @racket[method] argument selects the technique for finding the slice's
 interval to sample from, either stepping out or doubling.  The @racket[W]
@@ -248,12 +262,6 @@ used, it is also the step size. If the @racket['step] method is used, at most
 If the random variable's prior distribution is bounded and the bounds are less
 than @racket[SD] apart, then the entire support is used as the initial slice
 (that is, the stepping-out or doubling pass is skipped).
-
-This transition requires that the chosen random variable be
-@tech{non-structural}. If @racket[gibbs?] is true, and if the posterior of the
-model slice corresponding to the chosen random variable can be solved
-analytically, then the variable's next value is sampled from that distribution
-(@wiki["Gibbs_sampling"]{Gibbs sampling}).
 }
 
 @defproc[(initialize-transition [get-value (-> any/c dist? (or/c #f proposal-value?)
