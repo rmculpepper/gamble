@@ -98,6 +98,10 @@
             ([kernel (-> any/c dist?)])])
 
          (contract-out
+          [samples->discrete-dist
+           (->* [any-sample-frame/c]
+                [#:normalize? boolean?]
+                discrete-dist?)]
           [samples->empirical-cdf
            (->* [real-sample-frame/c]
                 [#:normalize? boolean?]
