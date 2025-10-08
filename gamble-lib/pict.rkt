@@ -72,8 +72,11 @@
             (function kde3 #:color "blue" #:alpha 0.25))))
   (define cdf (vector->empirical-cdf vs ws log-weight? normalize?))
   (define pts
-    (points #:color "blue"
-            (for/list ([v (in-vector vs)] [w (in-vector ws)]) (list v w))))
+    (let ([wsum (and normalize? (for/sum ([w (in-vector ws)]) (if log-weight? (exp w) w)))])
+      (define (get-weight w) (let ([w (if log-weight? (exp w) w)]) (if wsum (/ w wsum) w)))
+      (points #:color "blue"
+              (for/list ([v (in-vector vs)] [w (in-vector ws)])
+                (list v (get-weight w))))))
   (do-pict xmin xmax cdf (list pdfp pts)))
 
 (define (do-pict xmin xmax cdf parts)
