@@ -17,11 +17,8 @@
 
 @title[#:tag "intro"]{Introduction}
 
-The @racketmodname[gamble] library supports
-@itemlist[
-@item{the expression of generative probabilistic models, and}
-@item{inference over those models.}
-]
+The @racketmodname[gamble] library supports the expression of generative
+probabilistic models, and inference over those models.
 
 @; ----------------------------------------
 @section{Probabilistic Models}
@@ -179,12 +176,24 @@ In fact, the posterior probability distribution of this model is exactly a beta
 distribution (@racket[beta-dist]) parameterized by the number of observed
 successes and failures (plus one). The beta distribution is a
 @wiki["Conjugate_prior"]{conjugate prior} for Bernoulli and binomial
-observations, and Uniform(0,1) is equivalent to Beta(1,1).  We can compare the
-visualizations of that distribution to the model's empirical distribution to
-confirm that our sampler produces roughly the right result:
+observations, and Uniform(0,1) is equivalent to Beta(1,1). We can compare the
+previous sampler results to the expected distribution visually:
 
 @interaction[#:eval the-eval
 (dist->pict (beta-dist (add1 num-heads) (add1 num-tails)))
+]
+
+We can also perform a
+@wiki["Kolmogorov%E2%80%93Smirnov_test"]{Kolmogorov--Smirnov test} to confirm
+that our sampler produces the expected result:
+
+@interaction[#:eval the-eval
+(samples-KS-statistic
+ (generate-samples coin-bias/s 100)
+ (beta-dist (add1 num-heads) (add1 num-tails)))
+(samples-KS-test
+ (generate-samples coin-bias/s 100)
+ (beta-dist (add1 num-heads) (add1 num-tails)))
 ]
 
 
