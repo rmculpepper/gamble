@@ -469,21 +469,6 @@
      (define delta (random))
      (for ([i (in-range n)]) (vector-set! r i (/ (+ i delta) n)))
      (-resample! who dist r #t)]
-    [(residual)
-     (match-define (discrete-dist h wsum _) dist)
-     (define ww (/ wsum n))
-     (define-values (h* wsum* next-index)
-       (for/fold ([h h] [wsum 0] [i 0]) ([(v w) (in-hash h)])
-         (define whole (floor (/ w ww)))
-         (cond [(zero? whole) (values h (+ wsum w) i)]
-               [else
-                (for ([j (in-range i (+ i (exact whole)))])
-                  (vector-set! r j v))
-                (define wrem (max 0 (- w (* whole ww))))
-                (values (hash-set h v wrem) (+ wsum wrem) (+ i whole))])))
-     (define dist* (discrete-dist h* wsum* #f))
-     (for ([j (in-range next-index n)])
-       (vector-set! r j (dist-sample dist*)))]
     [else (error 'discrete-dist-resample "bad resampling mode: ~e" mode)])
   r)
 
