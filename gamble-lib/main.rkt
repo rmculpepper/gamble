@@ -97,21 +97,23 @@
 
          (contract-out
           [samples->empirical-cdf
-           (->* [sample-frame/c]
+           (->* [real-sample-frame/c]
                 [#:normalize? boolean?]
                 (-> real? real?))]
           [samples-KS-statistic
-           (-> sample-frame/c (or/c dist? (-> real? real?) sample-frame/c)
+           (-> real-sample-frame/c
+               (or/c dist? (-> real? real?) real-sample-frame/c)
                real?)]
           [samples-KS-test
-           (->* [sample-frame/c (or/c dist? (-> real? real?) sample-frame/c)]
+           (->* [real-sample-frame/c
+                 (or/c dist? (-> real? real?) real-sample-frame/c)]
                 [probability?]
                 boolean?)]
           [samples-G-statistic
-           (-> sample-frame/c finite-dist?
+           (-> any-sample-frame/c finite-dist?
                real?)]
           [samples-G-test
-           (->* [sample-frame/c finite-dist?]
+           (->* [any-sample-frame/c finite-dist?]
                 [(or/c #f exact-positive-integer?) probability?]
                 boolean?)]))
 
@@ -173,3 +175,6 @@
        #:first-order sample-frame/first-order?
        #:late-neg-projection sample-frame-late-neg-proj
        #:list-contract? #f))))
+
+(define real-sample-frame/c (sample-frame/c real?))
+(define any-sample-frame/c (sample-frame/c any/c))
