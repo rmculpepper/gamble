@@ -9,13 +9,13 @@
                      racket/contract
                      racket/class
                      racket/match
-                     gamble gamble/util/dnum))
+                     gamble gamble/util/dnum gamble/pict))
 
 @(define (wiki suffix . content)
    (apply hyperlink (format "https://en.wikipedia.org/wiki/~a" suffix) content))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require gamble gamble/util/dnum racket/match))
+@(the-eval '(require gamble gamble/util/dnum gamble/pict racket/match))
 @(the-eval '(random-seed 1))
 
 @title[#:tag "util"]{Utilities}
@@ -125,32 +125,45 @@ Compares two @tech{dnums}.
 
 @defmodule[gamble/pict]
 
-@defproc[(dist->pict [d dist?]
-                     [#:normalize? normalize? boolean? #f])
+@defproc[(dist->pict [dist dist?]
+                     [ref-dist (or/c #f numeric-dist?) #f])
          pict?]{
 
-Produces a visualization of @racket[d] as a pict, according the following cases:
+Produces a visualization of @racket[dist] as a pict, according the following cases:
 @itemlist[
 
-@item{If @racket[(integer-dist? d)], then the pict contains a plot of the
+@item{If @racket[(integer-dist? dist)], then the pict contains a plot of the
 distribution's values and CDF.}
 
-@item{If @racket[(real-dist? d)], then the pict contains a plot of the
+@item{If @racket[(real-dist? dist)], then the pict contains a plot of the
 distribution's PDF (density) and CDF.}
 
-@item{If @racket[d] is a discrete distribution containing only real values and a
+@item{If @racket[dist] is a discrete distribution containing only real values and a
 sufficient number of distinct values, then the pict contains a plot of the
 values, kernel density estimators, and the empirical CDF.}
 
-@item{If @racket[d] is a finite distribution that does not satisfy any of the
+@item{If @racket[dist] is a finite distribution that does not satisfy any of the
 criteria above, then the pict contains a vertical histogram listing the values
-of @racket[d] and their probabilities.}
+of @racket[dist] and their probabilities.}
 
-@item{If @racket[d] is any other kind of distribution, an error is raised.}
+@item{If @racket[dist] is any other kind of distribution, an error is raised.}
 
+]
+If @racket[ref-dist] is not false, its PDF (if continuous) and CDF are also
+plotted in green with dotted lines.
+
+@examples[#:eval the-eval
+(define coin/m
+  (model
+   (define p (sample (uniform-dist 0 1)))
+   (observe (binomial-dist 10 p) 3)
+   p))
+(dist->pict (sampler->discrete-dist (importance-sampler coin/m) 100)
+            (beta-dist (add1 3) (add1 7)))
 ]}
 
 @defproc[(samples->pict [samples (sample-frame/c real?)]
+                        [ref-dist (or/c #f numeric-dist?) #f]
                         [#:normalize? normalize? boolean? #t])
          pict?]{
 
