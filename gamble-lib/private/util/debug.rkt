@@ -1,6 +1,5 @@
-;; Copyright (c) 2016 Ryan Culpepper
-;; Released under the terms of the 2-clause BSD license.
-;; See the file COPYRIGHT for details.
+;; Copyright 2016 Ryan Culpepper
+;; SPDX-License-Identifier: Apache-2.0 OR MIT
 
 #lang racket/base
 (provide verbose?

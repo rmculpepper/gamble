@@ -1,3 +1,6 @@
+;; Copyright 2025 Ryan Culpepper
+;; SPDX-License-Identifier: Apache-2.0 OR MIT
+
 #lang info
 
 ;; pkg info
@@ -12,7 +15,7 @@
     "scramble-lib"
     "typed-racket-lib"))
 (define pkg-authors '(ryanc))
-(define license '(BSD-2-Clause))
+(define license '(Apache-2.0 OR MIT))
 
 ;; collection info
 

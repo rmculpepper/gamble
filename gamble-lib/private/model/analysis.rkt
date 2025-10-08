@@ -1,6 +1,5 @@
-;; Copyright (c) 2014 Ryan Culpepper
-;; Released under the terms of the 2-clause BSD license.
-;; See the file COPYRIGHT for details.
+;; Copyright 2014-2025 Ryan Culpepper
+;; SPDX-License-Identifier: Apache-2.0 OR MIT
 
 #lang racket/base
 (require (for-template racket/base "../base.rkt")
