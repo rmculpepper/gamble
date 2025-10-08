@@ -1,6 +1,5 @@
-;; Copyright (c) 2014 Ryan Culpepper
-;; Released under the terms of the 2-clause BSD license.
-;; See the file COPYRIGHT for details.
+;; Copyright 2014-2025 Ryan Culpepper
+;; SPDX-License-Identifier: Apache-2.0 OR MIT
 
 #lang scribble/doc
 @(require scribble/manual
@@ -18,11 +17,14 @@
 @title[#:tag "intro"]{Introduction}
 
 The @racketmodname[gamble] library supports the expression of generative
-probabilistic models, and inference over those models.
+probabilistic models and inference over those models.
 
 @; ----------------------------------------
 @section{Probabilistic Models}
 
+@margin-note{This manual informally uses the phrase ``random variable'' to mean
+@tech{primitive random variable}, specifically, although mathematically any
+computation over a random variable also represents a random variable.}
 A probabilistic model consists of a computation involving @tech{primitive random
 variables} created with @racket[sample] and @tech{observations} expressed with
 @racket[observe] or @racket[score]. These forms may be used within a

@@ -1,6 +1,5 @@
-;; Copyright (c) 2014 Ryan Culpepper
-;; Released under the terms of the 2-clause BSD license.
-;; See the file COPYRIGHT for details.
+;; Copyright 2014-2025 Ryan Culpepper
+;; SPDX-License-Identifier: Apache-2.0 OR MIT
 
 #lang scribble/manual
 @(require scribble/manual
@@ -12,8 +11,8 @@
 
 @defmodule[gamble]
 
-A language for expressing probabilistic models as functional programs
-with managed stochastic effects.
+A library for probabilistic programming, with probabilistic models as functional
+programs with managed stochastic effects.
 
 @(local-table-of-contents)
 
@@ -22,31 +21,11 @@ with managed stochastic effects.
 
 @centered{@url{https://github.com/rmculpepper/gamble}}
 
-@bold{Acknowledgements} Elementary probability distribution support
-use Neil Toronto's @racketmodname[math/distributions] libraries.
-
-@bold{Copying} Redistribution and use in source and binary forms, with
-or without modification, are permitted provided that the following
-conditions are met:
-
-1. Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+@bold{Acknowledgements} Thanks to Olin Shivers, Mitch Wand, Andrew Cobb, Sean
+Stromsen, Theo Giannakopoulos, Aleksey Kliger, Greg Sullivan, and the PPAML
+project for support and collaboration. Thanks to Neil Toronto for creating the
+@racketmodname[math] library, particularly @racketmodname[math/distributions]
+for probability distribution support.
 
 @include-section["intro.scrbl"]
 @include-section["model.scrbl"]
