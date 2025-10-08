@@ -10,13 +10,13 @@
          "private/samples.rkt")
 (provide (contract-out
           [dist->pict
-           (-> dist? any)]
+           (->* [dist?] [(or/c #f numeric-dist?)] any)]
           [samples->pict
-           (-> hash? any)])) ;; FIXME
+           (->* [hash?] [(or/c #f numeric-dist?)] any)])) ;; FIXME
 
 (define ITEM-HEIGHT 50)
 
-(define (dist->pict dist)
+(define (dist->pict dist [ref-dist #f])
   (cond [(and (numeric-dist? dist)
               (not (bernoulli-dist? dist)))
          (define-values (xmin0 xmax0)
@@ -35,29 +35,29 @@
                           (for/list ([x (in-range xmin (add1 xmax))])
                             (list x (dist-pdf dist x))))]
                  [else null]))
-         (do-pict xmin xmax cdf (list pdfp pts))]
+         (do-pict xmin xmax cdf (list* pdfp pts (ref-dist-parts ref-dist)))]
         [(and (discrete-dist? dist) (> (dist-count dist) 2)
               (for/and ([v (in-dist-values dist)]) (real? v)))
          (define vs (discrete-dist-values dist))
          (define ws (discrete-dist-weights dist))
-         (real-samples->pict vs ws #f #f)]
+         (real-samples->pict vs ws #f #f ref-dist)]
         [(finite-dist? dist)
          (define vws (for/list ([(v w) (in-dist dist)]) (list v w)))
          (vws->pict vws)]
         [else (error 'dist->pict "unsupported")]))
 
-(define (samples->pict sf)
+(define (samples->pict sf [ref-dist #f])
   (define vs (hash-ref sf 'value))
   (define lws (hash-ref sf 'log-weight #f))
   (cond [(and (> (vector-length vs) 2)
               (for/and ([v (in-vector vs)]) (real? v)))
-         (real-samples->pict vs lws #t #t)]
+         (real-samples->pict vs lws #t #t ref-dist)]
         [else
          (if lws
              (vws->pict (for/list ([v (in-vector vs)] [lw (in-vector lws)]) (cons v (exp lw))))
              (vws->pict (for/list ([v (in-vector vs)]) (cons v 1))))]))
 
-(define (real-samples->pict vs ws log-weight? normalize?)
+(define (real-samples->pict vs ws log-weight? normalize? [ref-dist #f])
   (define-values (xmin xmax)
     (for/fold ([xmin +inf.0] [xmax -inf.0] #:result (round-minmax xmin xmax))
               ([v (in-vector vs)])
@@ -77,7 +77,7 @@
       (points #:color "blue"
               (for/list ([v (in-vector vs)] [w (in-vector ws)])
                 (list v (get-weight w))))))
-  (do-pict xmin xmax cdf (list pdfp pts)))
+  (do-pict xmin xmax cdf (list* pdfp pts (ref-dist-parts ref-dist))))
 
 (define (do-pict xmin xmax cdf parts)
   (plot-pict
@@ -94,6 +94,17 @@
    #:height (* ITEM-HEIGHT (length vws))
    #:x-max maxw #:y-min 0 #:x-label #f #:y-label #f
    (discrete-histogram vws #:invert? #t)))
+
+(define (ref-dist-parts ref-dist)
+  (cond [(integer-dist? ref-dist)
+         (define (ref-cdf x) (dist-cdf ref-dist x))
+         (list (function ref-cdf #:color "darkgreen"))]
+        [(real-dist? ref-dist)
+         (define (ref-pdf x) (dist-pdf ref-dist x))
+         (define (ref-cdf x) (dist-cdf ref-dist x))
+         (list (function ref-pdf #:color "green" #:style 'dot)
+               (function ref-cdf #:color "darkgreen" #:style 'dot))]
+        [else null]))
 
 (define (round-minmax xmin xmax)
   (define xdiff (- xmax xmin))
