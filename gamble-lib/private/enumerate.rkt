@@ -134,12 +134,12 @@
 
     (define/override (-dscore who dn)
       (if (dnum-zero? dn)
-          (fail who)
+          (fail)
           (call/restore who
            (lambda (restore)
              (list (list* dn dn (lambda () (restore (void)))))))))
 
-    (define/override (fail reason)
+    (define/override (fail)
       (call/restore 'fail
        (lambda (restore)
          null)))

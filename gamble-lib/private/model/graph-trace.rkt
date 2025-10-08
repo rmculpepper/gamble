@@ -241,7 +241,7 @@
 (struct node:sample (loc addr distr tagr) #:prefab)
 (struct node:score (argr) #:prefab)
 (struct node:observe (distr star? vr) #:prefab)
-(struct node:fail (argr) #:prefab)
+(struct node:fail () #:prefab)
 
 ;; node-locations : Node -> (values (Listof Location) (Listof Location))
 ;; Returns reads-locations and writes-locations.
@@ -262,7 +262,7 @@
      (values (get-locs (list distr tagr)) (list loc))]
     [(node:score argr) (values (get-locs (list argr)) null)]
     [(node:observe distr _ vr) (values (get-locs (list distr vr)) null)]
-    [(node:fail argr) (values (get-locs argr) null)]
+    [(node:fail) (values null null)]
     ))
 
 ;; node->expr : Node (Hash Location Nat) -> Expr
@@ -294,8 +294,8 @@
      `(score ,(result->expr argr))]
     [(node:observe distr star? valr)
      `(,(if star? 'observe* 'observe) ,(result->expr distr) ,(result->expr valr))]
-    [(node:fail argr)
-     `(fail ,(result->expr argr))]
+    [(node:fail)
+     `(fail)]
     ))
 
 ;; exec-nodes! : Symbol/#f (Vectorof Node) StochasticCtx -> Void
@@ -335,8 +335,8 @@
      (if star?
          (send ctx observe* (result->value distr) (result->value vr))
          (send ctx observe (result->value distr) (result->value vr)))]
-    [(node:fail argr)
-     (send ctx fail (result->value argr))]
+    [(node:fail)
+     (send ctx fail)]
     ))
 
 ;; exec-stochastic-nodes! : (Vectorof Node) -> (Values Real Real)
@@ -541,8 +541,8 @@
       (define (trace:observe* addr distr vr)
         (do! (node:observe distr #t vr))
         (result:value (void)))
-      (define (trace:fail addr [reasonr (result:value #f)])
-        (do! (node:fail reasonr))
+      (define (trace:fail addr)
+        (do! (node:fail))
         (result:value (void)))
       (define (trace:mem addr funr)
         (define fun (result->value funr))

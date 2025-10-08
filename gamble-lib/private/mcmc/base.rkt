@@ -240,7 +240,7 @@
                     (log-mcmc-info "RESCORE ~s: ~e, ~e" addr dist value)
                     (db-add! addr new-e prev-e)
                     value]
-                   [else (fail '(gamble zero-score sample-rescore))])]
+                   [else (fail)])]
             [else (sample/new dist addr prev-e)]))
 
     (define/private (sample/new dist tag addr prev-e)
@@ -259,7 +259,7 @@
 
     (define/override (-dscore who dn)
       (set! sumlobs (+ sumlobs (dnum->logspace-real dn)))
-      (when (logspace-zero? sumlobs) (fail `(gamble zero-score ,who))))
+      (when (logspace-zero? sumlobs) (fail)))
 
     (define/override (mem f addr)
       (define (do-mem addr)
@@ -350,7 +350,7 @@
                     dist)]))
 
     (define/override (-dscore who dn)
-      (when (dnum-zero? dn) (fail `(gamble zero-score ,who))))
+      (when (dnum-zero? dn) (fail)))
     ))
 
 ;; ============================================================

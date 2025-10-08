@@ -107,7 +107,7 @@
       (define (ctx-score dn) (score dn))
       (define (ctx-observe d v) (observe d v))
       (define (ctx-observe* d vs) (observe* d vs))
-      (define (ctx-fail [reason #f]) (fail reason))
+      (define (ctx-fail) (fail))
       (define (ctx-mem f) (mem f #f))
       (define (ctx-run-model m) (run-model m #f))
       (define (ctx-sample/addr dist tag addr) (sample dist tag addr))
@@ -141,7 +141,7 @@
       (unless (vector? vs) (raise-argument-error 'observe* "vector?" vs))
       (for ([v (in-vector vs)]) (-dscore 'observe* (dist-density dist v))))
 
-    (define/public (fail reason)
+    (define/public (fail)
       (unless (continuation-prompt-available? escape-prompt)
         (-unsupported 'fail))
       (abort-current-continuation escape-prompt (lambda () #f)))
@@ -176,7 +176,7 @@
 
     (define/override (-dscore who dn)
       (set! score-dnum (dnum* score-dnum dn))
-      (when (dnum-zero? score-dnum) (fail `(gamble zero-score ,who))))
+      (when (dnum-zero? score-dnum) (fail)))
     ))
 
 (define (top-level-run-model m)
