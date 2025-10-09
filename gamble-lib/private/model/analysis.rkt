@@ -19,6 +19,75 @@
                      call-site-counter
                      relocate))
 
+;; transform+analyze : Syntax[EE] -> (values Syntax[EE*] Nat)
+(define (transform+analyze ee)
+  (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
+  (analyze-FUN-EXP tagged-ee)
+  (analyze-CALLS-ERP tagged-ee)
+  (values tagged-ee call-site-count))
+
+;; no-instrument-property : syntax property, indicates that model should not
+;; instrument, should lift to avoid duplicating (used to prevent exponential
+;; expansion of nested models)
+(define no-instrument-property (string->uninterned-symbol "no-instrument"))
+
+;; ============================================================
+;; Syntax
+
+(define (make-expression-traverser
+         #:bind [bind #f]           ;; (Listof Identifier) -> Void
+         #:pre [pre void]           ;; Syntax -> Void
+         #:replace [replace #f]     ;; Syntax -> (U Syntax #f) -- replace recur
+         #:post [post #f])          ;; Syntax Syntax -> Syntax
+  (define (bind-flatten stx [onto null])
+    (when bind
+      (bind (let bf ([stx stx] [onto null])
+              (cond [(identifier? stx) (cons stx onto)]
+                    [(syntax? stx) (bf (syntax-e stx) onto)]
+                    [(pair? stx) (bf (car stx) (bf (cdr stx) onto))]
+                    [else onto])))))
+  (define (loop stx)
+    (pre stx)
+    (define processed-stx
+      (cond [(and replace (replace stx))
+             => values]
+            [else
+             (define-template-metafunction recur
+               (syntax-parser [(recur e) (loop #'e)]))
+             (define-syntax-rule (T tmpl)
+               (relocate (syntax tmpl) stx))
+             (syntax-parse stx
+               #:literal-sets (kernel-literals)
+               [(kw:#%plain-lambda ~! formals e ...)
+                (bind-flatten #'formals)
+                (T (kw formals (recur e) ...))]
+               [(kw:case-lambda ~! [formals e ...] ...)
+                (bind-flatten #'(formals ...))
+                (T (kw [formals (recur e) ...] ...))]
+               [(kw:if ~! e1 e2 e3)
+                (T (kw (recur e1) (recur e2) (recur e3)))]
+               [(kw:begin ~! e ...)
+                (T (kw (recur e) ...))]
+               [(kw:begin0 ~! e ...)
+                (T (kw (recur e) ...))]
+               [(kw:let-values ~! ([vars rhs] ...) body ...)
+                (bind-flatten #'(vars ...))
+                (T (kw ([vars (recur rhs)] ...) (recur body) ...))]
+               [(kw:letrec-values ~! ([vars rhs] ...) body ...)
+                (bind-flatten #'(vars ...))
+                (T (kw ([vars (recur rhs)] ...) (recur body) ...))]
+               [(kw:set! ~! var e)
+                (T (kw var (recur e)))]
+               [(kw:with-continuation-mark ~! e1 e2 e3)
+                (T (kw (recur e1) (recur e2) (recur e3)))]
+               [(kw:#%plain-app ~! f e ...)
+                (T (kw (recur f) (recur e) ...))]
+               [(kw:#%expression ~! e)
+                (T (kw (recur e)))]
+               [_ stx])]))
+    (if post (post processed-stx stx) processed-stx))
+  loop)
+
 ;; ============================================================
 ;; Modification counter (used to find fixed points)
 
@@ -379,18 +448,19 @@
   (and (free-id-table-ref model-function-table id #f) #t))
 
 (define (vars->replacements xs)
-  (define-values (replacements vars)
-    (for/fold ([replacements null] [ys null]) ([x (in-list xs)])
+  (define replacements
+    (for/fold ([replacements null]) ([x (in-list xs)])
       (cond [(free-id-table-ref model-function-table x #f)
-             => (lambda (refs) (values (cons (cons x refs) replacements) ys))]
-            [else (values replacements (cons x ys))])))
-  (values (map car replacements) (map cadr replacements) (map caddr replacements) vars))
+             => (lambda (refs) (cons (cons x refs) replacements))]
+            [else replacements])))
+  (values (map car replacements) (map cadr replacements) (map caddr replacements)))
 
 ;; FIXME: need to fix free-vars to include registered top-level and module-level vars
 
 ;; ============================================================
 
-(define (free-variables expr [add? (lambda (id) #f)])
+(define (free-variables expr
+                        #:add [add? (lambda (id) #f)])
   (define free (make-free-id-table))
   (define free-ids null)
   (define (free! id)
@@ -408,12 +478,7 @@
     (syntax-parse e
       #:literal-sets (kernel-literals)
       [var:id
-       (unless (bound? #'var)
-         (cond [(eq? (identifier-binding #'var) 'lexical)
-                (free! #'var)]
-               [(add? #'var)
-                (free! #'var)]
-               [else (void)]))]
+       (unless (bound? #'var) (when (add? #'var) (free! #'var)))]
       [(#%plain-lambda formals e ...)
        (bound! #'formals)
        (loop* #'(e ...))]

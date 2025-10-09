@@ -99,7 +99,8 @@
 
 (define base-stochastic-ctx%
   (class* object% (stochastic-ctx<%>)
-    (field [escape-prompt (make-continuation-prompt-tag)])
+    (field [linker (make-hasheq)]
+           [escape-prompt (make-continuation-prompt-tag)])
     (super-new)
 
     (define/public (get-functions)
@@ -113,6 +114,8 @@
       (define (ctx-sample/addr dist tag addr) (sample dist tag addr))
       (values ctx-sample ctx-score ctx-observe ctx-observe*
               ctx-fail ctx-mem ctx-run-model ctx-sample/addr))
+
+    (define/public (get-linker) linker)
 
     (define/public (-unsupported who)
       (error who "called outside of sampling context"))
@@ -209,6 +212,10 @@
 
 (define (ctx-get-functions ctx)
   (send ctx get-functions))
+
+(define (ctx-link ctx addr fi)
+  (define linker (send ctx get-linker))
+  (hash-ref! linker fi (lambda () (fi ctx addr))))
 
 (define-syntax-rule (with-ctx ctx body ...)
   (let-values ([(-sample -score -observe -observe* -fail -mem -run-model -sample/addr)

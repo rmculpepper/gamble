@@ -84,16 +84,17 @@
         ((f fg) ...))
      (with-syntax ([(ft ...) (generate-temporaries #'(f ...))])
        #'(#%plain-lambda (graph addr)
-           (let-values ([(ft) (result:value-value (fg graph addr))] ...)
+           (let-values ([(ft) (ctx-link graph addr fg)] ...)
              (let-values ctx-bindings
                (syntax-parameterize ((ADDR (make-rename-transformer
                                             (quote-syntax addr)))
                                      (GRAPH (make-rename-transformer
                                              (quote-syntax graph))))
                  (letrec-syntaxes ([(instrument)
-                                    (make-instrument/graph (quote-syntax instrument)
-                                                           (syntax->list (quote-syntax (f ...)))
-                                                           (syntax->list (quote-syntax (ft ...))))])
+                                    (make-instrument/graph
+                                     (quote-syntax instrument)
+                                     (syntax->list (quote-syntax (f ...)))
+                                     (syntax->list (quote-syntax ((unbox ft) ...))))])
                    (instrument body)))))))]))
 
 (define-syntax (declare-local-variables stx)
@@ -143,8 +144,7 @@
           ;; Expressions
           [var:id
            (cond [(free-id-table-ref local-variables #'var #f) #'var]
-                 [(free-id-table-ref replace #'var #f)
-                  => (lambda (replace-id) #`(result:value #,replace-id))]
+                 [(free-id-table-ref replace #'var #f) => values]
                  [else #'(result:value var)])]
           [(#%plain-lambda ~! (var:id ...) e ...)
            #'(result:value
@@ -485,6 +485,8 @@
     (define nodeid=>reach (make-hasheqv))   ;; NodeID => Reach
     (define key=>nodeid (make-hash))        ;; DBKey => NodeID
     (define final-result #f)                ;; Result, mutated
+
+    (define/public (get-linker) (send ctx get-linker))
 
     (define/public (show [expr? #t])
       (parameterize ((print-reader-abbreviations #t))

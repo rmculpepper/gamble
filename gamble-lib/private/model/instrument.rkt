@@ -79,16 +79,17 @@
      #:with ([(ctx-sample _ ... ctx-sample/addr) _]) #'ctx-bindings
      (with-syntax ([(ft ...) (generate-temporaries #'(f ...))])
        #'(#%plain-lambda (ctx addr)
-           (let-values ([(ft) (fi ctx addr)] ...)
+           (let-values ([(ft) (ctx-link ctx addr fi)] ...)
              (let-values ctx-bindings
                (syntax-parameterize ((ADDR (make-rename-transformer
                                             (quote-syntax addr))))
                  (letrec-syntaxes ([(instrument)
-                                    (make-instrument (quote-syntax instrument)
-                                                     (quote-syntax ctx-sample)
-                                                     (quote-syntax ctx-sample/addr)
-                                                     (syntax->list (quote-syntax (f ...)))
-                                                     (syntax->list (quote-syntax (ft ...))))])
+                                    (make-instrument
+                                     (quote-syntax instrument)
+                                     (quote-syntax ctx-sample)
+                                     (quote-syntax ctx-sample/addr)
+                                     (syntax->list (quote-syntax (f ...)))
+                                     (syntax->list (quote-syntax ((unbox ft) ...))))])
                    (instrument body)))))))]))
 
 (begin-for-syntax
@@ -129,8 +130,8 @@
   ;; PRE: result is used in context of binding of ADDR and CALL-SITE-BASE
   (define (make-instrument instrument-id sample-id sample/addr-id fs fts)
     (define replace (make-free-id-table))
-    (for ([f-id (in-list fs)] [ft-id (in-list fts)])
-      (free-id-table-set! replace f-id ft-id))
+    (for ([f-id (in-list fs)] [ft (in-list fts)])
+      (free-id-table-set! replace f-id ft))
     (lambda (istx)
       (define stx (syntax-case istx () [(_ ee) #'ee]))
       (define/with-syntax instrument instrument-id)

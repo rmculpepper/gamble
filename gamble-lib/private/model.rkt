@@ -5,8 +5,10 @@
 (require (for-syntax racket/base
                      syntax/parse
                      syntax/transformer
+                     syntax/id-table
                      "model/analysis.rkt")
          racket/stxparam
+         racket/class
          "base.rkt"
          "model/instrument.rkt"
          "model/graph-trace.rkt")
@@ -18,46 +20,69 @@
     [(expression)
      (syntax-parse stx
        [(_ e:expr ...)
-        (with-syntax ([(aproc gproc)
-                       (instrument-model #'(let-values () e ...))])
-          #'(model aproc gproc))])]
+        (define body #'(#%plain-lambda (ctx) (with-ctx ctx e ...)))
+        (define ebody (local-expand body 'expression null))
+        (with-syntax ([(bindings body) (lift-no-instrument ebody)])
+          #'(let bindings (model** body)))])]
     [else #`(#%expression #,stx)]))
 
+(define-syntax (model** stx)
+  (syntax-parse stx
+    [(_ ee)
+     (with-syntax ([(aproc gproc) (instrument-model #'ee)])
+       #'(begin-no-instrument (model aproc gproc)))]))
+
+(define-syntax (begin-no-instrument stx)
+  (syntax-parse stx
+    [(_ e:expr ...)
+     (syntax-property #'(begin e ...) no-instrument-property #t)]))
+
 (begin-for-syntax
-  ;; (instrument-model Expr[X]) : Expr[Ctx Addr -> X]
-  (define (instrument-model body-expr [check void])
-    (define ctx-proc-expr
-      #`(#%plain-lambda (ctx) (with-ctx ctx #,body-expr)))
-    (define ee (local-expand ctx-proc-expr 'expression null))
-    (check ee)
-    (define-values (fs fis fgs fvs)
-      (vars->replacements (free-variables ee model-definition-id?)))
-    (define (lift e fvs)
-      (with-syntax ([(fv ...) fvs] [(tmp ...) (generate-temporaries fvs)] [e e])
-        (define lifted
-          (syntax-local-lift-expression
-           #'(#%plain-lambda (tmp ...)
-               (letrec-syntax ([fv (make-variable-like-transformer (quote-syntax tmp))] ...)
-                 e))))
-        #`(#%plain-app #,lifted fv ...)))
-    (define-values (tagged-ee call-site-count) (transform-TAG+CS ee))
-    (analyze-FUN-EXP tagged-ee)
-    (analyze-CALLS-ERP tagged-ee)
+  ;; lift-no-instrument : Syntax[EE] -> (list (Listof (list Id Syntax[EE])) Syntax[EE])
+  (define (lift-no-instrument estx)
+    (define bound (make-free-id-table))
+    (define (bound? id) (free-id-table-ref bound id #f))
+    (define (bound! xs) (for ([x (in-list xs)]) (free-id-table-set! bound x #t)))
+    (define bindings null) ;; mutated, (Listof (list Identifier Syntax[Expr]))
+    (define (replace stx)
+      (cond [(syntax-property stx no-instrument-property)
+             (define fvs (free-variables stx #:add-lexical? #f #:add bound?))
+             (with-syntax ([body stx]
+                           [(fv ...) fvs]
+                           [(name) (generate-temporaries (list 'noinstr_))]
+                           [(tmp ...) (generate-temporaries fvs)])
+               (define proc-expr
+                 #'(#%plain-lambda (tmp ...)
+                     (letrec-syntax ([(fv) (make-variable-like-transformer (quote-syntax tmp))] ...)
+                       body)))
+               (set! bindings (cons (list #'name proc-expr) bindings))
+               #'(#%plain-app name fv ...))]
+            [else #f]))
+    (define traverse (make-expression-traverser
+                      #:bind bound!
+                      #:replace replace))
+    (define body (traverse estx))
+    (list (reverse bindings) body)))
+
+(begin-for-syntax
+  ;; (instrument-model (Syntax[EE[(Ctx -> X)]]) : Syntax[Expr[Ctx Addr -> X]]
+  (define (instrument-model ee)
+    (define fvs (free-variables ee #:add model-definition-id?))
+    (define-values (fs fis fgs) (vars->replacements fvs))
+    (define-values (tagged-ee call-site-count) (transform+analyze ee))
     (define csbase-id
       (syntax-local-lift-expression
        #`(allocate-call-sites (quote #,call-site-count))))
     (define aproc-expr
-      (lift (with-syntax ([(f ...) fs] [(fi ...) fis])
-              #`(syntax-parameterize ((CSBASE (make-rename-transformer
-                                               (quote-syntax #,csbase-id))))
-                  (instrument-top #,tagged-ee ((f fi) ...))))
-            (append fis fvs)))
+      (with-syntax ([(f ...) fs] [(fi ...) fis])
+        #`(syntax-parameterize ((CSBASE (make-rename-transformer
+                                         (quote-syntax #,csbase-id))))
+            (instrument-top #,tagged-ee ((f fi) ...)))))
     (define gproc-expr
-      (lift (with-syntax ([(f ...) fs] [(fg ...) fgs])
-              #`(syntax-parameterize ((CSBASE (make-rename-transformer
-                                               (quote-syntax #,csbase-id))))
-                  (instrument/graph-top #,tagged-ee ((f fg) ...))))
-            (append fgs fvs)))
+      (with-syntax ([(f ...) fs] [(fg ...) fgs])
+        #`(syntax-parameterize ((CSBASE (make-rename-transformer
+                                         (quote-syntax #,csbase-id))))
+            (instrument/graph-top #,tagged-ee ((f fg) ...)))))
     (list aproc-expr gproc-expr)))
 
 (define next-global-call-site 1)
@@ -76,11 +101,13 @@
      (define edef (local-expand #'def (syntax-local-context) #f))
      (syntax-parse edef
        #:literal-sets (kernel-literals)
+       [(begin ~! form:expr ...)
+        #'(begin (begin-model-definitions form) ...)]
        [(define-values ~! (f:id) rhs:expr)
         (with-syntax ([(f* fi fg) (generate-temporaries #'(f f f))])
           #'(begin
               (define-values (fi fg)
-                (instrument-model-function rhs def))
+                (instrument-model-function rhs def fi fg))
               (define f* 'unreplaced-model-function)
               (define-syntax f (model-function-transformer (quote-syntax f*)))
               (begin-for-syntax*
@@ -91,17 +118,37 @@
 
 (define-syntax (instrument-model-function stx)
   (syntax-parse stx
-    [(_ rhs:expr orig-def)
-     (define (check e)
-       (syntax-parse e
+    [(_ rhs:expr orig-def fi fg)
+     (define body #'(#%plain-lambda (ctx) (with-ctx ctx rhs)))
+     (define ebody (local-expand body 'expression null))
+     (with-syntax ([(bindings body) (lift-no-instrument ebody)])
+       #'(let bindings (instrument-model-function* body orig-def fi fg)))]))
+
+(define-syntax (instrument-model-function* stx)
+  (syntax-parse stx
+    [(_ erhs:expr orig-def fi fg)
+     (begin
+       (define (check e)
+         (syntax-parse e
+           #:literal-sets (kernel-literals)
+           [(#%lambda ~! . _) (void)]
+           [(case-lambda ~! . _) (void)]
+           [(let-values ~! bindings body) (check #'body)]
+           [(letrec-values ~! bindings body) (check #'body)]
+           [_ (raise-syntax-error #f "ill-formed function definition" #'orig-def)]))
+       (syntax-parse #'erhs
          #:literal-sets (kernel-literals)
-         [(#%lambda ~! . _) (void)]
-         [(case-lambda ~! . _) (void)]
-         [(let-values ~! bindings body) (check #'body)]
-         [(letrec-values ~! bindings body) (check #'body)]
-         [_ (raise-syntax-error #f "ill-formed function definition" #'orig-def)]))
-     (with-syntax ([(aproc gproc) (instrument-model #'rhs check)])
-       #'(values aproc gproc))]))
+         [(#%plain-lambda (ctx) body) (check #'body)]))
+     (with-syntax ([(aproc gproc) (instrument-model #'erhs)])
+       #'(values (wrap-linker aproc (lambda () fi))
+                 (wrap-linker gproc (lambda () fg))))]))
+
+(define ((wrap-linker proc get-fi) ctx addr)
+  (define fi (get-fi))
+  (define fbox (box #f))
+  (hash-set! (send ctx get-linker) fi fbox)
+  (set-box! fbox (proc ctx addr))
+  fbox)
 
 (begin-for-syntax
   (define (model-function-transformer f*-id)
