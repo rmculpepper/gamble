@@ -289,14 +289,16 @@ sensitive to observation placement.
 (enumerate
  #:stop 1e-3
  (model
+  (score (linear-dnum 0.1)) (code:comment "apparent probs are small")
   (define n (sample (geometric-dist 1/2)))
+  (score (linear-dnum 10)) (code:comment "cancel prev adjustment")
   n))
 (enumerate
  #:stop 1e-3
  (model
-  (score (linear-dnum 0.01))
+  (score (linear-dnum 10)) (code:comment "apparent probs are large")
   (define n (sample (geometric-dist 1/2)))
-  (score (linear-dnum 100))
+  (score (linear-dnum 0.1)) (code:comment "cancel prev adjustment")
   n))
 ]}
 
