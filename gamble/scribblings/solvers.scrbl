@@ -5,13 +5,13 @@
 @(require scribble/manual
           scribble/basic
           scribble/eval
-          (for-label racket/base racket/contract gamble gamble/pict))
+          (for-label racket/base racket/contract gamble gamble/util/dnum gamble/pict))
 
 @(define (wiki suffix . content)
    (apply hyperlink (format "https://en.wikipedia.org/wiki/~a" suffix) content))
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require gamble gamble/pict))
+@(the-eval '(require gamble gamble/util/dnum gamble/pict))
 @(the-eval '(random-seed 1))
 
 @title[#:tag "solvers"]{Samplers and Solvers}
@@ -262,26 +262,43 @@ than @racket[SD] apart, then the entire support is used as the initial slice
 @section[#:tag "enumerate"]{Enumeration Solver}
 
 @defproc[(enumerate [m model?]
-                    [#:stop stop-limit (>=/c 0) 0]
                     [#:discretize discretize (or/c #f (-> real-dist? (or/c #f enumerable-dist?))) #f]
+                    [#:stop stop-limit (>=/c 0) 0]
                     [#:normalize? normalize? boolean? #f])
          discrete-dist?]{
 
 Returns a discrete distribution of the values produced by @racket[m], weighted
-by any conditioning or scoring performed by the model.
-
-The @racket[enumerate] form works by exploring all possibilities using delimited
-continuations, similar to the technique described in @cite["EPP"]. Exploration
-ceases only when the apparent total probability weight of all unexplored paths
-is less than @racket[stop-limit]. If exploration is not stopped, then any
-countable distribution causes @racket[enumerate] to fail to terminate.
+by any conditioning or scoring performed by the model.  The @racket[enumerate]
+form works by exploring all possibilities using delimited continuations, similar
+to the technique described in @cite["EPP"].
 
 Only enumerable distributions can be sampled with @racket[enumerate]. If a
 continuous distribution is encountered, and the @racket[discretize] argument is
 a procedure, it is called to convert the distribution into an enumerable
 approximation. If the @racket[discretize] argument is @racket[#f], or the
 function returns @racket[#f], then @racket[enumerate] raises an exception.
-}
+
+Exploration ceases only when the apparent total probability weight of all
+unexplored paths is less than @racket[stop-limit]. If exploration is not
+stopped, then any countable distribution causes @racket[enumerate] to fail to
+terminate. The apparent probability weight is sensitive to previous
+@tech{observations} but not future observations, so the exploration cut-off is
+sensitive to observation placement.
+
+@examples[#:eval the-eval
+(enumerate
+ #:stop 1e-3
+ (model
+  (define n (sample (geometric-dist 1/2)))
+  n))
+(enumerate
+ #:stop 1e-3
+ (model
+  (score (linear-dnum 0.01))
+  (define n (sample (geometric-dist 1/2)))
+  (score (linear-dnum 100))
+  n))
+]}
 
 @; ============================================================
 
