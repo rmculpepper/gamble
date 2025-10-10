@@ -35,6 +35,8 @@
       (match (thunk)
         [(done v)
          (values (hash-set h v (dnum+ dn (hash-ref h v #f))) wl)]
+        [(list (list* _ wdn continue)) ;; score, continue immediately
+         (loop h wl (dnum* wdn dn) continue)]
         [(? list? dn+continue-list)
          (for/fold ([h h] [wl wl]) ([dn+continue (in-list dn+continue-list)])
            (match-define (list* tdn wdn continue) dn+continue)
@@ -61,6 +63,8 @@
       [(done v)
        (define h* (hash-set h v (dnum+ dn (hash-ref h v #f))))
        (heaploop heap heapdn h*)]
+      [(list (list* _ wdn continue)) ;; score, continue immediately
+       (continueloop heap heapdn h (dnum* wdn dn) continue)]
       [(? list? wdn+continue-list)
        (define-values (heap* heapdn*)
          (for/fold ([heap heap] [heapdn heapdn])
