@@ -5,6 +5,7 @@
 (require (for-template racket/base "../base.rkt")
          (for-syntax racket/base
                      racket/syntax)
+         racket/match
          racket/runtime-path
          syntax/id-table
          syntax/stx
@@ -18,6 +19,8 @@
                      next-call-site
                      call-site-counter
                      relocate))
+
+(define-logger analyze)
 
 ;; transform+analyze : Syntax[EE] -> (values Syntax[EE*] Nat)
 (define (transform+analyze ee)
@@ -39,17 +42,12 @@
          #:pre [pre void]           ;; Syntax -> Void
          #:replace [replace #f]     ;; Syntax -> (U Syntax #f) -- replace recur
          #:post [post #f])          ;; Syntax Syntax -> Syntax
-  (define (bind-flatten stx [onto null])
-    (when bind
-      (bind (let bf ([stx stx] [onto null])
-              (cond [(identifier? stx) (cons stx onto)]
-                    [(syntax? stx) (bf (syntax-e stx) onto)]
-                    [(pair? stx) (bf (car stx) (bf (cdr stx) onto))]
-                    [else onto])))))
+  (define (bind-flatten stx)
+    (when bind (bind (flatten-identifiers stx))))
   (define (loop stx)
     (pre stx)
     (define processed-stx
-      (cond [(and replace (replace stx))
+      (cond [(and replace (replace stx loop))
              => values]
             [else
              (define-template-metafunction recur
@@ -88,6 +86,94 @@
     (if post (post processed-stx stx) processed-stx))
   loop)
 
+(define (make-expression-folder
+         #:bind [bind #f]           ;; (Listof Identifier) -> Void
+         #:pre [pre #f]             ;; Syntax -> Void
+         #:replace [replace #f]     ;; Syntax (Syntax -> (Tree X)) -> (Tree X)
+         #:reduce [reduce #f]       ;; (Listof X) -> X
+         #:fold [fold0 #f]          ;; (Tree X) -> X
+         #:post [post #f])          ;; Syntax X -> X
+  (define (bind-flatten stx)
+    (when bind (bind (flatten-identifiers stx))))
+  (define (fold v)
+    (if fold0
+        (fold0 v)
+        (match v
+          [(list* '#%plain-lambda rs) (reduce rs)]
+          [(list* 'case-lambda rss) (reduce (map reduce rss))]
+          [(list* 'if rs) (reduce rs)]
+          [(list* 'begin rs) (reduce rs)]
+          [(list* 'begin0 rs) (reduce rs)]
+          [(list* 'let-values rhs-rs body-rs)
+           (reduce (list (reduce rhs-rs) (reduce body-rs)))]
+          [(list* 'letrec-values rhs-rs body-rs)
+           (reduce (list (reduce rhs-rs) (reduce body-rs)))]
+          [(list* 'with-continuation-mark rs) (reduce rs)]
+          [(list* '#%plain-app rs) (reduce rs)]
+          [(list 'set! r) r]
+          [(list '#%expression r) r]
+          ['(variable) (reduce null)]
+          ['(quote) (reduce null)]
+          ['(quote-syntax) (reduce null)]
+          ['(#%top) (reduce null)]
+          ['(#%variable-reference) (reduce null)]
+          [(list 'just r) r])))
+  (define (loop* es)
+    (map loop (syntax->list es)))
+  (define (loop stx)
+    (when pre (pre stx))
+    (define result
+      (cond [(and replace (replace stx loop))
+             => values]
+            [else
+             (syntax-parse stx
+               #:literal-sets (kernel-literals)
+               [var:id (fold '(variable))]
+               [(#%plain-lambda ~! formals e ...)
+                (bind-flatten #'formals)
+                (fold (list* '#%plain-lambda (loop* #'(e ...))))]
+               [(case-lambda ~! [formals e ...] ...)
+                (bind-flatten #'(formals ...))
+                (fold (list* 'case-lambda (map loop* (syntax->list #'((e ...) ...)))))]
+               [(if ~! e1 e2 e3)
+                (fold (list* 'if (loop* #'(e1 e2 e3))))]
+               [(begin ~! e ...)
+                (fold (list* 'begin (loop* #'(e ...))))]
+               [(begin0 ~! e ...)
+                (fold (list* 'begin0 (loop* #'(e ...))))]
+               [(let-values ~! ([vars rhs] ...) body ...)
+                (bind-flatten #'(vars ...))
+                (fold (list* 'let-values (loop* #'(rhs ...)) (loop* #'(body ...))))]
+               [(letrec-values ~! ([vars rhs] ...) body ...)
+                (bind-flatten #'(vars ...))
+                (fold (list* 'letrec-values (loop* #'(rhs ...)) (loop* #'(body ...))))]
+               [(set! ~! var e)
+                (fold (list 'set! (loop #'e)))]
+               [(with-continuation-mark ~! e1 e2 e3)
+                (fold (list* 'with-continuation-mark (loop* #'(e1 e2 e3))))]
+               [(#%plain-app ~! f e ...)
+                (fold (list* '#%plain-app (loop* #'(f e ...))))]
+               [(#%expression ~! e)
+                (fold (list '#%expression (loop #'e)))]
+               [(quote ~! . _)
+                (fold '(quote))]
+               [(quote-syntax ~! . _)
+                (fold '(quote-syntax))]
+               [(#%top ~! . _)
+                (fold '(#%top))]
+               [(#%variable-reference ~! . _)
+                (fold '(#%variable-reference))])]))
+    (if post (post stx result) result))
+  (define (expression-folder stx) (loop stx))
+  expression-folder)
+
+(define (flatten-identifiers stx)
+  (let loop ([stx stx] [onto null])
+    (cond [(identifier? stx) (cons stx onto)]
+          [(syntax? stx) (loop (syntax-e stx) onto)]
+          [(pair? stx) (loop (car stx) (loop (cdr stx) onto))]
+          [else onto])))
+
 ;; ============================================================
 ;; Modification counter (used to find fixed points)
 
@@ -107,7 +193,6 @@
 (define-syntax-rule (modfix e)
   ;; repeat until mod-counter stops changing
   (let loop ([i 0])
-    ;; (eprintf "modfix loop ~s\n" i)
     (define old-mod-counter mod-counter)
     (define result e)
     (if (= mod-counter old-mod-counter)
@@ -168,71 +253,34 @@
     (values (transform-TAG+CS* stx)
             (call-site-counter))))
 
-(define (transform-TAG+CS* stx)
-  (define-template-metafunction recur
-    (syntax-parser [(recur e) (transform-TAG+CS* #'e)]))
-  (define-syntax-rule (T tmpl)
-    (relocate (template tmpl) stx))
-  (define the-tag (new-tag stx))
-  (define processed-stx
-    (syntax-parse stx
-      #:literal-sets (kernel-literals)
-      ;; Fully-Expanded Programs
-      ;; -- module body
-      [(#%plain-module-begin form ...)
-       (T (#%plain-module-begin (recur form) ...))]
-      ;; -- module-level form
-      [(#%provide . _) stx]
-      [(begin-for-syntax . _) stx]
-      [(module . _) stx]
-      [(module* . _) stx]
-      [(#%declare . _) stx]
-      ;; -- general top-level form
-      [(define-values ids e)
-       (T (define-values ids (recur e)))]
-      [(define-syntaxes . _) stx]
-      [(#%require . _) stx]
-      ;; -- expr
-      [var:id #'var]
-      [(#%plain-lambda formals e ...)
-       (T (#%plain-lambda formals (recur e) ...))]
-      [(case-lambda [formals e ...] ...)
-       (T (case-lambda [formals (recur e) ...] ...))]
-      [(if e1 e2 e3)
-       (T (if (recur e1) (recur e2) (recur e3)))]
-      [(begin e ...)
-       (T (begin (recur e) ...))]
-      [(begin0 e ...)
-       (T (begin0 (recur e) ...))]
-      [(let-values ([vars rhs] ...) body ...)
-       (T (let-values ([vars (recur rhs)] ...)
-            (recur body) ...))]
-      [(letrec-values ([vars rhs] ...) body ...)
-       (T (letrec-values ([vars (recur rhs)] ...)
-            (recur body) ...))]
-      [(set! var e)
-       (raise-syntax-error #f "disallowed within model" stx)]
-      [(quote d) stx]
-      [(quote-syntax . _) stx]
-      [(with-continuation-mark e1 e2 e3)
-       (T (with-continuation-mark (recur e1) (recur e2) (recur e3)))]
-      [(#%plain-app f:id e ...)
-       (define cs (next-call-site))
-       (syntax-property (T (#%plain-app (recur f) (recur e) ...))
-                        'call-site cs)]
-      [(#%plain-app f e ...)
-       (define cs (next-call-site))
-       (with-syntax ([(ftmp) (generate-temporaries #'(ftmp))])
-         (syntax-property (T (recur (let-values ([(ftmp) f]) (#%plain-app ftmp e ...))))
-                          'call-site cs))]
-      [(#%top . _) stx]
-      [(#%variable-reference . _) stx]
-      [(#%expression e)
-       (T (#%expression (recur e)))]
-      [_ (raise-syntax-error #f "unhandled syntax in transform-TAG" stx)]
-      ))
-  (syntax-property (syntax-property processed-stx 'tag the-tag)
-                   'original-for-check-syntax #t))
+(define transform-TAG+CS*
+  (make-expression-traverser
+   #:replace
+   (lambda (stx recur0)
+     (define-template-metafunction recur
+       (syntax-parser [(recur e) (recur0 #'e)]))
+     (define-syntax-rule (T tmpl)
+       (relocate (syntax tmpl) stx))
+     (syntax-parse stx
+       #:literal-sets (kernel-literals)
+       [(set! ~! . _)
+        (raise-syntax-error #f "disallowed within model" stx)]
+       [(#%plain-app f:id e ...)
+        (let ([result-stx (T (#%plain-app (recur f) (recur e) ...))])
+          (syntax-property result-stx 'call-site (next-call-site)))]
+       [(#%plain-app f e ...)
+        (with-syntax ([(ftmp) (generate-temporaries #'(ftmp))])
+          (let ([result-stx (T (recur (let-values ([(ftmp) f])
+                                        (#%plain-app ftmp e ...))))])
+            (syntax-property result-stx 'call-site (next-call-site))))]
+       [_ #f]))
+   #:post
+   (lambda (result-stx orig-stx)
+     (define the-tag (new-tag orig-stx))
+     (log-analyze-info "TAG ~s ~e\n" the-tag result-stx)
+     (let* ([result-stx (syntax-property result-stx 'tag the-tag)]
+            [result-stx (syntax-property result-stx 'original-for-check-syntax #t)])
+       result-stx))))
 
 (define (relocate stx loc-stx)
   (datum->syntax stx (syntax-e stx) loc-stx loc-stx))
@@ -253,82 +301,31 @@
   (free-id-table-ref FUN-EXP-table id default))
 
 ;; analyze-FUN-EXP : Syntax -> Void
-(define (analyze-FUN-EXP stx)
-  (define (recur e) (analyze-FUN-EXP e))
-  (define (recur* es) (for-each recur (stx->list es)))
-  (define (bind ids rhs)
-    (syntax-parse ids
-      [(x:id)
-       (when (lambda-form? rhs)
-         (free-id-table-set! FUN-EXP-table #'x (TAG rhs)))]
-      [_ (void)]))
-  (define (bind* bindpairs)
-    (for ([bindpair (in-list (stx->list bindpairs))])
-      (syntax-parse bindpair
-        [(ids rhs) (bind #'ids #'rhs)])))
-  (syntax-parse stx
-    #:literal-sets (kernel-literals)
-    ;; Fully-Expanded Programs
-    ;; -- module body
-    [(#%plain-module-begin form ...)
-     (recur* #'(form ...))]
-    ;; -- module-level form
-    [(#%provide . _) (void)]
-    [(begin-for-syntax . _) (void)]
-    [(module . _) (void)]
-    [(module* . _) (void)]
-    [(#%declare . _) (void)]
-    ;; -- general top-level form
-    [(define-values ids e)
-     (bind #'ids #'e)
-     (recur #'e)]
-    [(define-syntaxes . _) (void)]
-    [(#%require . _) (void)]
-    ;; -- expr
-    [var:id (void)]
-    [(#%plain-lambda formals e ...)
-     (recur* #'(e ...))]
-    [(case-lambda [formals e ...] ...)
-     (recur* #'(e ... ...))]
-    [(if e1 e2 e3)
-     (recur* #'(e1 e2 e3))]
-    [(begin e ...)
-     (recur* #'(e ...))]
-    [(begin0 e ...)
-     (recur* #'(e ...))]
-    [(let-values ([vars rhs] ...) body ...)
-     (bind* #'([vars rhs] ...))
-     (recur* #'(rhs ...))
-     (recur* #'(body ...))]
-    [(letrec-values ([vars rhs] ...) body ...)
-     (bind* #'([vars rhs] ...))
-     (recur* #'(rhs ...))
-     (recur* #'(body ...))]
-    [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ...)
-     (bind* #'([vvars vrhs] ...))
-     (recur* #'(vrhs ...))
-     (recur* #'(body ...))]
-    [(set! var e)
-     (recur #'e)]
-    [(quote d) #f]
-    [(quote-syntax . _) #f]
-    [(with-continuation-mark e1 e2 e3)
-     (recur* #'(e1 e2 e3))]
-    [(#%plain-app e ...)
-     (recur* #'(e ...))]
-    [(#%top . _) (void)]
-    [(#%variable-reference . _) (void)]
-    [(#%expression e)
-     (recur #'e)]
-    [_ (raise-syntax-error #f "unhandled syntax in analyze-FUN-EXP" stx)]
-    ))
-
-(define (lambda-form? rhs)
-  (syntax-parse rhs
-    #:literal-sets (kernel-literals)
-    [(#%plain-lambda formals e body ...) #t]
-    [(case-lambda [formals body ...] ...) #t]
-    [_ #f]))
+(define analyze-FUN-EXP
+  (let ()
+    (define (lambda-form? rhs)
+      (syntax-parse rhs
+        #:literal-sets (kernel-literals)
+        [(#%plain-lambda formals e body ...) #t]
+        [(case-lambda [formals body ...] ...) #t]
+        [_ #f]))
+    (define (bind* bindpairs)
+      (for ([bindpair (in-list (stx->list bindpairs))])
+        (syntax-parse bindpair
+          [((x:id) rhs)
+           (when (lambda-form? #'rhs)
+             (free-id-table-set! FUN-EXP-table #'x (TAG #'rhs)))]
+          [_ (void)])))
+    (make-expression-folder
+     #:pre (lambda (stx)
+             (syntax-parse stx
+               #:literal-sets (kernel-literals)
+               [(let-values ([vars rhs] ...) body ...)
+                (bind* #'([vars rhs] ...))]
+               [(letrec-values ([vars rhs] ...) body ...)
+                (bind* #'([vars rhs] ...))]
+               [_ (void)]))
+     #:fold void)))
 
 
 ;; ============================================================
@@ -356,82 +353,37 @@
   (hash-set/mod! LAM-CALLS-ERP (TAG stx) val))
 
 ;; analyze-CALLS-ERP : Syntax -> Boolean
-(define (analyze-CALLS-ERP stx)
-  (define (recur e) (analyze-CALLS-ERP e))
-  (define (recur* es) (strict-ormap recur (stx->list es)))
-  (define result
-    (syntax-parse stx
-      #:literal-sets (kernel-literals)
-      ;; Fully-Expanded Programs
-      ;; -- module body
-      [(#%plain-module-begin form ...)
-       (modfix (recur* #'(form ...)))]
-      ;; -- module-level form
-      [(#%provide . _) #f]
-      [(begin-for-syntax . _) #f]
-      [(module . _) #f]
-      [(module* . _) #f]
-      [(#%declare . _) #f]
-      ;; -- general top-level form
-      [(define-values ids e)
-       (modfix (recur #'e))]
-      [(define-syntaxes . _) #f]
-      [(#%require . _) #f]
-      ;; -- expr
-      [var:id
-       #f]
-      [(#%plain-lambda formals e ...)
-       (let ([body-calls? (recur* #'(e ...))])
-         (set-LAM-CALLS-ERP! stx body-calls?))
-       #f]
-      [(case-lambda [formals e ...] ...)
-       (let ([body-calls? (recur* #'(e ... ...))])
-         (set-LAM-CALLS-ERP! stx body-calls?))
-       #f]
-      [(if e1 e2 e3)
-       (recur* #'(e1 e2 e3))]
-      [(begin e ...)
-       (recur* #'(e ...))]
-      [(begin0 e ...)
-       (recur* #'(e ...))]
-      [(let-values ([vars rhs] ...) body ...)
-       (strict-or (recur* #'(rhs ...))
-                  (recur* #'(body ...)))]
-      [(letrec-values ([vars rhs] ...) body ...)
-       (strict-or (modfix (recur* #'(rhs ...)))
-                  (recur* #'(body ...)))]
-      [(letrec-syntaxes+values ([svars srhs] ...) ([vvars vrhs] ...) body ...)
-       (strict-or (modfix (recur* #'(vrhs ...)))
-                  (recur* #'(body ...)))]
-      [(set! var e)
-       (recur #'e)]
-      [(quote d) #f]
-      [(quote-syntax . _) #f]
-      [(with-continuation-mark e1 e2 e3)
-       (recur* #'(e1 e2 e3))]
-      ;; #%plain-app -- see above
-      [(#%plain-app f:id e ...)
-       (define calls-erp? (fun-calls-erp? #'f))
-       (set-APP-CALLS-ERP! stx calls-erp?)
-       (or (recur* #'(e ...)) calls-erp?)]
-      [(#%plain-app e ...)
-       (set-APP-CALLS-ERP! stx #t)
-       (or (recur* #'(e ...)) #t)]
-      [(#%top . _) #f]
-      [(#%variable-reference . _) #f]
-      [(#%expression e)
-       (recur #'e)]
-      [_ (raise-syntax-error #f "unhandled syntax in analyze-CALLS-ERP" stx)]
-      ))
-  result)
-
-(define (strict-or x y)
-  (or x y))
-(define (strict-ormap f xs)
-  (for/fold ([r #f]) ([x (in-list xs)]) (or (f x) r)))
+(define analyze-CALLS-ERP
+  (let ()
+    (define (replace stx recur)
+      (syntax-parse stx
+        #:literal-sets (kernel-literals)
+        [(letrec-values ([vars rhs] ...) body ...)
+         (list* 'letrec-values
+                (modfix (map recur (syntax->list #'(rhs ...))))
+                (map recur (syntax->list #'(body ...))))]
+        [_ #f]))
+    (define (reduce rs) (ormap values rs))
+    (define (post stx r)
+      (syntax-parse stx
+        #:literal-sets (kernel-literals)
+        [(#%plain-lambda ~! . _)
+         (begin (set-LAM-CALLS-ERP! stx r) #f)]
+        [(case-lambda ~! . _)
+         (begin (set-LAM-CALLS-ERP! stx r) #f)]
+        ;; letrec-values -- FIXME, need fixed point
+        [(#%plain-app f:id ~! . _)
+         (define calls-erp? (fun-calls-erp? #'f))
+         (begin (set-APP-CALLS-ERP! stx calls-erp?) (or r calls-erp?))]
+        [(#%plain-app ~! . _)
+         (begin (set-APP-CALLS-ERP! stx #t) #t)]
+        [_ r]))
+    (make-expression-folder
+     #:replace replace
+     #:reduce reduce
+     #:post post)))
 
 (define (fun-calls-erp? id)
-  ;; conservative: #t if unknown function
   (cond [(FUN-EXP id #f)
          => (lambda (lam-tag)
               (hash-ref LAM-CALLS-ERP lam-tag #f))]
@@ -454,8 +406,6 @@
              => (lambda (refs) (cons (cons x refs) replacements))]
             [else replacements])))
   (values (map car replacements) (map cadr replacements) (map caddr replacements)))
-
-;; FIXME: need to fix free-vars to include registered top-level and module-level vars
 
 ;; ============================================================
 

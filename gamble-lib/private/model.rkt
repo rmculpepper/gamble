@@ -44,7 +44,7 @@
     (define (bound? id) (free-id-table-ref bound id #f))
     (define (bound! xs) (for ([x (in-list xs)]) (free-id-table-set! bound x #t)))
     (define bindings null) ;; mutated, (Listof (list Identifier Syntax[Expr]))
-    (define (replace stx)
+    (define (replace stx recur)
       (cond [(syntax-property stx no-instrument-property)
              (define fvs (free-variables stx #:add-lexical? #f #:add bound?))
              (with-syntax ([body stx]
