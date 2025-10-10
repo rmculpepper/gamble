@@ -5,6 +5,7 @@
 (require racket/match
          racket/generic
          racket/sequence
+         scramble/struct
          "measurable.rkt"
          "../util/dnum.rkt"
          (submod "util.rkt" math)
@@ -169,6 +170,22 @@
   ;; that the data are have non-zero likelihood. The `data` argument
   ;; is a vector for (currently) no good reason.
   (-conjugate conjugate-dist spec data))  ;; Dist DistSpec Vector -> Dist/#f
+
+;; ============================================================
+
+;; distaux : Supertype for dists with hidden cache of auxiliary information.
+;; Use `#:super struct:distaux` to avoid `match` expecting aux field.
+(struct distaux ([aux #:auto #:mutable])
+  #:property prop:auto-equal+hash '())
+
+(define-generics aux-dist
+  (-calc-aux aux-dist))
+
+(define (-aux d)
+  (or (distaux-aux d)
+      (let ([aux (-calc-aux d)])
+        (set-distaux-aux! d aux)
+        aux)))
 
 ;; ============================================================
 

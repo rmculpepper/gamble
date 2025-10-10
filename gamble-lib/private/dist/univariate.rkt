@@ -8,6 +8,7 @@
          racket/flonum
          racket/vector
          racket/generic
+         scramble/struct
          (prefix-in m: math/distributions)
          (prefix-in m: math/special-functions)
          (prefix-in m: (only-in math/flonum flbinomial fllog-binomial))
@@ -388,22 +389,24 @@
   ([degrees positive-rational? fl]
    [mean rational? fl]
    [scale positive-rational? fl])
-  #:extension (ext) ;; #f or math/distribution Student-t-Dist
+  #:super struct:distaux  ;; aux : #f or math/distribution Student-t-Dist
+  #:property prop:auto-custom-write #t
+  #:property prop:auto-equal+hash #t
   #:methods gen:dist
   [(define (-sample self)
-     (-t-sample (-t-ext self)))
+     (-t-sample (-aux  self)))
    (define (-pdf self x log?)
-     (-t-pdf (-t-ext self) x log?))]
+     (-t-pdf (-aux self) x log?))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
-     (-t-cdf (-t-ext self) x log? 1-p?))
+     (-t-cdf (-aux self) x log? 1-p?))
    (define (-invcdf self p log? 1-p?)
-     (-t-inv-cdf (-t-ext self) p log? 1-p?))
+     (-t-inv-cdf (-aux self) p log? 1-p?))
    (define (-support self)
      (real-range -inf.0 +inf.0))
    (define (-mean self)
-     (match-define (student-t-dist degrees mean scale _) self)
+     (match-define (student-t-dist degrees mean scale) self)
      (if (> degrees 1) mean #f))
    (define (-median self)
      (student-t-dist-mean self))
@@ -413,15 +416,11 @@
      (define degrees (student-t-dist-degrees self))
      (cond [(> degrees 2) (/ degrees (- degrees 2.0))]
            [(> degrees 1) +inf.0]
-           [else #|undefined|# #f]))])
-
-(define (-t-ext self)
-  (or (student-t-dist-ext self)
-      (let ()
-        (match-define (student-t-dist degrees mean scale _) self)
-        (define ext (m:student-t-dist degrees mean scale))
-        (set-student-t-dist-ext! self ext)
-        ext)))
+           [else #|undefined|# #f]))]
+  #:methods gen:aux-dist
+  [(define (-calc-aux self)
+     (match-define (student-t-dist degrees mean scale) self)
+     (m:student-t-dist degrees mean scale))])
 
 (module student-t typed/racket/base
   (require math/distributions)

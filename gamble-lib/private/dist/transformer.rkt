@@ -4,6 +4,7 @@
 #lang racket/base
 (require racket/match
          racket/generic
+         scramble/struct
          "base.rkt"
          (submod "util.rkt" math)
          (submod "util.rkt" define)
@@ -129,16 +130,19 @@
   ([dist real-dist?]
    [a rational? fl]
    [b rational? fl])
-  #:extension (pa lpa w lw)
   #:guard (lambda (dist a b)
             (unless (< a b)
               (error 'clip-distx "empty range\n  range: (~e, ~e)" a b))
             (unless (< (dist-cdf dist a #f #f) (dist-cdf dist b #f #f))
               (error 'clib-distx "range has no mass\n  dist: ~e\n  range: (~e, ~e)" dist a b))
             (values dist a b))
+  #:super struct:distaux   ;; aux : (vector pa lpa w lw)
+  #:property prop:auto-custom-write #t
+  #:property prop:auto-equal+hash #t
   #:methods gen:dist
   [(define (-sample self)
-     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (match-define (clip-distx d a b) self)
+     (match-define (vector pa lpa w lw) (-aux self))
      (cond [(< w CLIP-REJECTION-THRESHOLD)
             (dist-inv-cdf d (+ pa (* w (random))))]
            [else
@@ -146,25 +150,28 @@
               (define x (dist-sample d))
               (if (<= a x b) x (loop)))]))
    (define (-pdf self x log?)
-     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (match-define (clip-distx d a b) self)
+     (match-define (vector pa lpa w lw) (-aux self))
      (cond [log? (- (dist-pdf d x #t) lw)]
            [else (/ (dist-pdf d x #f) w)]))]
   #:methods gen:conjugate-dist
   [(define/generic dist-conjugate -conjugate)
    (define (-conjugate self xdistp x)
-     (match-define (clip-distx d a b _ _ _ _) self)
+     (match-define (clip-distx d a b) self)
      (define dc (and (conjugate-dist? d) (dist-conjugate d xdistp x)))
      (and dc (clip-distx dc a b)))]
   #:methods gen:real-dist []
   #:methods gen:numeric-dist
   [(define (-cdf self x log? 1-p?)
-     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (match-define (clip-distx d a b) self)
+     (match-define (vector pa lpa w lw) (-aux self))
      (cond [(<= x a) (convert-p 0.0 log? 1-p?)]
            [(>= x b) (convert-p 1.0 log? 1-p?)]
            [log? (- (logspace- (dist-cdf d x #t 1-p?) lpa) lw)]
            [else (/ (- (dist-cdf d x #f 1-p?) pa) w)]))
    (define (-invcdf self p log? 1-p?)
-     (match-define (clip-distx d a b pa lpa w lw) (-clip-init self))
+     (match-define (clip-distx d a b) self)
+     (match-define (vector pa lpa w lw) (-aux self))
      (cond [log?
             (define p* (logspace+ lpa (+ p lw)))
             (dist-inv-cdf d p* #t 1-p?)]
@@ -172,26 +179,21 @@
             (define p* (+ pa (* p w)))
             (dist-inv-cdf d p* #f 1-p?)]))
    (define (-support self)
-     (match-define (clip-distx d a b _ _ _ _) self)
+     (match-define (clip-distx d a b) self)
      (match (dist-support d)
        [(real-range lo hi)
         (real-range (max a lo) (min b hi))]
-       [_ (real-range a b)]))])
+       [_ (real-range a b)]))]
+  #:methods gen:aux-dist
+  [(define (-calc-aux self)
+     (match-define (clip-distx d a b) self)
+     (define pa (dist-cdf d a #f #f))
+     (define lpa (dist-cdf d a #t #f))
+     (define w (- (dist-cdf d b #f #f) pa))
+     (define lw (logspace- (dist-cdf d b #t #f) lpa))
+     (vector pa lpa w lw))])
 
 (define CLIP-REJECTION-THRESHOLD 0.25)
-
-(define (-clip-init self)
-  (unless (clip-distx-lw self)
-    (match-define (clip-distx d a b _ _ _ _) self)
-    (define pa (dist-cdf d a #f #f))
-    (define lpa (dist-cdf d a #t #f))
-    (define w (- (dist-cdf d b #f #f) pa))
-    (define lw (logspace- (dist-cdf d b #t #f) lpa))
-    (set-clip-distx-pa! self pa)
-    (set-clip-distx-lpa! self lpa)
-    (set-clip-distx-w! self w)
-    (set-clip-distx-lw! self lw))
-  self)
 
 ;; ----------------------------------------
 ;; exp/log
