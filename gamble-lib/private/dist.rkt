@@ -93,7 +93,7 @@
 (require "dist/transformer.rkt")
 (provide (struct-out mixture-distx)
          (struct-out affine-distx)
-         (struct-out clip-distx)
+         (struct-out truncate-distx)
          (struct-out exp-distx))
 
 ;; ----------------------------------------
@@ -134,7 +134,7 @@
           [(uniform-dist? dist)
            (match-define (uniform-dist lo hi) dist)
            (let ([d (likelihood-pattern->dist xdistp xs)])
-             (and d (clip-distx d lo hi)))]
+             (and d (truncate-distx d lo hi)))]
           [else #f]))
 
   ;; likelihood-pattern->dist : Pattern (Vectorof X) -> Dist
