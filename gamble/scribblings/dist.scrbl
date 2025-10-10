@@ -451,19 +451,20 @@ inverse is applied when evaluating the density, CDF, etc.
 (dist->pict (affine-distx (triangle-dist 0 5 4) 2 1))
 ]}
 
-@defstruct*[clip-distx
+@defstruct*[truncate-distx
             ([dist real-dist?]
              [a real?]
              [b real?])]{
 
-Clips @racket[dist] to the closed interval [@racket[a], @racket[b]].
+Truncates @racket[dist] to the closed interval [@racket[a], @racket[b]] and
+renormalizes the density.
 
 If the interval is small, the clipped dist is sampled
 using the @racket[dist-inv-cdf] method of @racket[dist]; otherwise,
 rejection sampling is used.
 
 @examples[#:eval the-eval
-(dist->pict (clip-distx (normal-dist 0 1) -1 1))
+(dist->pict (truncate-distx (normal-dist 0 1) -1 1))
 ]}
 
 @defstruct*[exp-distx
