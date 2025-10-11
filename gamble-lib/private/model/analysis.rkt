@@ -113,8 +113,9 @@
     (values (transform-TAG+CS* stx)
             (call-site-counter))))
 
-(define transform-TAG+CS*
-  (make-expression-traverser
+(define (transform-TAG+CS* stx)
+  (expression-traverse
+   stx
    #:replace
    (lambda (stx recur0)
      (define-template-metafunction recur
@@ -158,31 +159,31 @@
   (free-id-table-ref FUN-EXP-table id default))
 
 ;; analyze-FUN-EXP : Syntax -> Void
-(define analyze-FUN-EXP
-  (let ()
-    (define (lambda-form? rhs)
-      (syntax-parse rhs
-        #:literal-sets (kernel-literals)
-        [(#%plain-lambda formals e body ...) #t]
-        [(case-lambda [formals body ...] ...) #t]
-        [_ #f]))
-    (define (bind* bindpairs)
-      (for ([bindpair (in-list (stx->list bindpairs))])
-        (syntax-parse bindpair
-          [((x:id) rhs)
-           (when (lambda-form? #'rhs)
-             (free-id-table-set! FUN-EXP-table #'x (TAG #'rhs)))]
-          [_ (void)])))
-    (make-expression-folder
-     #:pre (lambda (stx)
-             (syntax-parse stx
+(define (analyze-FUN-EXP stx)
+  (expression-fold
+   stx
+   #:pre (lambda (stx)
+           (define (lambda-form? rhs)
+             (syntax-parse rhs
                #:literal-sets (kernel-literals)
-               [(let-values ([vars rhs] ...) body ...)
-                (bind* #'([vars rhs] ...))]
-               [(letrec-values ([vars rhs] ...) body ...)
-                (bind* #'([vars rhs] ...))]
-               [_ (void)]))
-     #:fold void)))
+               [(#%plain-lambda formals e body ...) #t]
+               [(case-lambda [formals body ...] ...) #t]
+               [_ #f]))
+           (define (bind* bindpairs)
+             (for ([bindpair (in-list (stx->list bindpairs))])
+               (syntax-parse bindpair
+                 [((x:id) rhs)
+                  (when (lambda-form? #'rhs)
+                    (free-id-table-set! FUN-EXP-table #'x (TAG #'rhs)))]
+                 [_ (void)])))
+           (syntax-parse stx
+             #:literal-sets (kernel-literals)
+             [(let-values ([vars rhs] ...) body ...)
+              (bind* #'([vars rhs] ...))]
+             [(letrec-values ([vars rhs] ...) body ...)
+              (bind* #'([vars rhs] ...))]
+             [_ (void)])))
+  (void))
 
 
 ;; ============================================================
@@ -210,35 +211,35 @@
   (hash-set/mod! LAM-CALLS-ERP (TAG stx) val))
 
 ;; analyze-CALLS-ERP : Syntax -> Boolean
-(define analyze-CALLS-ERP
-  (let ()
-    (define (replace stx recur)
-      (syntax-parse stx
-        #:literal-sets (kernel-literals)
-        [(letrec-values ([vars rhs] ...) body ...)
-         (list* 'letrec-values
-                (modfix (map recur (syntax->list #'(rhs ...))))
-                (map recur (syntax->list #'(body ...))))]
-        [_ #f]))
-    (define (reduce rs) (ormap values rs))
-    (define (post stx r)
-      (syntax-parse stx
-        #:literal-sets (kernel-literals)
-        [(#%plain-lambda ~! . _)
-         (begin (set-LAM-CALLS-ERP! stx r) #f)]
-        [(case-lambda ~! . _)
-         (begin (set-LAM-CALLS-ERP! stx r) #f)]
-        ;; letrec-values -- FIXME, need fixed point
-        [(#%plain-app f:id ~! . _)
-         (define calls-erp? (fun-calls-erp? #'f))
-         (begin (set-APP-CALLS-ERP! stx calls-erp?) (or r calls-erp?))]
-        [(#%plain-app ~! . _)
-         (begin (set-APP-CALLS-ERP! stx #t) #t)]
-        [_ r]))
-    (make-expression-folder
-     #:replace replace
-     #:reduce reduce
-     #:post post)))
+(define (analyze-CALLS-ERP stx)
+  (expression-fold
+   stx
+   #:replace
+   (lambda (stx recur)
+     (syntax-parse stx
+       #:literal-sets (kernel-literals)
+       [(letrec-values ([vars rhs] ...) body ...)
+        (list* 'letrec-values
+               (modfix (map recur (syntax->list #'(rhs ...))))
+               (map recur (syntax->list #'(body ...))))]
+       [_ #f]))
+   #:reduce
+   (lambda (rs) (ormap values rs))
+   #:post
+   (lambda (stx r)
+     (syntax-parse stx
+       #:literal-sets (kernel-literals)
+       [(#%plain-lambda ~! . _)
+        (begin (set-LAM-CALLS-ERP! stx r) #f)]
+       [(case-lambda ~! . _)
+        (begin (set-LAM-CALLS-ERP! stx r) #f)]
+       ;; letrec-values -- FIXME, need fixed point
+       [(#%plain-app f:id ~! . _)
+        (define calls-erp? (fun-calls-erp? #'f))
+        (begin (set-APP-CALLS-ERP! stx calls-erp?) (or r calls-erp?))]
+       [(#%plain-app ~! . _)
+        (begin (set-APP-CALLS-ERP! stx #t) #t)]
+       [_ r]))))
 
 (define (fun-calls-erp? id)
   (cond [(FUN-EXP id #f)
@@ -276,39 +277,20 @@
       (free-id-table-set! free id #t)))
   (define bound (make-free-id-table))
   (define (bound? id) (free-id-table-ref bound id #f))
-  (define (bound! x)
-    (cond [(identifier? x) (free-id-table-set! bound x #t)]
-          [(pair? x) (bound! (car x)) (bound! (cdr x))]
-          [(syntax? x) (bound! (syntax-e x))]))
-  (define (loop* es) (for-each loop (or (stx->list es) null)))
-  (define (loop e)
-    (syntax-parse e
-      #:literal-sets (kernel-literals)
-      [var:id
-       (unless (bound? #'var) (when (add? #'var) (free! #'var)))]
-      [(#%plain-lambda formals e ...)
-       (bound! #'formals)
-       (loop* #'(e ...))]
-      [(case-lambda [formals e ...] ...)
-       (bound! #'(formals ...))
-       (loop* #'(e ... ...))]
-      [(if e1 e2 e3) (loop* #'(e1 e2 e3))]
-      [(begin e ...) (loop* #'(e ...))]
-      [(begin0 e ...) (loop* #'(e ...))]
-      [(let-values ([vars rhs] ...) body ...)
-       (bound! #'(vars ...))
-       (loop* #'(rhs ... body ...))]
-      [(letrec-values ([vars rhs] ...) body ...)
-       (bound! #'(vars ...))
-       (loop* #'(rhs ... body ...))]
-      [(set! var e) (loop* #'(var e))]
-      [(quote d) (void)]
-      [(quote-syntax . _) (void)]
-      [(with-continuation-mark e1 e2 e3)
-       (loop* #'(e1 e2 e3))]
-      [(#%plain-app e ...) (loop* #'(e ...))]
-      [(#%top . var) (loop #'var)]
-      [(#%variable-reference . _) (void)]
-      [(#%expression e) (loop #'e)]))
-  (loop expr)
+  (expression-fold expr
+                   #:pre
+                   (lambda (stx)
+                     (syntax-parse stx
+                       #:literal-sets (kernel-literals)
+                       [var:id
+                        (when (and (not (bound? #'var)) (add? #'var))
+                          (free! #'var))]
+                       [(set! var e)
+                        (when (and (not (bound? #'var)) (add? #'var))
+                          (free! #'var))]
+                       [_ (void)]))
+                   #:bind
+                   (lambda (xs)
+                     (for ([x (in-list xs)])
+                       (free-id-table-set! bound x #t))))
   (reverse free-ids))
