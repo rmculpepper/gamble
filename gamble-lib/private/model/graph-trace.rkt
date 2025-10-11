@@ -10,6 +10,7 @@
                      syntax/stx
                      syntax/parse/experimental/template
                      "analysis.rkt"
+                     "traverse.rkt"
                      "known-functions.rkt")
          racket/match
          racket/class

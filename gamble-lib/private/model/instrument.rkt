@@ -10,6 +10,7 @@
                      syntax/stx
                      syntax/parse/experimental/template
                      "analysis.rkt"
+                     "traverse.rkt"
                      "known-functions.rkt")
          racket/match
          racket/stxparam
@@ -118,9 +119,6 @@
              (vector stx (+ pos -1) (+ pos span -1) (string-append "* " msg))))
       ;; (log-instr-info "tooltip(~s) for ~s" (if (syntax-original? stx) 'Y 'N) stx)
       (when tt (set-box! ttb (cons tt (unbox ttb))))))
-
-  (define (relocate stx loc-stx)
-    (if (identifier? stx) stx (datum->syntax stx (syntax-e stx) loc-stx stx)))
 
   ;; ----------------------------------------
   ;; Instrumenter
@@ -270,7 +268,7 @@
            #'(define-values (d.var ...) (instrument d.rhs))]
           ;; ----------------------------------------
           [_ (raise-syntax-error #f "unhandled syntax in instrument" stx)]))
-      (let ([result (relocate result stx)])
+      (let ([result (if (identifier? result) result (relocate result stx))])
         (cond [(eq? result stx) result]
               [(stx-pair? stx) (syntax-track-origin result stx (stx-car stx))]
               [else result])))))

@@ -6,6 +6,7 @@
                      syntax/parse
                      syntax/transformer
                      syntax/id-table
+                     "model/traverse.rkt"
                      "model/analysis.rkt")
          racket/stxparam
          racket/class
