@@ -151,20 +151,16 @@
                      #:debug? [debug? #f])
   (define init-ctx
     (new initializing-tracing-stochastic-ctx%
-         (prev-db (hash)) (new-keys null) (get-value get-value)))
+         (prev-db (new-db)) (new-keys null) (get-value get-value)))
   (define init-addr (if (fixnum? addr-seed) addr-seed '(0)))
   (define mrun (new model-runner% (mdl mdl) (init-addr init-addr)))
   (define init-trace (send mrun eval/ctx init-ctx))
-  (define keys (send init-ctx get-new-keys))
+  (define-values (keys tags dists) (db->keys+tags+dists (trace-db init-trace)))
   (define pdist
     (match keys
       [(list key) (send mrun get-slice-posterior 'model-slice key init-trace)]
       [_ #f]))
   (define eval-slice (send mrun make-eval-slice 'model-slice keys init-trace))
-  (define-values (tags dists)
-    (let ([init-db (trace-db init-trace)])
-      (for/lists (tags dists) ([key (in-list keys)])
-        (let ([e (hash-ref init-db key)]) (values (entry-tag e) (entry-dist e))))))
   (when debug?
     (printf "Slice addresses to tags and priors:\n")
     (for ([key (in-list keys)] [tag (in-list tags)] [dist (in-list dists)])

@@ -41,13 +41,12 @@
     ;; run : ModelRunner Trace -> (values Trace/#f TxInfo)
     (define/public (run mrun prev-trace)
       (define prev-db (trace-db prev-trace))
-      (define key (db-random-key (trace-db prev-trace) ok-tag?))
-      (cond [key
-             (define prev-e (hash-ref prev-db key))
-             (log-mcmc-info "Key to change = ~.s; tag ~e; value ~e"
-                            key (entry-tag prev-e) (entry-value prev-e))
-             (run/key mrun prev-trace key prev-e)]
-            [else (error 'single-site-transition "no suitable key to change")]))
+      (match (db-random (trace-db prev-trace) ok-tag?)
+        [(cons key prev-e)
+         (log-mcmc-info "Key to change = ~.s; tag ~e; value ~e"
+                        key (entry-tag prev-e) (entry-value prev-e))
+         (run/key mrun prev-trace key prev-e)]
+        [#f (error 'single-site-transition "no suitable key to change")]))
 
     ;; run/key : ModelRunner Trace DBKey Entry -> (values Trace/#f TxInfo)
     (define/public (run/key mrun prev-trace key prev-e)
@@ -100,8 +99,8 @@
     ;; nkeys-factor : Trace Trace -> Real
     ;; Account for backward and forward likelihood of selecting key.
     (define/private (nkeys-factor new-trace prev-trace)
-      (define new-nkeys (db-count* (trace-db new-trace) ok-tag?))
-      (define prev-nkeys (db-count* (trace-db prev-trace) ok-tag?))
+      (define new-nkeys (db-count (trace-db new-trace) ok-tag?))
+      (define prev-nkeys (db-count (trace-db prev-trace) ok-tag?))
       (cond [(zero? prev-nkeys)
              +inf.0]
             [else

@@ -24,14 +24,139 @@
 
 
 ;; ============================================================
-;; Trace, DB, Entry
+;; DB, Entry
+
+;; Entry = (entry Dist[X] X Real Tag)
+;; - lprior is redundant, always (dist-pdf dist value #t)
+(struct entry (dist value lprior tag) #:prefab)
+
+;; DeltaDB = (Hashof DBKey (U Entry Proposal))
+;; DBKey = Addr
+
+;; DB = (db (Vectorof (cons DBKey Entry)) Nat (U #f (Hashof DBKey Entry)))
+(struct tracedb (es n eh) #:mutable)
+
+(define DB-INIT-CAPACITY 10)
+
+;; new-db : Nat -> DB
+(define (new-db [capacity DB-INIT-CAPACITY])
+  (tracedb (make-vector capacity #f) 0 #f))
+
+;; db-ref : DB DBKey DB/#f -> Entry/#f
+;; The hintdb is db-in-progress of running model; if model accesses
+;; same RVs as previous run, then no need to create hash.
+(define (db-ref db key #:hint [hintdb #f])
+  (match-define (tracedb es n eh) db)
+  (define hint (and hintdb (tracedb-n hintdb)))
+  (define hintp (and hint (< hint n) (vector-ref es hint)))
+  (cond [(and hintp (equal? (car hintp) key)) (cdr hintp)]
+        [else (hash-ref (or eh (db-hash! db)) key #f)]))
+
+(define (db-set! db key e)
+  (define (grow n) (* 2 n))
+  (match-define (tracedb es n _) db)
+  (cond [(< n (vector-length es))
+         (vector-set! es n (cons key e))
+         (set-tracedb-n! db (add1 n))]
+        [else
+         (define es* (make-vector (grow n) #f))
+         (vector-copy! es* 0 es 0)
+         (set-tracedb-es! db es*)
+         (db-set! db key e)]))
+
+(define (db-hash! db)
+  (or (tracedb-eh db)
+      (let ([eh (make-hash)])
+        (match-define (tracedb es n #f) db)
+        (for ([ep (in-vector es 0 n)])
+          (hash-set! eh (car ep) (cdr ep)))
+        (set-tracedb-eh! db eh)
+        eh)))
+
+(define (db-finish! db)
+  (match-define (tracedb es n _) db)
+  (let ([eh (db-hash! db)])
+    (unless (= n (hash-count eh))
+      (error "collision"))) ;; FIXME
+  (when (< n (vector-length es))
+    (define es* (make-vector n #f))
+    (vector-copy! es* 0 es 0 n)
+    (set-tracedb-es! db es)))
+
+;; db-complete! : DB DB -> Void
+;; Completes a slice DB, whose keys are a subset of prev-db. The completed DB
+;; should be like prev-db except for the slice's entries.
+(define (db-complete! slice-db prev-db)
+  (define slice-eh (db-hash! slice-db))
+  (define prev-eh (db-hash! prev-db))
+  (begin
+    (match-define (tracedb prev-es prev-n _) prev-db)
+    (define es* (make-vector prev-n))
+    (for ([i (in-naturals)] [ep (in-vector prev-es 0 prev-n)])
+      (match-define (cons key prev-e) ep)
+      (cond [(hash-ref slice-eh key #f)
+             => (lambda (slice-e) (vector-set! es* i (cons key slice-e)))]
+            [else (vector-set! es* i ep)]))
+    (set-tracedb-es! slice-db es*)
+    (set-tracedb-n! slice-db prev-n))
+  (for ([(key prev-e) (in-hash prev-eh)])
+    (unless (hash-has-key? slice-eh key)
+      (hash-set! slice-eh key prev-e))))
+
+;; db->keys+tags+dists : DB -> (values (Listof DBKey) (Listof Tag) (Listof Dist))
+;; List order corresponds to program order!
+(define (db->keys+tags+dists db)
+  (match-define (tracedb es n _) db)
+  (define eps (for/list ([ep (in-vector es 0 n)]) ep))
+  (define keys (map car eps))
+  (define entries (map cdr eps))
+  (values keys (map entry-tag entries) (map entry-dist entries)))
+
+;; db-count : DB (Tag -> Boolean) -> Nat
+(define (db-count db [ok-tag? #f])
+  (cond [ok-tag?
+         (match-define (tracedb es n _) db)
+         (for/sum ([ep (in-vector es 0 n)])
+           (if (ok-tag? (entry-tag (cdr ep))) 1 0))]
+        [else (tracedb-n db)]))
+
+;; db-random : DB (Tag -> Boolean) -> #f or (cons DBKey Entry)
+(define (db-random db [ok-tag? #f])
+  (match-define (tracedb es n _) db)
+  (cond [(zero? n) #f]
+        [ok-tag?
+         (let loop ([iters 2])
+           (cond [(zero? iters)
+                  (define okn (db-count db ok-tag?))
+                  (and (> okn 0) (db-nth db (random okn) ok-tag?))]
+                 [else (let ([ep (vector-ref es (random n))])
+                         (cond [(ok-tag? (entry-tag (cdr ep))) ep]
+                               [else (loop (sub1 iters))]))]))]
+        [else (vector-ref es (random n))]))
+
+;; db-nth : DB Nat (Tag -> Boolean) -> (cons DBKey Entry)
+;; PRE: hash contains at least n+1 ok entries
+(define (db-nth db k [ok-tag? #f])
+  (match-define (tracedb es n _) db)
+  (cond [ok-tag?
+         (let loop ([index 0] [k k])
+           (unless (< index n) (error 'db-nth "internal error"))
+           (define ep (vector-ref es index))
+           (if (ok-tag? (entry-tag (cdr ep)))
+               (if (zero? k) ep (loop (add1 index) (sub1 k)))
+               (loop (add1 index) k)))]
+        [else (vector-ref es k)]))
+
+
+;; ============================================================
+;; Trace
 
 ;; A Trace is (trace Any DB Real Real)
 ;; - lprs is the sum of all log priors from db
 ;; - lobs is the sum of all log likelihoods of observations
 (struct trace (value db lprs lobs))
 
-(define init-trace (trace #f (hash) -inf.0 -inf.0))
+(define init-trace (trace #f (new-db) -inf.0 -inf.0))
 
 ;; trace-lj : Trace/#f -> Real
 ;; Returns the log joint probability of the trace (priors and observations).
@@ -42,52 +167,19 @@
 (define (traces-obs-diff tr1 tr2)
   (- (trace-lobs tr1) (trace-lobs tr2)))
 
+#;
 ;; traces-same-structure? : Trace Trace Boolean -> Boolean
 ;; If quick?, we already know new-trace has no *new* keys.
 (define (traces-same-structure? prev-trace new-trace [quick? #f])
   (define prev-db (trace-db prev-trace))
   (define new-db (trace-db new-trace))
-  (and (= (hash-count (trace-db prev-trace))
-          (hash-count (trace-db new-trace)))
+  (and (= (db-count (trace-db prev-trace))
+          (db-count (trace-db new-trace)))
        (or quick?
-           (for/and ([key (in-hash-keys prev-db)])
-             (hash-has-key? new-db key)))))
-
-;; DB = (Hashof DBKey Entry)
-;; DeltaDB = (Hashof DBKey (U Entry Proposal))
-;; DBKey = Addr
-
-;; Entry = (entry Dist[X] X Real Tag)
-;; - lprior is redundant, always (dist-pdf dist value #t)
-(struct entry (dist value lprior tag) #:prefab)
-
-;; db-entry-tag : DBKey Entry -> Tag
-(define (db-entry-tag key e) (entry-tag e))
-
-;; db-random-key : DB (Tag -> Boolean) -> K or #f
-(define (db-random-key h [ok-tag? #f])
-  (define n (db-count* h ok-tag?))
-  (and (> n 0) (db-nth-key h (random n) ok-tag?)))
-
-;; db-count* : DB (Tag -> Boolean) -> Nat
-(define (db-count* h [ok-tag? #f])
-  (if ok-tag?
-      (for/sum ([(k e) (in-hash h)] #:when (ok-tag? (db-entry-tag k e))) 1)
-      (hash-count h)))
-
-;; db-nth-key : DB Nat (Tag -> Boolean) -> DBKey
-;; PRE: hash contains at least n+1 ok keys
-(define (db-nth-key h n [ok-tag? #f])
-  (cond [ok-tag?
-         (let loop ([iter (hash-iterate-first h)] [n n])
-           (define key (hash-iterate-key h iter))
-           (if (ok-tag? (db-entry-tag key (hash-iterate-value h iter)))
-               (if (zero? n) key (loop (hash-iterate-next h iter) (sub1 n)))
-               (loop (hash-iterate-next h iter) n)))]
-        [else
-         (let loop ([iter (hash-iterate-first h)] [n n])
-           (cond [(zero? n) (hash-iterate-key h iter)]
-                 [else (loop (hash-iterate-next h iter) (sub1 n))]))]))
+           (let ([prev-eh (db-hash! prev-db)]
+                 [new-eh (db-hash! new-db)])
+             (for/and ([key (in-hash-keys prev-eh)])
+               (hash-has-key? new-eh key))))))
 
 ;; ============================================================
 ;; Transition interface
@@ -162,12 +254,11 @@
     (inherit fail)
     (inherit-field escape-prompt)
     (init-field prev-db       ;; DB, not mutated
-                delta-db      ;; DB, not mutated
+                delta-db      ;; DeltaDB, not mutated
                 [sumlprs 0.0] ;; real, mutated; sum of lprior of all entries in current-db
                 [sumlobs 0.0] ;; real, mutated; sum of log likelihoods of all observations
-                [new-keys #f] ;; #f or (Listof DBKey), mutated
                 [disallow-new/who #f])  ;; #f or Symbol
-    (field [current-db (make-hash)] ;; DB, mutated
+    (field [current-db (new-db)]    ;; DB, mutated
            [l-R/F 0.0]              ;; real, mutated
            [diff-lprs  0.0])        ;; see get-diff-lprs below
     (super-new)
@@ -187,10 +278,8 @@
         (error 'sample "unique address is required for MCMC sampler~a\n  dist: ~e"
                ";\n address management failed because of uninstrumented code"
                dist))
-      (when (hash-has-key? current-db addr)
-        (error 'sample "duplicate address\n  address: ~e" addr))
       (define delta-e (hash-ref delta-db addr #f))
-      (define prev-e (hash-ref prev-db addr #f))
+      (define prev-e (db-ref prev-db addr #:hint current-db))
       (when prev-e
         (unless (equal? tag (entry-tag prev-e))
           (error 'sample "tag changed\n  old tag: ~e\n  new tag: ~e" (entry-tag prev-e) tag)))
@@ -208,13 +297,13 @@
                         delta-dist delta-value)
          (unless (equal? delta-dist dist)
            (error 'sample "internal error: delta has wrong dist"))
-         (db-add! addr delta-e prev-e)
+         (add-entry! addr delta-e prev-e)
          delta-value]
         [(proposal-value new-value proposal-l-R/F)
          (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
                         prev-dist prev-value dist new-value (exp proposal-l-R/F))
          (define new-lpr (dist-pdf dist new-value #t))
-         (db-add! addr (entry dist new-value new-lpr tag) prev-e)
+         (add-entry! addr (entry dist new-value new-lpr tag) prev-e)
          (set! l-R/F (+ l-R/F proposal-l-R/F))
          new-value]
         [(proposal-kernel kernel)
@@ -223,14 +312,14 @@
          (log-mcmc-info "DELTA ~s: ~e, ~e => ~e, ~e; R/F=~s" addr
                         prev-dist prev-value dist new-value (exp proposal-l-R/F))
          (define new-lpr (dist-pdf dist new-value #t))
-         (db-add! addr (entry dist new-value new-lpr tag) prev-e)
+         (add-entry! addr (entry dist new-value new-lpr tag) prev-e)
          (set! l-R/F (+ l-R/F proposal-l-R/F))
          new-value]))
 
     (define/private (sample/prev dist tag addr prev-e)
       (cond [(equal? (entry-dist prev-e) dist)
              (log-mcmc-info "REUSE ~s: ~e, ~e" addr dist (entry-value prev-e))
-             (db-add! addr prev-e)
+             (add-entry! addr prev-e)
              (entry-value prev-e)]
             [(eq? (dist-type (entry-dist prev-e)) (dist-type dist))
              (define new-lpr (dist-pdf dist (entry-value prev-e) #t))
@@ -238,7 +327,7 @@
                     (define value (entry-value prev-e))
                     (define new-e (entry dist value new-lpr tag))
                     (log-mcmc-info "RESCORE ~s: ~e, ~e" addr dist value)
-                    (db-add! addr new-e prev-e)
+                    (add-entry! addr new-e prev-e)
                     value]
                    [else (fail)])]
             [else (sample/new dist addr prev-e)]))
@@ -253,8 +342,7 @@
                          (entry-dist prev-e) (entry-value prev-e)
                          dist value)
           (log-mcmc-info "NEW ~s: ~e, ~e" addr dist value))
-      (db-add! addr (entry dist value lpr tag) prev-e)
-      (when new-keys (set! new-keys (cons addr new-keys)))
+      (add-entry! addr (entry dist value lpr tag) prev-e)
       value)
 
     (define/override (-dscore who dn)
@@ -279,6 +367,7 @@
     ;; make-trace : Any -> Trace
     ;; Should only be called after run, once current-db has stopped changing.
     (define/public (make-trace value)
+      (db-finish! current-db)
       (trace value current-db sumlprs sumlobs))
 
     ;; get-diff-lprs : -> Real
@@ -290,14 +379,11 @@
     ;; Mutated by late proposals, eg from multi-site MH.
     (define/public (get-l-R/F) l-R/F)
 
-    ;; get-new-keys : -> (Listof DBKey) or #f
-    (define/public (get-new-keys) (and new-keys (reverse new-keys)))
-
-    ;; db-add! : DBKey Entry (U #f Entry) -> Void
+    ;; add-entry! : DBKey Entry (U #f Entry) -> Void
     ;; Add entry to current-db and update sumlprs, sumlobs.
     ;; When prev-e is not #f, also update diff-lprs.
-    (define/private (db-add! key e [prev-e #f])
-      (hash-set! current-db key e)
+    (define/private (add-entry! key e [prev-e #f])
+      (db-set! current-db key e)
       (define lpr (entry-lprior e))
       (set! sumlprs (+ sumlprs lpr))
       (when prev-e
@@ -310,15 +396,15 @@
 (define initializing-tracing-stochastic-ctx%
   (class tracing-stochastic-ctx%
     (init-field get-value)  ;; (Tag Dist ProposalValue/#f) -> ProposalValue/#f
-    (inherit-field prev-db)
+    (inherit-field prev-db current-db)
     (super-new [delta-db (hash)])
 
     (define real-prev-db prev-db)   ;; DB, not mutated
-    (set! prev-db (make-hash))      ;; DB, mutated
+    (set! prev-db (new-db))         ;; DB, mutated
 
     ;; Hack: override -sample to add entries to prev-db on demand.
     (define/override (-sample dist tag addr)
-      (define prev-e (hash-ref real-prev-db addr #f))
+      (define prev-e (db-ref real-prev-db addr #:hint current-db))
       (match (get-value tag dist (and prev-e (proposal-value (entry-value prev-e) 0.0)))
         [(proposal-value value _)
          (define lpr (dist-pdf dist value #t))
@@ -339,7 +425,7 @@
     (super-new)
 
     (define/override (-sample dist tag addr)
-      (cond [(hash-ref prev-db addr #f)
+      (cond [(db-ref prev-db addr)
              => (lambda (e)
                   (entry-value e))]
             [addr
@@ -506,13 +592,16 @@
           [#f #f]))
       (values eval-slice consistent-b))
 
+    (define/private (complete-slice-trace! slice-trace prev-db)
+      (db-complete! (trace-db slice-trace) prev-db))
+
     ;; ----------------------------------------
 
     ;; make-caching-eval-trace : Symbol DBKey[X] Trace -> (X Boolean -> Trace/#f)
     ;; Caching evaluator for single-key slices. Only mini evals are cached.
     (define/public (make-caching-eval-trace who key prev-trace)
       (define prev-db (trace-db prev-trace))
-      (match-define (entry dist prev-value _ tag) (hash-ref prev-db key))
+      (match-define (entry dist prev-value _ tag) (db-ref prev-db key))
       (define trace-cache (make-hash)) ;; Hash[X => Trace/#f]
       (hash-set! trace-cache prev-value prev-trace)
       (define eval-slice (make-eval-slice who (list key) prev-trace))
@@ -528,9 +617,3 @@
             (eval-trace new-value #f)))
       caching-eval-trace)
     ))
-
-(define (complete-slice-trace! slice-trace prev-db)
-  (define slice-db (trace-db slice-trace))
-  (for ([(key entry) (in-hash prev-db)])
-    (unless (hash-has-key? slice-db key)
-      (hash-set! slice-db key entry))))
