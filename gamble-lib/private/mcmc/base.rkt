@@ -33,119 +33,132 @@
 ;; DeltaDB = (Hashof DBKey (U Entry Proposal))
 ;; DBKey = Addr
 
-;; DB = (db (Vectorof (cons DBKey Entry)) Nat (U #f (Hashof DBKey Entry)))
-(struct tracedb (es n eh) #:mutable)
+;; DB = (db (Vectorof DBKey) (Vectorof Entry) Nat (U #f (Hashof DBKey Entry)))
+(struct tracedb (ks es n eh) #:mutable)
 
 (define DB-INIT-CAPACITY 10)
 
 ;; new-db : Nat -> DB
 (define (new-db [capacity DB-INIT-CAPACITY])
-  (tracedb (make-vector capacity #f) 0 #f))
+  (tracedb (make-vector capacity #f) (make-vector capacity #f) 0 #f))
 
 ;; db-ref : DB DBKey DB/#f -> Entry/#f
 ;; The hintdb is db-in-progress of running model; if model accesses
 ;; same RVs as previous run, then no need to create hash.
 (define (db-ref db key #:hint [hintdb #f])
-  (match-define (tracedb es n eh) db)
+  (match-define (tracedb ks es n eh) db)
   (define hint (and hintdb (tracedb-n hintdb)))
-  (define hintp (and hint (< hint n) (vector-ref es hint)))
-  (cond [(and hintp (equal? (car hintp) key)) (cdr hintp)]
+  (define hintk (and hint (< hint n) (vector-ref ks hint)))
+  (cond [(and hintk (equal? hintk key)) (vector-ref es hint)]
         [else (hash-ref (or eh (db-hash! db)) key #f)]))
 
 (define (db-set! db key e)
-  (define (grow n) (* 2 n))
-  (match-define (tracedb es n _) db)
-  (cond [(< n (vector-length es))
-         (vector-set! es n (cons key e))
+  (define (grow n) (max DB-INIT-CAPACITY (* 2 n)))
+  (match-define (tracedb ks es n _) db)
+  (cond [(< n (vector-length ks))
+         (vector-set! ks n key)
+         (vector-set! es n e)
          (set-tracedb-n! db (add1 n))]
         [else
-         (define es* (make-vector (grow n) #f))
-         (vector-copy! es* 0 es 0)
+         (define n* (grow n))
+         (define ks* (make-vector n* #f))
+         (define es* (make-vector n* #f))
+         (vector-copy! ks* 0 ks 0 n*)
+         (vector-copy! es* 0 es 0 n*)
+         (set-tracedb-ks! db ks*)
          (set-tracedb-es! db es*)
          (db-set! db key e)]))
 
 (define (db-hash! db)
   (or (tracedb-eh db)
       (let ([eh (make-hash)])
-        (match-define (tracedb es n #f) db)
-        (for ([ep (in-vector es 0 n)])
-          (hash-set! eh (car ep) (cdr ep)))
+        (match-define (tracedb ks es n #f) db)
+        (for ([k (in-vector ks 0 n)] [e (in-vector es 0 n)])
+          (hash-set! eh k e))
         (set-tracedb-eh! db eh)
+        (unless (= n (hash-count eh))
+          (error 'sample "internal address collision~a\n  address: ~e"
+                 "detected after the model finished executing"
+                 (for/first ([k (in-vector ks 0 n)]
+                             [e (in-vector es 0 n)]
+                             #:when (not (eq? (hash-ref eh k #f) e)))
+                   k)))
         eh)))
 
 (define (db-finish! db)
-  (match-define (tracedb es n _) db)
-  (let ([eh (db-hash! db)])
-    (unless (= n (hash-count eh))
-      (error "collision"))) ;; FIXME
-  (when (< n (vector-length es))
+  (match-define (tracedb ks es n _) db)
+  (void (db-hash! db))
+  (when (< n (vector-length ks))
+    (define ks* (make-vector n #f))
     (define es* (make-vector n #f))
+    (vector-copy! ks* 0 ks 0 n)
     (vector-copy! es* 0 es 0 n)
-    (set-tracedb-es! db es)))
+    (set-tracedb-ks! db ks*)
+    (set-tracedb-es! db es*)))
 
 ;; db-complete! : DB DB -> Void
 ;; Completes a slice DB, whose keys are a subset of prev-db. The completed DB
 ;; should be like prev-db except for the slice's entries.
 (define (db-complete! slice-db prev-db)
+  (match-define (tracedb prev-ks prev-es prev-n _) prev-db)
   (define slice-eh (db-hash! slice-db))
-  (define prev-eh (db-hash! prev-db))
-  (begin
-    (match-define (tracedb prev-es prev-n _) prev-db)
-    (define es* (make-vector prev-n))
-    (for ([i (in-naturals)] [ep (in-vector prev-es 0 prev-n)])
-      (match-define (cons key prev-e) ep)
-      (cond [(hash-ref slice-eh key #f)
-             => (lambda (slice-e) (vector-set! es* i (cons key slice-e)))]
-            [else (vector-set! es* i ep)]))
-    (set-tracedb-es! slice-db es*)
-    (set-tracedb-n! slice-db prev-n))
-  (for ([(key prev-e) (in-hash prev-eh)])
-    (unless (hash-has-key? slice-eh key)
-      (hash-set! slice-eh key prev-e))))
+  (define ks* (make-vector prev-n))
+  (define es* (make-vector prev-n))
+  (for ([i (in-naturals)]
+        [k (in-vector prev-ks 0 prev-n)]
+        [prev-e (in-vector prev-es 0 prev-n)])
+    (vector-set! ks* i k)
+    (vector-set! es* i (hash-ref slice-eh k prev-e)))
+  (set-tracedb-eh! slice-db #f)
+  (set-tracedb-ks! slice-db ks*)
+  (set-tracedb-es! slice-db es*)
+  (set-tracedb-n! slice-db prev-n))
 
 ;; db->keys+tags+dists : DB -> (values (Listof DBKey) (Listof Tag) (Listof Dist))
 ;; List order corresponds to program order!
 (define (db->keys+tags+dists db)
-  (match-define (tracedb es n _) db)
-  (define eps (for/list ([ep (in-vector es 0 n)]) ep))
-  (define keys (map car eps))
-  (define entries (map cdr eps))
-  (values keys (map entry-tag entries) (map entry-dist entries)))
+  (match-define (tracedb ks es n _) db)
+  (values (for/list ([k (in-vector ks 0 n)]) k)
+          (for/list ([e (in-vector es 0 n)]) (entry-tag e))
+          (for/list ([e (in-vector es 0 n)]) (entry-dist e))))
 
 ;; db-count : DB (Tag -> Boolean) -> Nat
 (define (db-count db [ok-tag? #f])
   (cond [ok-tag?
-         (match-define (tracedb es n _) db)
-         (for/sum ([ep (in-vector es 0 n)])
-           (if (ok-tag? (entry-tag (cdr ep))) 1 0))]
+         (match-define (tracedb _ es n _) db)
+         (for/sum ([e (in-vector es 0 n)])
+           (if (ok-tag? (entry-tag e)) 1 0))]
         [else (tracedb-n db)]))
 
 ;; db-random : DB (Tag -> Boolean) -> #f or (cons DBKey Entry)
 (define (db-random db [ok-tag? #f])
-  (match-define (tracedb es n _) db)
+  (match-define (tracedb ks es n _) db)
   (cond [(zero? n) #f]
         [ok-tag?
          (let loop ([iters 2])
            (cond [(zero? iters)
                   (define okn (db-count db ok-tag?))
                   (and (> okn 0) (db-nth db (random okn) ok-tag?))]
-                 [else (let ([ep (vector-ref es (random n))])
-                         (cond [(ok-tag? (entry-tag (cdr ep))) ep]
+                 [else (let ([i (random n)])
+                         (define e (vector-ref es i))
+                         (cond [(ok-tag? (entry-tag e)) (cons (vector-ref ks i) e)]
                                [else (loop (sub1 iters))]))]))]
-        [else (vector-ref es (random n))]))
+        [else (let ([i (random n)]) (cons (vector-ref ks i) (vector-ref es i)))]))
 
 ;; db-nth : DB Nat (Tag -> Boolean) -> (cons DBKey Entry)
 ;; PRE: hash contains at least n+1 ok entries
-(define (db-nth db k [ok-tag? #f])
-  (match-define (tracedb es n _) db)
+(define (db-nth db m [ok-tag? #f])
+  (match-define (tracedb ks es n _) db)
   (cond [ok-tag?
-         (let loop ([index 0] [k k])
+         (let loop ([index 0] [m m])
            (unless (< index n) (error 'db-nth "internal error"))
-           (define ep (vector-ref es index))
-           (if (ok-tag? (entry-tag (cdr ep)))
-               (if (zero? k) ep (loop (add1 index) (sub1 k)))
-               (loop (add1 index) k)))]
-        [else (vector-ref es k)]))
+           (define e (vector-ref es index))
+           (if (ok-tag? (entry-tag e))
+               (if (zero? m)
+                   (cons (vector-ref ks index) e)
+                   (loop (add1 index) (sub1 m)))
+               (loop (add1 index) m)))]
+        [else (vector-ref es m)]))
 
 
 ;; ============================================================
@@ -156,7 +169,7 @@
 ;; - lobs is the sum of all log likelihoods of observations
 (struct trace (value db lprs lobs))
 
-(define init-trace (trace #f (new-db) -inf.0 -inf.0))
+(define init-trace (trace #f (new-db 0) -inf.0 -inf.0))
 
 ;; trace-lj : Trace/#f -> Real
 ;; Returns the log joint probability of the trace (priors and observations).
