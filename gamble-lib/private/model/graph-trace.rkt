@@ -211,7 +211,7 @@
           [(#%plain-app fun:expr arg:expr ...)
            (define/with-syntax cs (CALL-SITE stx))
            (define/with-syntax addr-expr #'(addr-add-call ADDR (+ CSBASE cs)))
-           #'(graph-app GRAPH addr-expr (instrument fun) (instrument arg) ...)]
+           #'((graph-extract-function GRAPH (instrument fun)) addr-expr (instrument arg) ...)]
           ;; ----------------------------------------
           [_ (raise-syntax-error #f "unhandled syntax in instrumenter" stx)]))
       (let ([result (relocate result stx)])
@@ -421,12 +421,6 @@
   (match fun
     [(model-closure proc) proc]
     [_ (lambda (addr . argrs) (graph-app* graph addr fun argrs))]))
-
-;; graph-app : Graph Address Result (Listof Result) -> Result
-(define (graph-app graph addr funr . argrs)
-  (define fun (result->value funr))
-  (send graph do! (node:same "application" fun funr))
-  (graph-app* graph addr fun argrs))
 
 ;; graph-app* : Graph Address ModelFunction (Listof Result) -> Result
 (define (graph-app* graph addr fun argrs)
