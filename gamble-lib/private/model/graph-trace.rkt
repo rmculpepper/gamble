@@ -392,76 +392,27 @@
 ;; ============================================================
 
 (define (graph-if graph branchr)
-  (define branch (and (result->value branchr) #t))
-  (send graph do! (node:same-if branch branchr))
-  branch)
+  (match branchr
+    [(result:value branch) branch]
+    [_ (send graph handle-if branchr)]))
 
 (define (graph-app-cf graph fun . argrs)
   ;; All constant-folding functions are also single-valued.
   (cond [(andmap result:value? argrs)
          (result:value (apply fun (results->values argrs)))]
-        [else
-         (define loc (box #f))
-         (send graph do! (node:app loc fun argrs))
-         (result:location loc)]))
+        [else (send graph handle-app-cf fun argrs)]))
 
 (define (graph-apply-cf graph fun . argrs)
   ;; All constant-folding functions are also single-valued.
   (cond [(andmap result:value? argrs)
          (result:value (apply apply fun (results->values argrs)))]
-        [else
-         (define loc (box #f))
-         (send graph do! (node:app loc apply (cons (result:value fun) argrs)))
-         (result:location loc)]))
+        [else (send graph handle-app-cf apply (cons (result:value fun) argrs))]))
 
 ;; graph-extract-function : ... -> (Address (Result X) ... -> (Result Y))
 (define (graph-extract-function graph funr)
-  (define fun (result->value funr))
-  (send graph do! (node:same "application" fun funr))
-  (match fun
-    [(model-closure proc) proc]
-    [_ (lambda (addr . argrs) (graph-app* graph addr fun argrs))]))
-
-;; graph-app* : Graph Address ModelFunction (Listof Result) -> Result
-(define (graph-app* graph addr fun argrs)
-  (match fun
-    [(model-closure proc)
-     (apply proc addr argrs)]
-    [(model-memoized mfun args=>result addr)
-     (define args (results->values argrs))
-     (for ([arg (in-list args)] [argr (in-list argrs)])
-       (send graph do! (node:same "memoized function argument" arg argr)))
-     ;; Memo key *must* be actual argument values, not result wrappers:
-     ;; because program could compute same value in two locations.
-     (hash-ref! args=>result args
-                (lambda ()
-                  (define addr* (addr-add-mem addr args))
-                  (graph-app* graph addr* mfun argrs)))]
-    [(== structural)
-     (define args (results->values argrs))
-     (for ([arg (in-list args)] [argr (in-list argrs)])
-       (send graph do! (node:same "declared structural" arg argr)))
-     (apply values (map result:value args))]
-    [proc ;; procedure, or else let racket raise non-proc app error
-     (define args (results->values argrs))
-     (cond [(and ALL-CONSTANT-FOLDING? (andmap result:value? argrs))
-            (call-with-values
-             (lambda () (apply proc args))
-             (case-lambda
-               [(v) (result:value v)]
-               [vs (apply values (map result:value vs))]))]
-           [else
-            (call-with-values
-             (lambda () (apply proc args))
-             (case-lambda
-               [(v)
-                (define loc (box v))
-                (send graph add! (node:app loc proc argrs))
-                (result:location loc)]
-               [vs
-                (define locs (map box vs))
-                (send graph add! (node:app-mv locs proc argrs))
-                (apply values (map result:location locs))]))])]))
+  (match funr
+    [(result:value (model-closure proc)) proc]
+    [_ (send graph handle-extract-function funr)]))
 
 ;; ============================================================
 ;; Graph
@@ -600,6 +551,70 @@
          (hash-set! key=>nodeid addr nodeid)
          (exec-node! #f node ctx)]
         [_ (add-and-exec!)]))
+
+    ;; ----------------------------------------
+    ;; Evaluation
+
+    ;; handle-if : Result -> Boolean
+    (define/public (handle-if branchr)
+      (define branch (and (result->value branchr) #t))
+      (do! (node:same-if branch branchr))
+      branch)
+
+    ;; handle-app-cf : Procedure (Listof Result) -> Result
+    (define/public (handle-app-cf fun argrs)
+      (define loc (box #f))
+      (do! (node:app loc fun argrs))
+      (result:location loc))
+
+    ;; handle-extract-function : Result -> (Address (Result X) ... -> (Result Y))
+    (define/public (handle-extract-function funr)
+      (define fun (result->value funr))
+      (do! (node:same "application" fun funr))
+      (match fun
+        [(model-closure proc) proc]
+        [_ (lambda (addr . argrs) (handle-app* addr fun argrs))]))
+
+    ;; handle-app* : Address Function (Listof Result) -> Result
+    (define/private (handle-app* addr fun argrs)
+      (match fun
+        [(model-closure proc)
+         (apply proc addr argrs)]
+        [(model-memoized mfun args=>result addr)
+         (define args (results->values argrs))
+         (for ([arg (in-list args)] [argr (in-list argrs)])
+           (do! (node:same "memoized function argument" arg argr)))
+         ;; Memo key *must* be actual argument values, not result wrappers:
+         ;; because program could compute same value in two locations.
+         (hash-ref! args=>result args
+                    (lambda ()
+                      (define addr* (addr-add-mem addr args))
+                      (handle-app* addr* mfun argrs)))]
+        [(== structural)
+         (define args (results->values argrs))
+         (for ([arg (in-list args)] [argr (in-list argrs)])
+           (do! (node:same "declared structural" arg argr)))
+         (apply values (map result:value args))]
+        [proc ;; procedure, or else let racket raise non-proc app error
+         (define args (results->values argrs))
+         (cond [(and ALL-CONSTANT-FOLDING? (andmap result:value? argrs))
+                (call-with-values
+                 (lambda () (apply proc args))
+                 (case-lambda
+                   [(v) (result:value v)]
+                   [vs (apply values (map result:value vs))]))]
+               [else
+                (call-with-values
+                 (lambda () (apply proc args))
+                 (case-lambda
+                   [(v)
+                    (define loc (box v))
+                    (add! (node:app loc proc argrs))
+                    (result:location loc)]
+                   [vs
+                    (define locs (map box vs))
+                    (add! (node:app-mv locs proc argrs))
+                    (apply values (map result:location locs))]))])]))
 
     ;; ----------------------------------------
     ;; Re-evaluation
