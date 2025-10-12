@@ -15,6 +15,7 @@
          racket/match
          racket/class
          racket/stxparam
+         racket/undefined
          "../addr.rkt"
          "../base.rkt"
          (only-in "../dist.rkt" dist-pdf)
@@ -369,22 +370,23 @@
 ;; Result
 
 ;; A Result is one of
-;; - (result:location Location)
-;; - (result:value Any)         -- constant given branch choices
+;; - (result:location Location/Undefined) -- undefined represents "symbolic"
+;; - (result:value Any)                   -- constant given branch choices
 (struct result:location (location) #:prefab)
 (struct result:value (value) #:prefab)
 
 ;; ============================================================
 ;; Store
 
-(define (next-location) (box #f))
+(define (new-location [v undefined]) (box v))
 (define (store! loc val) (set-box! loc val))
 (define (fetch loc) (unbox loc))
 
 ;; result->value : Result -> Any
 (define (result->value r)
   (match r
-    [(result:location loc) (fetch loc)]
+    [(result:location loc)
+     (if (box? loc) (unbox loc) (error-structural 'internal 'symbolic-eval #f))]
     [(result:value val) val]))
 (define (results->values rs)
   (for/list ([r (in-list rs)]) (result->value r)))
@@ -423,6 +425,7 @@
 (define graph%
   (class object%
     (init-field [init-addr init-hash-addr]
+                [symbolic? #f]
                 [ctx (new scoring-stochastic-ctx%)])
     (super-new)
 
@@ -467,7 +470,7 @@
            [(list result)
             (set! final-result result)
             (calculate-reach!)
-            (result->value result)]
+            (if symbolic? undefined (result->value result))]
            [#f (error who "failed to build trace graph")])]))
 
     ;; ----------------------------------------
@@ -475,7 +478,7 @@
 
     (define/public (get-functions)
       (define (trace:sample addr distr [tagr #f])
-        (define loc (box #f))
+        (define loc (new-location*))
         (when tagr
           (do! (node:same "sample tag" (result->value tagr) tagr)))
         (do! (node:sample loc addr distr tagr))
@@ -540,7 +543,7 @@
     ;; (Eg, assignments to constants do not need to be repeated.)
     (define/public (do! node)
       (define (add-and-exec! [node node])
-        (begin0 (add! node) (exec-node! #f node ctx)))
+        (begin0 (add! node) (unless symbolic? (exec-node! #f node ctx))))
       (match node
         [(node:same-if branch result)
          (when (result:location? result) (add-and-exec!))]
@@ -549,11 +552,16 @@
         [(node:sample loc addr distr tagr)
          (define nodeid (add! node))
          (hash-set! key=>nodeid addr nodeid)
-         (exec-node! #f node ctx)]
+         (unless symbolic? (exec-node! #f node ctx))]
         [_ (add-and-exec!)]))
 
     ;; ----------------------------------------
     ;; Evaluation
+
+    (define/private (new-location* [v undefined])
+      (if symbolic? undefined (new-location v)))
+    (define/private (new-locations* vs)
+      (for/list ([v (in-list vs)]) (new-location* v)))
 
     ;; handle-if : Result -> Boolean
     (define/public (handle-if branchr)
@@ -563,7 +571,7 @@
 
     ;; handle-app-cf : Procedure (Listof Result) -> Result
     (define/public (handle-app-cf fun argrs)
-      (define loc (box #f))
+      (define loc (new-location*))
       (do! (node:app loc fun argrs))
       (result:location loc))
 
@@ -608,11 +616,11 @@
                  (lambda () (apply proc args))
                  (case-lambda
                    [(v)
-                    (define loc (box v))
+                    (define loc (new-location* v))
                     (add! (node:app loc proc argrs))
                     (result:location loc)]
                    [vs
-                    (define locs (map box vs))
+                    (define locs (new-location* vs))
                     (add! (node:app-mv locs proc argrs))
                     (apply values (map result:location locs))]))])]))
 
