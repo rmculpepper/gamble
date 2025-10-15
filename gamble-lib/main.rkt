@@ -144,56 +144,27 @@
         (-> any/c dist? any/c
             (recursive-contract mcmc-transition/single-site/c))))
 
-(define sample-frame/c
-  (let ()
-    (define vectorof-flonum-proj (get/build-late-neg-projection (vectorof/ic flonum?)))
-    (define vectorof-trace-proj (get/build-late-neg-projection (vectorof/ic trace?)))
-    (lambda (value/c)
-      (define value-ctc (coerce-contract 'sample-frame/c value/c))
-      (define vectorof-value-proj (get/build-late-neg-projection (vectorof/ic value-ctc)))
-      (define (sample-frame/first-order? v)
-        (and (hash? v) (immutable? v)))
-      (define (sample-frame-late-neg-proj b)
-        (define vectorof-value-proj* (vectorof-value-proj b))
-        (define vectorof-flonum-proj* (vectorof-flonum-proj b))
-        (define vectorof-trace-proj* (vectorof-trace-proj b))
-        (lambda (v missing-party)
-          (define (bad . info) (apply raise-blame-error b #:missing-party missing-party v info))
-          (unless (and (hash? v) (immutable? v))
-            (bad '(expected: "(and/c hash? immutable?)")))
-          (unless (hash-has-key? v 'value)
-            (bad '("hash missing 'value key")))
-          (define vvalue (hash-ref v 'value))
-          (define n (and (vector? vvalue) (vector-length vvalue)))
-          (for/fold ([wh v]) ([(key value) (in-hash v)] #:when (symbol? key))
-            (define b* (blame-add-context b (format "the ~e field of" key)))
-            (define (bad* . info) (apply raise-blame-error b* #:missing-party missing-party v info))
-            (define (check-vec-len value)
-              (unless (and n (vector? value) (= (vector-length value) n))
-                (bad* '(expected: "vector of length ~s" given: "~e") n value)))
-            (define (update new-value) (if (eq? new-value value) wh (hash-set wh key new-value)))
-            (case key
-              [(value)
-               (when n (unless (> n 0) (bad* '(expected: "non-empty vector" given: "~e") value)))
-               (update (vectorof-value-proj* value missing-party))]
-              [(log-weight log-joint log-prior log-score)
-               (check-vec-len value)
-               (update (vectorof-flonum-proj* value missing-party))]
-              [(trace)
-               (check-vec-len value)
-               (update (vectorof-trace-proj* value missing-party))]
-              [(transition)
-               (check-vec-len value)
-               wh]
-              [else
-               (raise-blame-error b #:missing-party missing-party v
-                                  "hash has unexpected symbol key\n  key: ~e\n  value: ~e"
-                                  key value)]))))
-      (make-contract
-       #:name `(sample-frame/c ,(contract-name value-ctc))
-       #:first-order sample-frame/first-order?
-       #:late-neg-projection sample-frame-late-neg-proj
-       #:list-contract? #f))))
+(define (sample-frame/c value/c)
+  (define value-ctc (coerce-contract 'sample-frame/c value/c))
+  (hash-record/ic
+   (hasheq 'value (cond [(eq? value/c any/c) any-vector/ic]
+                        [(eq? value/c real?) real-vector/ic]
+                        [(eq? value/c flonum?) flonum-vector/ic]
+                        [else (vectorof/ic value-ctc)])
+           'log-weight flonum-vector/ic
+           'log-joint  flonum-vector/ic
+           'log-prior  flonum-vector/ic
+           'log-score  flonum-vector/ic
+           'trace      trace-vector/ic
+           'transition any-vector/ic)
+   #:name `(sample-frame/c ,(contract-name value-ctc))
+   #:other (lambda (key) (if (symbol? key) none/c any/c))
+   #:required '(value)))
+
+(define any-vector/ic (vectorof/ic any/c))
+(define real-vector/ic (vectorof/ic real?))
+(define flonum-vector/ic (vectorof/ic flonum?))
+(define trace-vector/ic (vectorof/ic trace?))
 
 (define real-sample-frame/c (sample-frame/c real?))
 (define any-sample-frame/c (sample-frame/c any/c))
