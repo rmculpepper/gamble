@@ -393,11 +393,14 @@
   ;; == Section 6.6
 
   (provide array?
+           immutable-array?
            settable-array?
            mutable-array?)
 
   (define (array? x)
     (Array? x))
+  (define (immutable-array? x)
+    (and (ImmArray? x)))
   (define (settable-array? x)
     (and (MutArray? x) (t:settable-array? x)))
   (define (mutable-array? x)
