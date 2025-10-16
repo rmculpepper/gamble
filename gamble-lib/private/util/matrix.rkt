@@ -14,6 +14,7 @@
     [prop:auto-equal+hash Struct-Type-Property])
   (provide (struct-out ImmArray)
            (struct-out MutArray)
+           Elem
            Array
            Array?
            Array-contents
@@ -53,11 +54,14 @@
 
   ;; ----------------------------------------
 
-  (struct: ImmArray ([contents : (t:Array Real)])
+  (define-type Elem Real)
+  ;; (define-type Elem Flonum)
+
+  (struct: ImmArray ([contents : (t:Array Elem)])
     #:property prop:auto-equal+hash #t
     #:property prop:custom-write print-wrapped-array
     #:property prop:custom-print-quotable 'never)
-  (struct: MutArray ([contents : (t:Mutable-Array Real)])
+  (struct: MutArray ([contents : (t:Mutable-Array Elem)])
     #:property prop:auto-equal+hash #t
     #:property prop:custom-write print-wrapped-array
     #:property prop:custom-print-quotable 'never)
@@ -66,7 +70,7 @@
   (define (Array? x)
     (or (ImmArray? x) (MutArray? x)))
 
-  (: Array-contents : (U ImmArray MutArray) -> (t:Array Real))
+  (: Array-contents : (U ImmArray MutArray) -> (t:Array Elem))
   (define (Array-contents x)
     (cond [(ImmArray? x) (ImmArray-contents x)]
           [(MutArray? x) (MutArray-contents x)]))
@@ -82,7 +86,8 @@
 (module util typed/racket/base
   (require math/array
            math/matrix
-           racket/math)
+           racket/math
+           (only-in (submod ".." base) Elem))
   (provide matrix11->value
            array->immutable-array
            make-mutable-matrix
@@ -124,19 +129,19 @@
 
   ;; ----------------------------------------
 
-  (: array-sqrt/nan : (Array Real) -> (Array Real))
+  (: array-sqrt/nan : (Array Elem) -> (Array Elem))
   (define (array-sqrt/nan a)
     (array-map sqrt/nan a))
 
-  (: array-sqrt/err : (Array Real) -> (Array Real))
+  (: array-sqrt/err : (Array Elem) -> (Array Elem))
   (define (array-sqrt/err a)
     (array-map sqrt/err a))
 
-  (: sqrt/nan : Real -> Real)
+  (: sqrt/nan : Elem -> Elem)
   (define (sqrt/nan x)
     (if (negative? x) +nan.0 (sqrt x)))
 
-  (: sqrt/err : Real -> Real)
+  (: sqrt/err : Elem -> Elem)
   (define (sqrt/err x)
     (if (negative? x)
         (error 'array-sqrt/err "got negative number: ~e" x)
@@ -144,15 +149,15 @@
 
   ;; ----------------------------------------
 
-  (: matrix-cholesky : (Matrix Real) -> (Matrix Real))
+  (: matrix-cholesky : (Matrix Elem) -> (Matrix Elem))
   (define (matrix-cholesky A)
     (unless (matrix-symmetric? A)
       (error 'matrix-cholesky "expected symmetric matrix\n  given: ~e" A))
     ;; check square, symmetric
     ;; FIXME: quick check: diagonal?
     (define n (square-matrix-size A))
-    (define L ((inst array->mutable-array Real) (make-matrix n n 0.0)))
-    (define (real-sqrt [x : Real])
+    (define L ((inst array->mutable-array Elem) (make-matrix n n 0.0)))
+    (define (real-sqrt [x : Elem])
       (define r (sqrt x))
       (if (real? r)
           r
@@ -163,30 +168,30 @@
         (matrix-set!
          L i j
          (cond [(= i j)
-                (real-sqrt (- Aij (for/sum : Real ([k (in-range j)])
+                (real-sqrt (- Aij (for/sum : Elem ([k (in-range j)])
                                     (sqr (matrix-ref L j k)))))]
                [else
-                (/ (- Aij (for/sum : Real ([k (in-range j)])
+                (/ (- Aij (for/sum : Elem ([k (in-range j)])
                             (* (matrix-ref L i k) (matrix-ref L j k))))
                    (matrix-ref L j j))]))))
     L)
 
-  (: matrix-ldl : (Matrix Real) -> (Values (Matrix Real) (Vectorof Real)))
+  (: matrix-ldl : (Matrix Elem) -> (Values (Matrix Elem) (Vectorof Elem)))
   (define (matrix-ldl A)
     (define n (square-matrix-size A))
-    (define L ((inst array->mutable-array Real) (make-matrix n n 0.0)))
-    (define D ((inst make-vector Real) n 0.0))
+    (define L ((inst array->mutable-array Elem) (make-matrix n n 0.0)))
+    (define D ((inst make-vector Elem) n 0.0))
     (for ([j (in-range n)])
       (vector-set!
        D j
        (- (matrix-ref A j j)
-          (for/sum : Real ([k (in-range j)])
+          (for/sum : Elem ([k (in-range j)])
             (* (sqr (matrix-ref L j k)) (vector-ref D k)))))
       (for ([i (in-range (add1 j) n)])
         (matrix-set!
          L i j
          (/ (- (matrix-ref A i j)
-               (for/sum : Real ([k (in-range j)])
+               (for/sum : Elem ([k (in-range j)])
                  (* (matrix-ref L i k) (matrix-ref L j k) (vector-ref D k))))
             (vector-ref D j)))))
     (values L D))
@@ -210,15 +215,15 @@
            for*/matrix)
 
   (define-syntax-rule (array elts)
-    (ImmArray (t:array elts : Real)))
+    (ImmArray (t:array elts : Elem)))
   (define-syntax-rule (mutable-array elts)
-    (MutArray (t:mutable-array elts : Real)))
+    (MutArray (t:mutable-array elts : Elem)))
   (define-syntax-rule (matrix elts)
-    (ImmArray (t:matrix elts : Real)))
+    (ImmArray (t:matrix elts : Elem)))
   (define-syntax-rule (row-matrix elts)
-    (ImmArray (t:row-matrix elts : Real)))
+    (ImmArray (t:row-matrix elts : Elem)))
   (define-syntax-rule (col-matrix elts)
-    (ImmArray (t:col-matrix elts : Real)))
+    (ImmArray (t:col-matrix elts : Elem)))
 
   ;; ----------------------------------------
 
@@ -254,7 +259,7 @@
 ;; ============================================================
 
 ;; Instantiates Array and Matrix types from math/array and math/matrix
-;; at Real. Two benefits:
+;; at Elem. Two benefits:
 ;; - better performance from untyped Racket (?)
 ;; - no polymorphic function instantiation problems from untyped Racket
 
@@ -352,10 +357,10 @@
                (restype.repack (t:fun (argtype.unpack arg) ...)))
              (provide fun))))]))
 
-  (: wrap-ImmArray : (t:Array Real) -> ImmArray)
+  (: wrap-ImmArray : (t:Array Elem) -> ImmArray)
   (define (wrap-ImmArray a)
     (cond [(t:settable-array? (values a))
-           (ImmArray (t:array-map (inst values Real) a))]
+           (ImmArray (t:array-map (inst values Elem) a))]
           [else
            (ImmArray a)]))
 
@@ -386,35 +391,35 @@
 
   ;; == Section 6.7
 
-  (Wrap make-array : In-Indexes Real -> ImmArray)
-  (Wrap build-array : In-Indexes (t:Indexes -> Real) -> ImmArray)
+  (Wrap make-array : In-Indexes Elem -> ImmArray)
+  (Wrap build-array : In-Indexes (t:Indexes -> Elem) -> ImmArray)
   (Wrap array->mutable-array : Array -> MutArray)
   (Wrap mutable-array-copy : MutArray -> MutArray)
   ;; indexes-array
   ;; index-array
   ;; axis-index-array
-  (Wrap diagonal-array : Integer Integer Real Real -> ImmArray)
+  (Wrap diagonal-array : Integer Integer Elem Elem -> ImmArray)
 
   ;; == Section 6.8 Conversion
 
   (Wrap* list->array :
-         [(Listof Real) -> ImmArray]
-         [In-Indexes (Listof Real) -> ImmArray])
-  (Wrap array->list : Array -> (Listof Real))
-  (Wrap vector->array : In-Indexes (Vectorof Real) -> MutArray)
-  (Wrap array->vector : Array -> (Vectorof Real))
+         [(Listof Elem) -> ImmArray]
+         [In-Indexes (Listof Elem) -> ImmArray])
+  (Wrap array->list : Array -> (Listof Elem))
+  (Wrap vector->array : In-Indexes (Vectorof Elem) -> MutArray)
+  (Wrap array->vector : Array -> (Vectorof Elem))
 
   (provide list*->array
            vector*->array)
 
-  (: list*->array : (t:Listof* Real) -> ImmArray)
+  (: list*->array : (t:Listof* Elem) -> ImmArray)
   (define (list*->array elts)
     (ImmArray (t:list*->array elts real?)))
-  (: vector*->array : (t:Vectorof* Real) -> MutArray)
+  (: vector*->array : (t:Vectorof* Elem) -> MutArray)
   (define (vector*->array elts)
     (MutArray (t:vector*->array elts real?)))
-  (Wrap array->list* : Array -> (t:Listof* Real))
-  (Wrap array->vector* : Array -> (t:Vectorof* Real))
+  (Wrap array->list* : Array -> (t:Listof* Elem))
+  (Wrap array->vector* : Array -> (t:Vectorof* Elem))
 
   (Wrap array-list->array : (Listof Array) Index -> Array)
   (Wrap array->array-list : Array Index -> (Listof Array))
@@ -427,10 +432,10 @@
 
   ;; FIXME: dots ???
   (Wrap* array-map :
-         [(-> Real) -> Array]
-         [(Real -> Real) Array -> Array]
-         [(Real Real -> Real) Array Array -> Array]
-         [(Real Real Real -> Real) Array Array Array -> Array])
+         [(-> Elem) -> Array]
+         [(Elem -> Elem) Array -> Array]
+         [(Elem Elem -> Elem) Array Array -> Array]
+         [(Elem Elem Elem -> Elem) Array Array Array -> Array])
 
   ;; FIXME: unfold cases for now, since underlying is macro
   (Wrap* array+ : [-> Array] [Array -> Array] [Array Array -> Array] [Array Array Array -> Array])
@@ -440,7 +445,7 @@
   (Wrap* array-min : [Array -> Array] [Array Array -> Array] [Array Array Array -> Array])
   (Wrap* array-max : [Array -> Array] [Array Array -> Array] [Array Array Array -> Array])
 
-  (Wrap array-scale : Array Real -> Array)
+  (Wrap array-scale : Array Elem -> Array)
 
   (Wrap array-abs : Array -> Array)
   (Wrap array-sqr : Array -> Array)
@@ -471,8 +476,8 @@
        Integer
        t:Slice-New-Axis))
 
-  (Wrap array-ref : Array In-Indexes -> Real)
-  (Wrap array-set! : MutArray In-Indexes Real -> Void)
+  (Wrap array-ref : Array In-Indexes -> Elem)
+  (Wrap array-set! : MutArray In-Indexes Elem -> Void)
   ;; array-indexes-ref, array-indexes-set!
 
   (Wrap array-slice-ref : Array (Listof Slice-Spec) -> Array)
@@ -506,29 +511,29 @@
   ;; == Section 6.13 Folds, Reductions, and Expansions
 
   (Wrap* array-axis-fold :
-         [Array Integer (Real Real -> Real) -> Array]
-         [Array Integer (Real Real -> Real) Real -> Array])
+         [Array Integer (Elem Elem -> Elem) -> Array]
+         [Array Integer (Elem Elem -> Elem) Elem -> Array])
 
-  (Wrap* array-axis-sum : [Array Integer -> Array] [Array Integer Real -> Array])
-  (Wrap* array-axis-prod : [Array Integer -> Array] [Array Integer Real -> Array])
-  (Wrap* array-axis-min : [Array Integer -> Array] [Array Integer Real -> Array])
-  (Wrap* array-axis-max : [Array Integer -> Array] [Array Integer Real -> Array])
+  (Wrap* array-axis-sum : [Array Integer -> Array] [Array Integer Elem -> Array])
+  (Wrap* array-axis-prod : [Array Integer -> Array] [Array Integer Elem -> Array])
+  (Wrap* array-axis-min : [Array Integer -> Array] [Array Integer Elem -> Array])
+  (Wrap* array-axis-max : [Array Integer -> Array] [Array Integer Elem -> Array])
 
-  (Wrap array-axis-count : Array Integer (Real -> Any) -> Array)
+  (Wrap array-axis-count : Array Integer (Elem -> Any) -> Array)
   ;; (Wrap array-fold : Array (Array Integer -> Array) -> Array) ;; FIXME: Array in ->
   (Wrap* array-all-fold :
-         [Array (Real Real -> Real) -> Real]
-         [Array (Real Real -> Real) Real -> Real])
-  (Wrap* array-all-sum : [Array -> Real] [Array Real -> Real])
-  (Wrap* array-all-prod : [Array -> Real] [Array Real -> Real])
+         [Array (Elem Elem -> Elem) -> Elem]
+         [Array (Elem Elem -> Elem) Elem -> Elem])
+  (Wrap* array-all-sum : [Array -> Elem] [Array Elem -> Elem])
+  (Wrap* array-all-prod : [Array -> Elem] [Array Elem -> Elem])
 
   ;; FIXME
-  (Wrap* array-count : [(Real -> Any) Array -> Integer] [(Real Real -> Any) Array Array -> Integer])
-  (Wrap* array-andmap : [(Real -> Any) Array -> Any] [(Real Real -> Any) Array Array -> Any])
-  (Wrap* array-ormap : [(Real -> Any) Array -> Any] [(Real Real -> Any) Array Array -> Any])
+  (Wrap* array-count : [(Elem -> Any) Array -> Integer] [(Elem Elem -> Any) Array Array -> Integer])
+  (Wrap* array-andmap : [(Elem -> Any) Array -> Any] [(Elem Elem -> Any) Array Array -> Any])
+  (Wrap* array-ormap : [(Elem -> Any) Array -> Any] [(Elem Elem -> Any) Array Array -> Any])
 
-  (Wrap array-axis-reduce : Array Integer (Index (Integer -> Real) -> Real) -> Array)
-  (Wrap array-axis-expand : Array Integer Integer (Real Index -> Real) -> Array)
+  (Wrap array-axis-reduce : Array Integer (Index (Integer -> Elem) -> Elem) -> Array)
+  (Wrap array-axis-expand : Array Integer Integer (Elem Index -> Elem) -> Array)
 
   ;; SKIPPED list-array ops
 
@@ -572,30 +577,30 @@
 
   (Wrap* identity-matrix :
          [Integer -> Matrix]
-         [Integer Real -> Matrix]
-         [Integer Real Real -> Matrix])
-  (Wrap make-matrix : Integer Integer Real -> Matrix)
-  (Wrap build-matrix : Integer Integer (Index Index -> Real) -> Matrix)
-  (Wrap diagonal-matrix : (Listof Real) -> Matrix)
+         [Integer Elem -> Matrix]
+         [Integer Elem Elem -> Matrix])
+  (Wrap make-matrix : Integer Integer Elem -> Matrix)
+  (Wrap build-matrix : Integer Integer (Index Index -> Elem) -> Matrix)
+  (Wrap diagonal-matrix : (Listof Elem) -> Matrix)
   ;; block-diagonal-matrix
-  (Wrap vandermonde-matrix : (Listof Real) Integer -> Matrix)
+  (Wrap vandermonde-matrix : (Listof Elem) Integer -> Matrix)
 
   ;; == Section 7.4 Conversion
 
-  (Wrap list->matrix : Integer Integer (Listof Real) -> Matrix)
-  (Wrap matrix->list : Matrix -> (Listof Real))
+  (Wrap list->matrix : Integer Integer (Listof Elem) -> Matrix)
+  (Wrap matrix->list : Matrix -> (Listof Elem))
 
-  (Wrap vector->matrix : Integer Integer (Vectorof Real) -> Matrix)
-  (Wrap matrix->vector : Matrix -> (Vectorof Real))
+  (Wrap vector->matrix : Integer Integer (Vectorof Elem) -> Matrix)
+  (Wrap matrix->vector : Matrix -> (Vectorof Elem))
 
-  (Wrap ->row-matrix : (U (U (Listof Real) (Vectorof Real)) Array) -> Matrix)
-  (Wrap ->col-matrix : (U (U (Listof Real) (Vectorof Real)) Array) -> Matrix)
+  (Wrap ->row-matrix : (U (U (Listof Elem) (Vectorof Elem)) Array) -> Matrix)
+  (Wrap ->col-matrix : (U (U (Listof Elem) (Vectorof Elem)) Array) -> Matrix)
 
-  (Wrap list*->matrix : (Listof (Listof Real)) -> Matrix)
-  (Wrap matrix->list* : Matrix -> (Listof (Listof Real)))
+  (Wrap list*->matrix : (Listof (Listof Elem)) -> Matrix)
+  (Wrap matrix->list* : Matrix -> (Listof (Listof Elem)))
 
-  (Wrap vector*->matrix : (Vectorof (Vectorof Real)) -> Matrix)
-  (Wrap matrix->vector* : Matrix -> (Vectorof (Vectorof Real)))
+  (Wrap vector*->matrix : (Vectorof (Vectorof Elem)) -> Matrix)
+  (Wrap matrix->vector* : Matrix -> (Vectorof (Vectorof Elem)))
 
   ;; == Section 7.5 Entrywise Operations and Arithmetic
 
@@ -605,12 +610,12 @@
 
   (Wrap matrix-expt : Matrix Integer -> Matrix)
 
-  (Wrap matrix-scale : Matrix Real -> Matrix)
+  (Wrap matrix-scale : Matrix Elem -> Matrix)
 
   (Wrap* matrix-map :
-         [(Real -> Real) Matrix -> Matrix]
-         [(Real Real -> Real) Matrix Matrix -> Matrix]
-         [(Real Real Real -> Real) Matrix Matrix Matrix -> Matrix])
+         [(Elem -> Elem) Matrix -> Matrix]
+         [(Elem Elem -> Elem) Matrix Matrix -> Matrix]
+         [(Elem Elem Elem -> Elem) Matrix Matrix Matrix -> Matrix])
 
   (Wrap matrix-sum : (Listof Matrix) -> Matrix)
 
@@ -618,7 +623,7 @@
 
   ;; == Section 7.6 Polymorphic Operations
 
-  (Wrap matrix-ref : Matrix Integer Integer -> Real)
+  (Wrap matrix-ref : Matrix Integer Integer -> Elem)
   (Wrap matrix-row : Matrix Integer -> Matrix)
   (Wrap matrix-col : Matrix Integer -> Matrix)
   (Wrap submatrix : Matrix (U t:Slice (Sequenceof Integer)) (U t:Slice (Sequenceof Integer)) -> Array)
@@ -638,33 +643,33 @@
   (Wrap matrix-conjugate : Matrix -> Matrix)
   (Wrap matrix-transpose : Matrix -> Matrix)
   (Wrap matrix-hermitian : Matrix -> Matrix)
-  (Wrap matrix-trace : Matrix -> Real)
+  (Wrap matrix-trace : Matrix -> Elem)
 
   ;; == Section 7.8 Inner Product Space Operations
 
-  (Wrap matrix-1norm : Matrix -> Real)
-  (Wrap matrix-2norm : Matrix -> Real)
-  (Wrap matrix-inf-norm : Matrix -> Real)
-  (Wrap* matrix-norm : [Matrix -> Real] [Matrix Real -> Real])
+  (Wrap matrix-1norm : Matrix -> Elem)
+  (Wrap matrix-2norm : Matrix -> Elem)
+  (Wrap matrix-inf-norm : Matrix -> Elem)
+  (Wrap* matrix-norm : [Matrix -> Elem] [Matrix Elem -> Elem])
 
-  (Wrap* matrix-dot : [Matrix -> Real] [Matrix Matrix -> Real])
+  (Wrap* matrix-dot : [Matrix -> Elem] [Matrix Matrix -> Elem])
 
-  (Wrap matrix-cos-angle : Matrix Matrix -> Real)
-  (Wrap matrix-angle : Matrix Matrix -> Real)
+  (Wrap matrix-cos-angle : Matrix Matrix -> Elem)
+  (Wrap matrix-angle : Matrix Matrix -> Elem)
 
-  (Wrap* matrix-normalize : [Matrix -> Matrix] [Matrix Real -> Matrix])
-  (Wrap* matrix-normalize-rows : [Matrix -> Matrix] [Matrix Real -> Matrix])
-  (Wrap* matrix-normalize-cols : [Matrix -> Matrix] [Matrix Real -> Matrix])
+  (Wrap* matrix-normalize : [Matrix -> Matrix] [Matrix Elem -> Matrix])
+  (Wrap* matrix-normalize-rows : [Matrix -> Matrix] [Matrix Elem -> Matrix])
+  (Wrap* matrix-normalize-cols : [Matrix -> Matrix] [Matrix Elem -> Matrix])
 
-  (Wrap* matrix-rows-orthogonal? : [Matrix -> Boolean] [Matrix Real -> Boolean])
-  (Wrap* matrix-cols-orthogonal? : [Matrix -> Boolean] [Matrix Real -> Boolean])
+  (Wrap* matrix-rows-orthogonal? : [Matrix -> Boolean] [Matrix Elem -> Boolean])
+  (Wrap* matrix-cols-orthogonal? : [Matrix -> Boolean] [Matrix Elem -> Boolean])
 
   ;; == Section 7.9 Solving Systems of Equations
 
   (Wrap matrix-solve : Matrix Matrix -> Matrix)
   (Wrap matrix-inverse : Matrix -> Matrix)
   (Wrap matrix-invertible? : Matrix -> Boolean)
-  (Wrap matrix-determinant : Matrix -> Real)
+  (Wrap matrix-determinant : Matrix -> Elem)
 
   ;; == Section 7.10 Row-based algorithms
 
@@ -698,25 +703,25 @@
 
   ;; == Section 7.12 Operator norms and comparing matrices
 
-  (Wrap matrix-op-1norm : Matrix -> Real)
-  (Wrap matrix-op-2norm : Matrix -> Real)
-  (Wrap matrix-op-inf-norm : Matrix -> Real)
+  (Wrap matrix-op-1norm : Matrix -> Elem)
+  (Wrap matrix-op-2norm : Matrix -> Elem)
+  (Wrap matrix-op-inf-norm : Matrix -> Elem)
 
-  (Wrap matrix-absolute-error : Matrix Matrix -> Real)
-  (Wrap matrix-relative-error : Matrix Matrix -> Real)
+  (Wrap matrix-absolute-error : Matrix Matrix -> Elem)
+  (Wrap matrix-relative-error : Matrix Matrix -> Elem)
 
-  (Wrap* matrix-zero? : [Matrix -> Boolean] [Matrix Real -> Boolean])
-  (Wrap* matrix-identity? : [Matrix -> Boolean] [Matrix Real -> Boolean])
-  (Wrap* matrix-orthonormal? : [Matrix -> Boolean] [Matrix Real -> Boolean])
+  (Wrap* matrix-zero? : [Matrix -> Boolean] [Matrix Elem -> Boolean])
+  (Wrap* matrix-identity? : [Matrix -> Boolean] [Matrix Elem -> Boolean])
+  (Wrap* matrix-orthonormal? : [Matrix -> Boolean] [Matrix Elem -> Boolean])
 
   ;; ============================================================
 
   (Wrap array->immutable-array : Array -> ImmArray)
-  (Wrap matrix11->value : Matrix -> Real)
-  (Wrap matrix-set! : MutMatrix Integer Integer Real -> Void)
+  (Wrap matrix11->value : Matrix -> Elem)
+  (Wrap matrix-set! : MutMatrix Integer Integer Elem -> Void)
   (Wrap matrix-symmetric? : Matrix -> Boolean)
   (Wrap matrix-cholesky : Matrix -> Matrix)
-  (Wrap make-mutable-matrix : Index Index Real -> MutMatrix)
+  (Wrap make-mutable-matrix : Index Index Elem -> MutMatrix)
   (Wrap array-sqrt/nan : Array -> Array)
   (Wrap array-sqrt/err : Array -> Array)
 
