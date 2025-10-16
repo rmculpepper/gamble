@@ -5,52 +5,13 @@
 
 ;; ------------------------------------------------------------
 
-(module env typed-racket/base-env/extra-env-lang
-
-  ;; Type environment extension needed by matrix-base.rkt
-
-  ;; Types for racket/serialize:
-
-  (require racket/serialize
-           (for-syntax (only-in typed-racket/rep/type-rep make-Name make-Opaque)))
-
-  (begin-for-syntax
-    (define -serialize-info (make-Opaque #'serialize-info?))
-    (define -deserialize-info (make-Opaque #'deserialize-info?)))
-
-  (define (make-deserialize-info* make)
-    (make-deserialize-info
-     (lambda args (make (list->vector args)))
-     (lambda () (error 'deserialize "cycle not permitted"))))
-
-  (type-environment
-   [prop:serializable
-    -Struct-Type-Property]
-   ;; HACK: Specialize vector to one element, for ease of typing.
-   ;; Maybe can use polydots to do better?
-   [make-serialize-info
-    (-poly (a b)
-           (-> (-> a b)
-               (Un (-Syntax -Symbol)
-                   (-pair -Symbol -Module-Path-Index))
-               -Boolean
-               -Pathlike
-               -serialize-info))]
-   [make-deserialize-info*
-    (-poly (a)
-           (-> (-> Univ a)
-               -deserialize-info))])
-
-  (begin))
-
-;; ------------------------------------------------------------
-
 (module base typed/racket/base
   (require racket/match
            (for-syntax racket/base)
            (prefix-in t: math/array)
-           (prefix-in t: math/matrix)
-           (submod ".." env))
+           (prefix-in t: math/matrix))
+  (require/typed scramble/struct
+    [prop:auto-equal+hash Struct-Type-Property])
   (provide (struct-out ImmArray)
            (struct-out MutArray)
            Array
@@ -59,34 +20,6 @@
            Matrix
            ImmMatrix
            MutMatrix)
-
-  ;; ----------------------------------------
-  ;; Serialization
-
-  (provide t:array-deserialize-info-v0)
-  (define t:array-deserialize-info-v0
-    ((inst make-deserialize-info* Array)
-     (lambda (v)
-       (match (cast v (Vector Boolean t:Indexes (Vectorof Real)))
-         [(vector mutable? indexes contents)
-          (let ([marr (t:vector->array indexes contents)])
-            (if mutable?
-                (MutArray marr)
-                (ImmArray (t:array-map (inst values Real) marr))))]))))
-
-  (define array-serialize-info-v0
-    ((inst make-serialize-info Array (Vector Boolean t:Indexes (Vectorof Real)))
-     (lambda (a)
-       (define arr (Array-contents a))
-       (vector (t:mutable-array? arr)
-               (t:array-shape arr)
-               (t:array->vector arr)))
-     ;; HACK: see comments in matrix-syntax.rkt
-     (cons 'array-deserialize-info-v0
-           (module-path-index-join '(lib "gamble/private/matrix-syntax.rkt") #f))
-     #f
-     ;; FIXME:
-     (current-directory)))
 
   ;; ----------------------------------------
   ;; Printing
@@ -104,15 +37,13 @@
   ;; (Various factors conspire to make it obnoxious to make this
   ;; configurable more gracefully, eg at run time.)
 
-  (: print-imm : Any Output-Port (U #t #f 0 1) -> Any)
-  (define print-imm
-    (lambda (imm out mode)
-      (print-recur (ImmArray-contents (cast imm ImmArray)) out mode)))
-
-  (: print-mut : Any Output-Port (U #t #f 0 1) -> Any)
-  (define print-mut
-    (lambda (mut out mode)
-      (print-recur (MutArray-contents (cast mut MutArray)) out mode)))
+  (: print-wrapped-array : Any Output-Port (U #t #f 0 1) -> Any)
+  (define (print-wrapped-array wrapped out mode)
+    (match wrapped
+      [(ImmArray contents)
+       (print-recur contents out mode)]
+      [(MutArray contents)
+       (print-recur contents out mode)]))
 
   (: print-recur : Any Output-Port (U #t #f 0 1) -> Any)
   (define (print-recur v out mode)
@@ -123,14 +54,12 @@
   ;; ----------------------------------------
 
   (struct: ImmArray ([contents : (t:Array Real)])
-    #:transparent
-    #:property prop:serializable array-serialize-info-v0
-    ;; #:property prop:custom-write print-imm
+    #:property prop:auto-equal+hash #t
+    #:property prop:custom-write print-wrapped-array
     #:property prop:custom-print-quotable 'never)
   (struct: MutArray ([contents : (t:Mutable-Array Real)])
-    #:transparent
-    #:property prop:serializable array-serialize-info-v0
-    ;; #:property prop:custom-write print-mut
+    #:property prop:auto-equal+hash #t
+    #:property prop:custom-write print-wrapped-array
     #:property prop:custom-print-quotable 'never)
   (define-type Array (U ImmArray MutArray))
 
@@ -298,18 +227,6 @@
       #:attributes (fill)
       (pattern (~optional (~seq #:fill fill:expr)))))
 
-  #|
-  ;; For some reason, for/matrix and for*/matrix trigger "Macro from
-  ;; typed module used in untyped code" error when wrapped the obvious
-  ;; way:
-  (define-syntax (for/matrix stx)
-  (syntax-parse stx
-  [(_ m:expr n:expr :maybe-fill (clause ...) . body)
-  (template/loc stx
-  (ImmArray
-  (t:for/matrix: m n (?? (?@ #:fill fill)) (clause ...) : Real . body)))]))
-  |#
-
   (begin-for-syntax
     (define (do-for/matrix who for/vector-id stx)
       (syntax-parse stx
@@ -318,30 +235,19 @@
            (syntax/loc stx
              (let* ([m me] [n ne])
                (ImmArray
-                (t:vector->matrix m n
-                                  (for/vector #:length (* m n) #:fill (?? fill 0) (clause ...)
-                                              (let ([e (let () . body)])
-                                                (unless (real? e)
-                                                  (error 'who "expected real value as result of body expression\n  got: ~e" e))
-                                                e)))))))])))
+                (t:vector->matrix
+                 m n
+                 (for/vector #:length (* m n) #:fill (?? fill 0) (clause ...)
+                             (let ([e (let () . body)])
+                               (unless (real? e)
+                                 (error 'who (string-append
+                                              "expected real value as result of body expression"
+                                              "\n  got: ~e")
+                                        e))
+                               e)))))))])))
 
   (define-syntax (for/matrix stx) (do-for/matrix 'for/matrix #'for/vector stx))
   (define-syntax (for*/matrix stx) (do-for/matrix 'for*/matrix #'for*/vector stx))
-
-  ;; ============================================================
-
-  ;; Deserialization Info
-
-  ;; The reason for this peculiar hack is to avoid the overhead of
-  ;; deserialize dynamic-requiring a "variable" from a typed module
-  ;; (matrix-base.rkt), which TR actually turns into an indirection
-  ;; macro, necessitating an eval rather than a simple env lookup.
-
-  ;; Without this hack, EACH deserialization takes ~150ms (on my laptop).
-  ;; With this change, each deserialization takes ~1ms.
-
-  (provide array-deserialize-info-v0)
-  (define array-deserialize-info-v0 t:array-deserialize-info-v0)
 
   (begin))
 
@@ -362,10 +268,6 @@
            (submod ".." syntax))
   (provide (all-from-out (submod ".." base))
            (all-from-out (submod ".." syntax)))
-
-  ;; FIXME/TODO:
-  ;; - use FLArray?
-  ;; - (Vectorof _) types introduce chaperones, may => slow
 
   ;; ============================================================
   ;; math/array
@@ -452,24 +354,10 @@
 
   (: wrap-ImmArray : (t:Array Real) -> ImmArray)
   (define (wrap-ImmArray a)
-    #|
-    ;; Don't want to unnecessarily copy every array
-    (ImmArray (t:array-map (inst values Real) a))
-    |#
-    #|
-    ;; Occurrence typing screws up here
     (cond [(t:settable-array? (values a))
-    (ImmArray (t:array-map (inst values Real) a))]
-    [else
-    (ImmArray a)])
-    |#
-    ;; Workaround:
-    (: identity : (t:Array Real) -> (t:Array Real))
-    (define (identity x) x)
-    (let ([b (identity a)])
-      (cond [(t:settable-array? b)
-             (ImmArray (t:array-map (inst values Real) a))]
-            [else (ImmArray a)])))
+           (ImmArray (t:array-map (inst values Real) a))]
+          [else
+           (ImmArray a)]))
 
   ;; ------------------------------------------------------------
 
@@ -839,3 +727,10 @@
   (begin))
 
 ;; ============================================================
+
+(require (submod "." base)
+         (submod "." syntax)
+         (submod "." matrix))
+(provide (all-from-out (submod "." base))
+         (all-from-out (submod "." syntax))
+         (all-from-out (submod "." matrix)))
