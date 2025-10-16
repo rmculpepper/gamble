@@ -290,8 +290,6 @@
            (prefix-in t: (submod ".." util))
            (submod ".." base)
            (submod ".." syntax))
-  (provide (all-from-out (submod ".." base))
-           (all-from-out (submod ".." syntax)))
 
   ;; ============================================================
   ;; math/array
@@ -394,16 +392,18 @@
 
   (provide array?
            immutable-array?
-           settable-array?
            mutable-array?)
 
   (define (array? x)
     (Array? x))
   (define (immutable-array? x)
     (and (ImmArray? x)))
-  (define (settable-array? x)
-    (and (MutArray? x) (t:settable-array? x)))
   (define (mutable-array? x)
+    (and (MutArray? x)))
+
+  (define (array-settable? x)
+    (and (MutArray? x) (t:settable-array? x)))
+  (define (array-mutable? x)
     (and (MutArray? x) (t:mutable-array? x)))
 
   (Wrap array-shape : Array -> t:Indexes)
@@ -443,6 +443,11 @@
   ;;        [In-Indexes (Listof Elem) -> ImmArray])
   ;; (Wrap vector->array : In-Indexes (Vectorof Elem) -> MutArray)
 
+  (provide list->array
+           vector->array
+           list*->array
+           vector*->array)
+
   (: list->array : (case->
                     [(Listof Real) -> ImmArray]
                     [In-Indexes (Listof Real) -> ImmArray]))
@@ -455,20 +460,18 @@
   (define (vector->array indexes elts)
     (MutArray (t:vector->array indexes (vector-map real->elem elts))))
 
-  (Wrap array->list : Array -> (Listof Elem))
-  (Wrap array->vector : Array -> (Vectorof Elem))
-
-  (provide list*->array
-           vector*->array)
-
   (: list*->array : (t:Listof* Real) -> ImmArray)
   (define (list*->array elts)
     (define real-arr (t:list*->array elts real?))
     (ImmArray (t:array-map real->elem real-arr)))
+
   (: vector*->array : (t:Vectorof* Real) -> ImmArray)
   (define (vector*->array elts)
     (define real-arr (t:vector*->array elts real?))
     (ImmArray (t:array-map real->elem real-arr)))
+
+  (Wrap array->list : Array -> (Listof Elem))
+  (Wrap array->vector : Array -> (Vectorof Elem))
 
   (Wrap array->list* : Array -> (t:Listof* Elem))
   (Wrap array->vector* : Array -> (t:Vectorof* Elem))
@@ -517,7 +520,6 @@
   ;; array-magnitude
   ;; array-angle
   ;; array-make-polar
-
 
   #|
   ;; FIXME: (Array Boolean)
@@ -590,7 +592,9 @@
 
   (provide array-fold
            array-all-sum
-           array-all-prod)
+           array-all-prod
+           array-all-min
+           array-all-max)
 
   (: array-fold : Array (Array Index -> Array) -> Array)
   (define (array-fold a f)
@@ -747,7 +751,7 @@
   (Wrap* matrix- : [Matrix -> Matrix] [Matrix Matrix -> Matrix] [Matrix Matrix Matrix -> Matrix])
   (Wrap* matrix* : [Matrix -> Matrix] [Matrix Matrix -> Matrix] [Matrix Matrix Matrix -> Matrix])
 
-  (Wrap matrix-expt : Matrix Integer -> Matrix)
+  (Wrap matrix-expt : Matrix Nonnegative-Integer -> Matrix)
 
   (Wrap matrix-scale : Matrix Elem -> Matrix)
 
@@ -777,6 +781,14 @@
 
   (Wrap matrix-diagonal : Matrix -> Array)
 
+  (Wrap matrix-rows : Matrix -> (Listof Matrix))
+  (Wrap matrix-cols : Matrix -> (Listof Matrix))
+  (Wrap matrix-augment : (Listof Matrix) -> Matrix)
+  (Wrap matrix-stack : (Listof Matrix) -> Matrix)
+
+  (Wrap matrix-set-row : Matrix Integer Matrix -> Matrix)
+  (Wrap matrix-set-col : Matrix Integer Matrix -> Matrix)
+
   (provide matrix-upper-triangle
            matrix-lower-triangle
            matrix-map-rows
@@ -789,14 +801,6 @@
   (: matrix-lower-triangle : (->* [Matrix] [Real] Matrix))
   (define (matrix-lower-triangle m [zero 0])
     (ImmArray (t:matrix-lower-triangle (Array-contents m) (real->elem zero))))
-
-  (Wrap matrix-rows : Matrix -> (Listof Matrix))
-  (Wrap matrix-cols : Matrix -> (Listof Matrix))
-  (Wrap matrix-augment : (Listof Matrix) -> Matrix)
-  (Wrap matrix-stack : (Listof Matrix) -> Matrix)
-
-  (Wrap matrix-set-row : Matrix Integer Matrix -> Matrix)
-  (Wrap matrix-set-col : Matrix Integer Matrix -> Matrix)
 
   (: matrix-map-rows : (Matrix -> Matrix) Matrix -> Matrix)
   (define (matrix-map-rows f m)
@@ -906,9 +910,8 @@
 
 ;; ============================================================
 
-(require (submod "." base)
-         (submod "." syntax)
+(require (submod "." syntax)
          (submod "." matrix))
-(provide (all-from-out (submod "." base))
-         (all-from-out (submod "." syntax))
+(provide array
+         mutable-array
          (all-from-out (submod "." matrix)))
