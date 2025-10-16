@@ -445,8 +445,8 @@
                     [In-Indexes (Listof Real) -> ImmArray]))
   (define list->array
     (case-lambda
-      [(elts) (ImmArray (t:list->array (map real->elem elts)))]
-      [(indexes elts) (ImmArray (t:list->array indexes (map real->elem elts)))]))
+      [(elts) (ImmArray (t:list->array (list-reals->elems elts)))]
+      [(indexes elts) (ImmArray (t:list->array indexes (list-reals->elems elts)))]))
 
   (: vector->array : In-Indexes (Vectorof Real) -> MutArray)
   (define (vector->array indexes elts)
@@ -688,7 +688,7 @@
 
   (: diagonal-matrix : (->* [(Listof Real)] [Real] Matrix))
   (define (diagonal-matrix elts [zero 0])
-    (ImmArray (t:diagonal-matrix (map real->elem elts) (real->elem zero))))
+    (ImmArray (t:diagonal-matrix (list-reals->elems elts) (real->elem zero))))
 
   (: block-diagonal-matrix : (->* [(Listof Array)] [Real] Matrix))
   (define (block-diagonal-matrix as [zero 0])
@@ -697,12 +697,6 @@
   ;; vandermonde-matrix
 
   ;; == Section 7.4 Conversion
-
-  (: reals->elems : (Listof Real) -> (Listof Elem))
-  (define (reals->elems elts) (map real->elem elts))
-
-  (: vector-reals->elems : (Vectorof Real) -> (Vectorof Elem))
-  (define (vector-reals->elems elts) (vector-map real->elem elts))
 
   (provide list->matrix
            vector->matrix
@@ -713,7 +707,7 @@
 
   (: list->matrix : Integer Integer (Listof Real) -> Matrix)
   (define (list->matrix m n elts)
-    (ImmArray (t:list->matrix m n (reals->elems elts))))
+    (ImmArray (t:list->matrix m n (list-reals->elems elts))))
 
   (: vector->matrix : Integer Integer (Vectorof Real) -> Matrix)
   (define (vector->matrix m n elts)
@@ -721,7 +715,7 @@
 
   (: list*->matrix : (Listof (Listof Real)) -> Matrix)
   (define (list*->matrix eltss)
-    (ImmArray (t:list*->matrix (map reals->elems eltss))))
+    (ImmArray (t:list*->matrix (map list-reals->elems eltss))))
 
   (: vector*->matrix : (Vectorof (Vectorof Real)) -> Matrix)
   (define (vector*->matrix eltss)
@@ -731,13 +725,13 @@
   (define (->row-matrix elts)
     (cond [(Array? elts) (ImmArray (t:->row-matrix (Array-contents elts)))]
           [(vector? elts) (ImmArray (t:->row-matrix (vector-reals->elems elts)))]
-          [(list? elts) (ImmArray (t:->row-matrix (reals->elems elts)))]))
+          [(list? elts) (ImmArray (t:->row-matrix (list-reals->elems elts)))]))
 
   (: ->col-matrix : (U Array (Listof Real) (Vectorof Real)) -> Matrix)
   (define (->col-matrix elts)
     (cond [(Array? elts) (ImmArray (t:->col-matrix (Array-contents elts)))]
           [(vector? elts) (ImmArray (t:->col-matrix (vector-reals->elems elts)))]
-          [(list? elts) (ImmArray (t:->col-matrix (reals->elems elts)))]))
+          [(list? elts) (ImmArray (t:->col-matrix (list-reals->elems elts)))]))
 
   (Wrap matrix->list : Matrix -> (Listof Elem))
   (Wrap matrix->vector : Matrix -> (Vectorof Elem))
