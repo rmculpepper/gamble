@@ -82,11 +82,9 @@
          (struct-out poisson-dist)
          (struct-out bernoulli-dist)
          (struct-out negative-binomial-dist)
-         (struct-out categorical-dist))
+         (struct-out categorical-dist)
 
-;; ----------------------------------------
-(require "dist/multivariate.rkt")
-(provide (struct-out multinomial-dist)
+         (struct-out multinomial-dist)
          (struct-out dirichlet-dist))
 
 ;; ----------------------------------------
